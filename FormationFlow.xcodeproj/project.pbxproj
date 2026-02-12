@@ -1,0 +1,22 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+		0F1A1A1A1A1A1A1A1A1A1A1A /* FormationFlowApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormationFlowApp.swift; sourceTree = "<group>"; };
+		0F1A1A1B1A1A1A1A1A1A1A1B /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		0F1A1A1C1A1A1A1A1A1A1A1C /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
+		0F1A1A2A1A1A1A1A1A1A1A2A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		0F1A1A3A1A1A1A1A1A1A1A3A /* FormationFlow */ = {isa = PBXNativeTarget; buildConfigurationList = 0F1A1A4A1A1A1A1A1A1A1A4A; buildPhases = (0F1A1A5A1A1A1A1A1A1A1A5A); buildRules = (); dependencies = (); name = FormationFlow; productName = FormationFlow; productReference = 0F1A1A6A1A1A1A1A1A1A1A6A; productType = "com.apple.product-type.application"; };
+		0F1A1A4A1A1A1A1A1A1A1A4A /* Build configuration list for PBXNativeTarget "FormationFlow" */ = {isa = XCConfigurationList; buildConfigurations = (0F1A1A7A1A1A1A1A1A1A1A7A); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		0F1A1A5A1A1A1A1A1A1A1A5A /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		0F1A1A6A1A1A1A1A1A1A1A6A /* FormationFlow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FormationFlow.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		0F1A1A7A1A1A1A1A1A1A1A7A /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_IDENTITY = "Apple Development"; DEVELOPMENT_TEAM = ""; INFOPLIST_FILE = FormationFlow/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 17.0; PRODUCT_BUNDLE_IDENTIFIER = com.cheerforcesandiego.formationflow; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SWIFT_VERSION = 5.9; TARGETED_DEVICE_FAMILY = 2; }; name = Release; };
+		0F1A1A8A1A1A1A1A1A1A1A8A /* PBXProject "FormationFlow" */ = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = 1; LastUpgradeCheck = 1500; }; buildConfigurationList = 0F1A1A9A1A1A1A1A1A1A1A9A; classPrefix = ""; projectDirPath = ""; targets = (0F1A1A3A1A1A1A1A1A1A1A3A); };
+		0F1A1A9A1A1A1A1A1A1A1A9A /* Build configuration list for PBXProject "FormationFlow" */ = {isa = XCConfigurationList; buildConfigurations = (0F1A1AAAA1A1A1A1A1A1A1AA); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		0F1A1AAAA1A1A1A1A1A1A1AA /* Release */ = {isa = XCBuildConfiguration; buildSettings = {IPHONEOS_DEPLOYMENT_TARGET = 17.0; SDKROOT = iphoneos; SWIFT_VERSION = 5.9; }; name = Release; };
+	};
+	rootObject = 0F1A1A8A1A1A1A1A1A1A1A8A;
+}
