@@ -5,18 +5,168 @@
 	};
 	objectVersion = 56;
 	objects = {
-		0F1A1A1A1A1A1A1A1A1A1A1A /* FormationFlowApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormationFlowApp.swift; sourceTree = "<group>"; };
-		0F1A1A1B1A1A1A1A1A1A1A1B /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
-		0F1A1A1C1A1A1A1A1A1A1A1C /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
-		0F1A1A2A1A1A1A1A1A1A1A2A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		0F1A1A3A1A1A1A1A1A1A1A3A /* FormationFlow */ = {isa = PBXNativeTarget; buildConfigurationList = 0F1A1A4A1A1A1A1A1A1A1A4A; buildPhases = (0F1A1A5A1A1A1A1A1A1A1A5A); buildRules = (); dependencies = (); name = FormationFlow; productName = FormationFlow; productReference = 0F1A1A6A1A1A1A1A1A1A1A6A; productType = "com.apple.product-type.application"; };
-		0F1A1A4A1A1A1A1A1A1A1A4A /* Build configuration list for PBXNativeTarget "FormationFlow" */ = {isa = XCConfigurationList; buildConfigurations = (0F1A1A7A1A1A1A1A1A1A1A7A); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-		0F1A1A5A1A1A1A1A1A1A1A5A /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
-		0F1A1A6A1A1A1A1A1A1A1A6A /* FormationFlow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FormationFlow.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		0F1A1A7A1A1A1A1A1A1A1A7A /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_IDENTITY = "Apple Development"; DEVELOPMENT_TEAM = ""; INFOPLIST_FILE = FormationFlow/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 17.0; PRODUCT_BUNDLE_IDENTIFIER = com.cheerforcesandiego.formationflow; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SWIFT_VERSION = 5.9; TARGETED_DEVICE_FAMILY = 2; }; name = Release; };
-		0F1A1A8A1A1A1A1A1A1A1A8A /* PBXProject "FormationFlow" */ = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = 1; LastUpgradeCheck = 1500; }; buildConfigurationList = 0F1A1A9A1A1A1A1A1A1A1A9A; classPrefix = ""; projectDirPath = ""; targets = (0F1A1A3A1A1A1A1A1A1A1A3A); };
-		0F1A1A9A1A1A1A1A1A1A1A9A /* Build configuration list for PBXProject "FormationFlow" */ = {isa = XCConfigurationList; buildConfigurations = (0F1A1AAAA1A1A1A1A1A1A1AA); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-		0F1A1AAAA1A1A1A1A1A1A1AA /* Release */ = {isa = XCBuildConfiguration; buildSettings = {IPHONEOS_DEPLOYMENT_TARGET = 17.0; SDKROOT = iphoneos; SWIFT_VERSION = 5.9; }; name = Release; };
+
+/* Begin PBXBuildFile section */
+		1FEE78962F3E5EB100012373 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FEE78932F3E5EB100012373 /* Models.swift */; };
+		1FEE78972F3E5EB100012373 /* FormationFlowApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FEE788F2F3E5EB100012373 /* FormationFlowApp.swift */; };
+		1FEE78982F3E5EB100012373 /* Views.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FEE78942F3E5EB100012373 /* Views.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		1FEE788C2F3E5E9900012373 /* FormationFlow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FormationFlow.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1FEE788E2F3E5EB100012373 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		1FEE788F2F3E5EB100012373 /* FormationFlowApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormationFlowApp.swift; sourceTree = "<group>"; };
+		1FEE78902F3E5EB100012373 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		1FEE78912F3E5EB100012373 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		1FEE78932F3E5EB100012373 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		1FEE78942F3E5EB100012373 /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		1FEE788B2F3E5E9900012373 /* /Users/ianrichardson/Projects/formation-flow/FormationFlow.xcodeproj */ = {
+			isa = PBXGroup;
+			children = (
+				1FEE78952F3E5EB100012373 /* FormationFlow */,
+				1FEE788D2F3E5E9900012373 /* Products */,
+			);
+			path = "/Users/ianrichardson/Projects/formation-flow/FormationFlow.xcodeproj";
+			sourceTree = "<absolute>";
+		};
+		1FEE788D2F3E5E9900012373 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				1FEE788C2F3E5E9900012373 /* FormationFlow.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		1FEE78952F3E5EB100012373 /* FormationFlow */ = {
+			isa = PBXGroup;
+			children = (
+				1FEE788E2F3E5EB100012373 /* Assets.xcassets */,
+				1FEE788F2F3E5EB100012373 /* FormationFlowApp.swift */,
+				1FEE78902F3E5EB100012373 /* Info.plist */,
+				1FEE78922F3E5EB100012373 /* LaunchScreen.storyboard */,
+				1FEE78932F3E5EB100012373 /* Models.swift */,
+				1FEE78942F3E5EB100012373 /* Views.swift */,
+			);
+			path = FormationFlow;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0F1A1A3A1A1A1A1A1A1A1A3A /* FormationFlow */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0F1A1A4A1A1A1A1A1A1A1A4A /* Build configuration list for PBXNativeTarget "FormationFlow" */;
+			buildPhases = (
+				0F1A1A5A1A1A1A1A1A1A1A5A /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = FormationFlow;
+			productName = FormationFlow;
+			productReference = 1FEE788C2F3E5E9900012373 /* FormationFlow.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		0F1A1A8A1A1A1A1A1A1A1A8A /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastUpgradeCheck = 1500;
+			};
+			buildConfigurationList = 0F1A1A9A1A1A1A1A1A1A1A9A /* Build configuration list for PBXProject "FormationFlow" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 1FEE788B2F3E5E9900012373 /* /Users/ianrichardson/Projects/formation-flow/FormationFlow.xcodeproj */;
+			productRefGroup = 1FEE788D2F3E5E9900012373 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				0F1A1A3A1A1A1A1A1A1A1A3A /* FormationFlow */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		0F1A1A5A1A1A1A1A1A1A1A5A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1FEE78962F3E5EB100012373 /* Models.swift in Sources */,
+				1FEE78972F3E5EB100012373 /* FormationFlowApp.swift in Sources */,
+				1FEE78982F3E5EB100012373 /* Views.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXVariantGroup section */
+		1FEE78922F3E5EB100012373 /* LaunchScreen.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				1FEE78912F3E5EB100012373 /* Base */,
+			);
+			name = LaunchScreen.storyboard;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		0F1A1A7A1A1A1A1A1A1A1A7A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "Apple Development";
+				DEVELOPMENT_TEAM = WC46K49VFA;
+				INFOPLIST_FILE = FormationFlow/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.cheerforcesandiego.formationflow;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = 2;
+			};
+			name = Release;
+		};
+		0F1A1AAAA1A1A1A1A1A1A1AA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		0F1A1A4A1A1A1A1A1A1A1A4A /* Build configuration list for PBXNativeTarget "FormationFlow" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0F1A1A7A1A1A1A1A1A1A1A7A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		0F1A1A9A1A1A1A1A1A1A1A9A /* Build configuration list for PBXProject "FormationFlow" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0F1A1AAAA1A1A1A1A1A1A1AA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
 	};
-	rootObject = 0F1A1A8A1A1A1A1A1A1A1A8A;
+	rootObject = 0F1A1A8A1A1A1A1A1A1A1A8A /* Project object */;
 }
