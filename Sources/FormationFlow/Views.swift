@@ -53,9 +53,10 @@ struct FloorGridView: View {
     var body: some View {
         ZStack {
             // Floor Grid Canvas
-            Canvas { context in
-                drawGrid(in: context)
-                drawAthletes(in: context)
+            Canvas { context, size in
+                var ctx = context
+                drawGrid(in: &ctx)
+                drawAthletes(in: &ctx)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.white)
@@ -134,10 +135,10 @@ struct FloorGridView: View {
             )
             
             // Draw label
-            var text = Text(athlete.label)
+            let text = Text(athlete.label)
                 .font(.system(.caption, design: .monospaced))
                 .foregroundColor(.white)
-            
+
             context.draw(
                 text,
                 at: screenPos,
