@@ -413,12 +413,14 @@ struct FloorGridView: View {
     @State var selectedAthleteId: UUID?
     @State private var showingRenameAlert = false
     @State private var renameText = ""
-    @State private var showingTransitionSheet = false
+    @State private var navigateToTransition = false
     @State private var showingNotesSheet = false
 
     // Bug 2 fix: track drag state in parent so gesture and canvas share it
     @State private var isDraggingAthlete = false
     @State private var dragStartAthletePosition: CGPoint = .zero
+    @State private var isPanning = false
+    @State private var showingDeleteConfirmation = false
 
     // Zoom + pan state
     @State private var zoomScale: CGFloat = 1.0
@@ -447,37 +449,65 @@ struct FloorGridView: View {
                     cellSize: cellSize,
                     offset: canvasOffset
                 )
-                // Bug 2 fix: single combined gesture handles both tap-to-select and drag
-                .gesture(floorGesture(cellSize: cellSize, offset: canvasOffset))
-                // Pinch-to-zoom + two-finger pan
+                // Single DragGesture decides mode on first touch: athlete drag or pan
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            if !isDraggingAthlete && !isPanning {
+                                let startScaled = CGPoint(
+                                    x: (value.startLocation.x - canvasOffset.x) / cellSize,
+                                    y: (value.startLocation.y - canvasOffset.y) / cellSize
+                                )
+                                var hitAthlete = false
+                                for athlete in formation.athletes {
+                                    if hypot(startScaled.x - athlete.position.x,
+                                             startScaled.y - athlete.position.y) < 2.0 {
+                                        selectedAthleteId = athlete.id
+                                        isDraggingAthlete = true
+                                        dragStartAthletePosition = athlete.position
+                                        hitAthlete = true
+                                        break
+                                    }
+                                }
+                                if !hitAthlete {
+                                    selectedAthleteId = nil
+                                    isPanning = true
+                                }
+                            }
+
+                            if isDraggingAthlete,
+                               let selectedId = selectedAthleteId,
+                               let index = formation.athletes.firstIndex(where: { $0.id == selectedId }) {
+                                let newX = dragStartAthletePosition.x + value.translation.width / cellSize
+                                let newY = dragStartAthletePosition.y + value.translation.height / cellSize
+                                formation.athletes[index].position = CGPoint(
+                                    x: max(0, min(CourtConstants.width, newX)),
+                                    y: max(0, min(CourtConstants.height, newY))
+                                )
+                            } else if isPanning {
+                                panOffset = CGSize(
+                                    width: lastPanOffset.width + value.translation.width,
+                                    height: lastPanOffset.height + value.translation.height
+                                )
+                            }
+                        }
+                        .onEnded { _ in
+                            if isPanning { lastPanOffset = panOffset }
+                            isDraggingAthlete = false
+                            isPanning = false
+                        }
+                )
+                // Pinch-to-zoom (iOS distinguishes 1-finger vs 2-finger natively)
                 .gesture(
                     MagnificationGesture()
-                        .onChanged { value in
-                            zoomScale = max(0.5, min(4.0, lastZoomScale * value))
-                        }
-                        .onEnded { value in
-                            lastZoomScale = zoomScale
-                        }
-                        .simultaneously(with:
-                            DragGesture(minimumDistance: 1)
-                                .onChanged { value in
-                                    panOffset = CGSize(
-                                        width: lastPanOffset.width + value.translation.width,
-                                        height: lastPanOffset.height + value.translation.height
-                                    )
-                                }
-                                .onEnded { _ in
-                                    lastPanOffset = panOffset
-                                }
-                        )
+                        .onChanged { value in zoomScale = max(0.5, min(4.0, lastZoomScale * value)) }
+                        .onEnded { _ in lastZoomScale = zoomScale }
                 )
                 // Double-tap to reset zoom and pan
                 .onTapGesture(count: 2) {
                     withAnimation(.spring()) {
-                        zoomScale = 1.0
-                        lastZoomScale = 1.0
-                        panOffset = .zero
-                        lastPanOffset = .zero
+                        zoomScale = 1.0; lastZoomScale = 1.0
+                        panOffset = .zero; lastPanOffset = .zero
                     }
                 }
 
@@ -552,12 +582,12 @@ struct FloorGridView: View {
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: 12) {
                     // Bug 3 fix: direct transition button from editor
-                    Button(action: { showingTransitionSheet = true }) {
+                    Button(action: { navigateToTransition = true }) {
                         Label("Transition", systemImage: "arrow.right.circle")
                     }
 
                     if selectedAthleteId != nil {
-                        Button(role: .destructive, action: deleteSelectedAthlete) {
+                        Button(role: .destructive, action: { showingDeleteConfirmation = true }) {
                             Image(systemName: "person.badge.minus")
                         }
                     }
@@ -593,9 +623,17 @@ struct FloorGridView: View {
         } message: {
             Text("Enter a new name for this formation")
         }
-        // Bug 3 fix: transition picker sheet — pick end formation, go straight to player
-        .sheet(isPresented: $showingTransitionSheet) {
+        .navigationDestination(isPresented: $navigateToTransition) {
             TransitionPickerView(startFormation: formation)
+        }
+        .alert("Remove Athlete", isPresented: $showingDeleteConfirmation) {
+            Button("Remove", role: .destructive) { deleteSelectedAthlete() }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            if let id = selectedAthleteId,
+               let athlete = formation.athletes.first(where: { $0.id == id }) {
+                Text("Remove \(athlete.label) from this formation?")
+            }
         }
         .sheet(isPresented: $showingNotesSheet) {
             NavigationStack {
@@ -650,52 +688,6 @@ struct FloorGridView: View {
         persistenceManager.addFormation(duplicate)
     }
 
-    // Bug 2 fix: combined tap+drag gesture — single source of truth for position.
-    // Stores the athlete's position at drag start so translation never compounds.
-    private func floorGesture(cellSize: CGFloat, offset: CGPoint) -> some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                let startScaled = CGPoint(
-                    x: (value.startLocation.x - offset.x) / cellSize,
-                    y: (value.startLocation.y - offset.y) / cellSize
-                )
-
-                if !isDraggingAthlete {
-                    // First event: determine if a finger landed on an athlete
-                    var found = false
-                    for athlete in formation.athletes {
-                        let dist = hypot(startScaled.x - athlete.position.x,
-                                         startScaled.y - athlete.position.y)
-                        // Bug 2 fix: threshold 2.0 ft (was 1.0) — matches visible circle radius
-                        if dist < 2.0 {
-                            selectedAthleteId = athlete.id
-                            isDraggingAthlete = true
-                            dragStartAthletePosition = athlete.position
-                            found = true
-                            break
-                        }
-                    }
-                    if !found {
-                        selectedAthleteId = nil
-                    }
-                }
-
-                // Move selected athlete using translation from drag start (no drift)
-                if isDraggingAthlete,
-                   let selectedId = selectedAthleteId,
-                   let index = formation.athletes.firstIndex(where: { $0.id == selectedId }) {
-                    let newX = dragStartAthletePosition.x + value.translation.width / cellSize
-                    let newY = dragStartAthletePosition.y + value.translation.height / cellSize
-                    formation.athletes[index].position = CGPoint(
-                        x: max(0, min(CourtConstants.width, newX)),
-                        y: max(0, min(CourtConstants.height, newY))
-                    )
-                }
-            }
-            .onEnded { _ in
-                isDraggingAthlete = false
-            }
-    }
 }
 
 // MARK: - Transition Picker View (launched from editor toolbar)
@@ -703,54 +695,46 @@ struct FloorGridView: View {
 struct TransitionPickerView: View {
     let startFormation: Formation
     @StateObject private var persistenceManager = PersistenceManager.shared
-    @Environment(\.dismiss) private var dismiss
 
     var otherFormations: [Formation] {
         persistenceManager.formations.filter { $0.id != startFormation.id }
     }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if otherFormations.isEmpty {
-                    ContentUnavailableView(
-                        "No Other Formations",
-                        systemImage: "arrow.left.arrow.right",
-                        description: Text("Save another formation first, then come back to preview the transition.")
-                    )
-                } else {
-                    List {
-                        Section {
-                            Text("Starting from: \(startFormation.name)")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        }
-                        Section("Transition to...") {
-                            ForEach(otherFormations) { formation in
-                                NavigationLink(destination: TransitionPlayerView(
-                                    startFormation: startFormation,
-                                    endFormation: formation
-                                )) {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(formation.name).font(.headline)
-                                        Text("\(formation.athletes.count) athletes")
-                                            .font(.caption)
-                                            .foregroundColor(.gray)
-                                    }
-                                    .padding(.vertical, 4)
+        Group {
+            if otherFormations.isEmpty {
+                ContentUnavailableView(
+                    "No Other Formations",
+                    systemImage: "arrow.left.arrow.right",
+                    description: Text("Save another formation first, then come back to preview the transition.")
+                )
+            } else {
+                List {
+                    Section {
+                        Text("Starting from: \(startFormation.name)")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                    Section("Transition to...") {
+                        ForEach(otherFormations) { formation in
+                            NavigationLink(destination: TransitionPlayerView(
+                                startFormation: startFormation,
+                                endFormation: formation
+                            )) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(formation.name).font(.headline)
+                                    Text("\(formation.athletes.count) athletes")
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
                                 }
+                                .padding(.vertical, 4)
                             }
                         }
                     }
                 }
             }
-            .navigationTitle("Preview Transition")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") { dismiss() }
-                }
-            }
         }
+        .navigationTitle("Preview Transition")
     }
 }
 
@@ -1041,6 +1025,11 @@ struct AthleteDetailPanel: View {
                 TextField("Name", text: $athlete.label)
                     .font(.headline)
                     .textFieldStyle(.plain)
+                    .onChange(of: athlete.label) { _, newValue in
+                        if newValue.count > 3 {
+                            athlete.label = String(newValue.prefix(3))
+                        }
+                    }
                 Spacer()
                 Button(action: { selectedAthleteId = nil }) {
                     Image(systemName: "xmark.circle.fill")
