@@ -65,8 +65,8 @@ struct MainMenuView: View {
         .alert("New Formation", isPresented: $showingNewFormationAlert) {
             TextField("Formation name", text: $newFormationName)
             Button("Create") {
-                var formation = Formation.sample()
-                formation.id = UUID()
+                // Bug 3 fix: blank slate, not sample()
+                var formation = Formation()
                 formation.name = newFormationName.isEmpty ? "Untitled Formation" : newFormationName
                 persistenceManager.addFormation(formation)
                 activeFormation = formation
@@ -80,6 +80,49 @@ struct MainMenuView: View {
                 FloorGridView(formation: formation)
             }
         }
+    }
+}
+
+// MARK: - Formation Thumbnail View
+
+struct FormationThumbnailView: View {
+    let formation: Formation
+
+    private let thumbWidth: CGFloat = 80
+    private let thumbHeight: CGFloat = 46
+    private let gridCols: CGFloat = 52
+    private let gridRows: CGFloat = 30
+
+    var body: some View {
+        Canvas { context, _ in
+            let cellSize = min(thumbWidth / gridCols, thumbHeight / gridRows)
+
+            // Border
+            let borderRect = CGRect(x: 0, y: 0, width: gridCols * cellSize, height: gridRows * cellSize)
+            context.stroke(Path(borderRect), with: .color(.gray.opacity(0.4)), lineWidth: 0.5)
+
+            // Athletes
+            for athlete in formation.athletes {
+                let x = athlete.position.x * cellSize
+                let y = athlete.position.y * cellSize
+                let radius: CGFloat = 4
+
+                let roleColor: Color
+                switch athlete.role {
+                case .flyer:    roleColor = .yellow
+                case .base:     roleColor = .blue
+                case .spotter:  roleColor = .green
+                case .backspot: roleColor = .purple
+                case .tumbler:  roleColor = .orange
+                }
+
+                var circle = Path()
+                circle.addEllipse(in: CGRect(x: x - radius, y: y - radius, width: radius * 2, height: radius * 2))
+                context.fill(circle, with: .color(roleColor.opacity(0.85)))
+            }
+        }
+        .frame(width: thumbWidth, height: thumbHeight)
+        .background(Color(UIColor.systemBackground))
     }
 }
 
@@ -100,12 +143,21 @@ struct FormationListView: View {
                 List {
                     ForEach(persistenceManager.formations) { formation in
                         NavigationLink(destination: FloorGridView(formation: formation)) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(formation.name)
-                                    .font(.headline)
-                                Text("\(formation.athletes.count) athletes")
-                                    .font(.caption)
-                                    .foregroundColor(.gray)
+                            HStack(spacing: 12) {
+                                FormationThumbnailView(formation: formation)
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.3)))
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(formation.name).font(.headline)
+                                    Text("\(formation.athletes.count) athletes")
+                                        .font(.caption).foregroundColor(.gray)
+                                }
+                                Spacer()
+                                if !formation.notes.isEmpty {
+                                    Image(systemName: "note.text")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
                             }
                             .padding(.vertical, 4)
                         }
@@ -127,15 +179,20 @@ struct FormationListView: View {
 struct FloorCanvasView: View {
     let formation: Formation
     var selectedAthleteId: UUID? = nil
-    var startFormation: Formation? = nil  // for transition path drawing
-    var endFormation: Formation? = nil    // for transition path drawing
+    var startFormation: Formation? = nil
+    var endFormation: Formation? = nil
+    // Bug 1 fix: dynamic cellSize and offset passed in from parent GeometryReader
+    var cellSize: CGFloat = 12
+    var offset: CGPoint = .zero
 
-    let gridSize = CGSize(width: 52, height: 30)
-    let cellSize: CGFloat = 12
+    let gridCols: CGFloat = 52
+    let gridRows: CGFloat = 30
 
     var body: some View {
-        Canvas { context, size in
+        Canvas { context, _ in
             var ctx = context
+            // Translate so the grid is centered in the available space
+            ctx.translateBy(x: offset.x, y: offset.y)
             drawGrid(in: &ctx)
             if let start = startFormation, let end = endFormation {
                 drawPaths(in: &ctx, start: start, end: end)
@@ -171,7 +228,6 @@ struct FloorCanvasView: View {
             let pathColor: Color = isPathColliding ? .red : (isSelected ? .blue : .green)
             let lineWidth: CGFloat = isSelected ? 3 : 1.5
 
-            // Draw path line
             var pathLine = Path()
             pathLine.move(to: startPos)
             pathLine.addLine(to: endPos)
@@ -181,11 +237,10 @@ struct FloorCanvasView: View {
                 lineWidth: lineWidth
             )
 
-            // Draw arrow at end position
             let dx = endPos.x - startPos.x
             let dy = endPos.y - startPos.y
             let dist = hypot(dx, dy)
-            guard dist > 5 else { continue }  // skip arrow for tiny movements
+            guard dist > 5 else { continue }
 
             let angle = atan2(dy, dx)
             let arrowLen: CGFloat = 10
@@ -208,7 +263,6 @@ struct FloorCanvasView: View {
                 lineWidth: 2
             )
 
-            // Ghost circle at start position (dashed outline)
             var startGhost = Path()
             startGhost.addEllipse(in: CGRect(x: startPos.x - 10, y: startPos.y - 10, width: 20, height: 20))
             context.stroke(
@@ -217,7 +271,6 @@ struct FloorCanvasView: View {
                 style: StrokeStyle(lineWidth: 1, dash: [4, 4])
             )
 
-            // Ghost circle at end position (dashed outline)
             var endGhost = Path()
             endGhost.addEllipse(in: CGRect(x: endPos.x - 10, y: endPos.y - 10, width: 20, height: 20))
             context.stroke(
@@ -257,8 +310,8 @@ struct FloorCanvasView: View {
     }
 
     private func drawGrid(in context: inout GraphicsContext) {
-        let width = gridSize.width * cellSize
-        let height = gridSize.height * cellSize
+        let width = gridCols * cellSize
+        let height = gridRows * cellSize
 
         var gridPath = Path()
 
@@ -290,7 +343,17 @@ struct FloorCanvasView: View {
 
             let isSelected = athlete.id == selectedAthleteId
             let isColliding = collisionIds.contains(athlete.id)
-            let color: Color = isColliding ? .red : (isSelected ? .blue : .cyan)
+
+            // Bug 5 fix: role-based color coding
+            let roleColor: Color
+            switch athlete.role {
+            case .flyer:    roleColor = .yellow
+            case .base:     roleColor = .blue
+            case .spotter:  roleColor = .green
+            case .backspot: roleColor = .purple
+            case .tumbler:  roleColor = .orange
+            }
+            let color: Color = isColliding ? .red : (isSelected ? .white : roleColor)
             let radius: CGFloat = isSelected ? 18 : 14
 
             var circlePath = Path()
@@ -301,10 +364,19 @@ struct FloorCanvasView: View {
                 height: radius * 2
             ))
 
-            context.fill(
-                circlePath,
-                with: .color(color.opacity(0.7))
-            )
+            context.fill(circlePath, with: .color(color.opacity(0.85)))
+
+            if isSelected {
+                // Draw selection ring
+                var ringPath = Path()
+                ringPath.addEllipse(in: CGRect(
+                    x: screenPos.x - radius,
+                    y: screenPos.y - radius,
+                    width: radius * 2,
+                    height: radius * 2
+                ))
+                context.stroke(ringPath, with: .color(roleColor), lineWidth: 3)
+            }
 
             if isColliding {
                 var warningRing = Path()
@@ -321,15 +393,13 @@ struct FloorCanvasView: View {
                 )
             }
 
-            let text = Text(athlete.label)
+            let labelColor: Color = isSelected ? roleColor : .white
+            let displayLabel = String(athlete.label.prefix(3))
+            let text = Text(displayLabel)
                 .font(.system(.caption, design: .monospaced))
-                .foregroundColor(.white)
+                .foregroundColor(labelColor)
 
-            context.draw(
-                text,
-                at: screenPos,
-                anchor: .center
-            )
+            context.draw(text, at: screenPos, anchor: .center)
         }
     }
 }
@@ -338,44 +408,152 @@ struct FloorCanvasView: View {
 
 struct FloorGridView: View {
     @StateObject private var persistenceManager = PersistenceManager.shared
+    @Environment(\.dismiss) private var dismiss
     @State var formation: Formation
     @State var selectedAthleteId: UUID?
-    @State var dragOffset: CGSize = .zero
     @State private var showingRenameAlert = false
     @State private var renameText = ""
+    @State private var showingTransitionSheet = false
+    @State private var showingNotesSheet = false
 
-    let gridSize = CGSize(width: 52, height: 30)
-    let cellSize: CGFloat = 12
+    // Bug 2 fix: track drag state in parent so gesture and canvas share it
+    @State private var isDraggingAthlete = false
+    @State private var dragStartAthletePosition: CGPoint = .zero
+
+    // Zoom + pan state
+    @State private var zoomScale: CGFloat = 1.0
+    @State private var panOffset: CGSize = .zero
+    @State private var lastPanOffset: CGSize = .zero
+    @State private var lastZoomScale: CGFloat = 1.0
+
+    let gridCols: CGFloat = 52
+    let gridRows: CGFloat = 30
 
     var body: some View {
-        ZStack {
-            FloorCanvasView(
-                formation: formation,
-                selectedAthleteId: selectedAthleteId
-            )
-            .gesture(floorTapGesture())
+        // Bug 1 fix: GeometryReader to compute centered canvas layout
+        GeometryReader { geometry in
+            let baseCellSize = min(geometry.size.width / gridCols, geometry.size.height / gridRows)
+            let cellSize = baseCellSize * zoomScale
+            let canvasWidth = gridCols * cellSize
+            let canvasHeight = gridRows * cellSize
+            let offsetX = (geometry.size.width - canvasWidth) / 2 + panOffset.width
+            let offsetY = (geometry.size.height - canvasHeight) / 2 + panOffset.height
+            let canvasOffset = CGPoint(x: offsetX, y: offsetY)
 
-            if let selectedId = selectedAthleteId,
-               let index = formation.athletes.firstIndex(where: { $0.id == selectedId }) {
-                DragOverlayView(
-                    athleteIndex: index,
-                    formation: $formation,
-                    dragOffset: $dragOffset
+            ZStack {
+                FloorCanvasView(
+                    formation: formation,
+                    selectedAthleteId: selectedAthleteId,
+                    cellSize: cellSize,
+                    offset: canvasOffset
                 )
+                // Bug 2 fix: single combined gesture handles both tap-to-select and drag
+                .gesture(floorGesture(cellSize: cellSize, offset: canvasOffset))
+                // Pinch-to-zoom + two-finger pan
+                .gesture(
+                    MagnificationGesture()
+                        .onChanged { value in
+                            zoomScale = max(0.5, min(4.0, lastZoomScale * value))
+                        }
+                        .onEnded { value in
+                            lastZoomScale = zoomScale
+                        }
+                        .simultaneously(with:
+                            DragGesture(minimumDistance: 1)
+                                .onChanged { value in
+                                    panOffset = CGSize(
+                                        width: lastPanOffset.width + value.translation.width,
+                                        height: lastPanOffset.height + value.translation.height
+                                    )
+                                }
+                                .onEnded { _ in
+                                    lastPanOffset = panOffset
+                                }
+                        )
+                )
+                // Double-tap to reset zoom and pan
+                .onTapGesture(count: 2) {
+                    withAnimation(.spring()) {
+                        zoomScale = 1.0
+                        lastZoomScale = 1.0
+                        panOffset = .zero
+                        lastPanOffset = .zero
+                    }
+                }
+
+                // Bug 5 fix: empty state prompt
+                if formation.athletes.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "figure.stand")
+                            .font(.system(size: 60))
+                            .foregroundColor(.gray.opacity(0.4))
+                        Text("Tap + to add athletes")
+                            .font(.title3)
+                            .foregroundColor(.gray)
+                    }
+                    .allowsHitTesting(false)
+                }
+
+                // Collision badge overlay
+                if !collisions.isEmpty {
+                    VStack {
+                        HStack {
+                            Spacer()
+                            Label("\(collisions.count)", systemImage: "exclamationmark.triangle.fill")
+                                .font(.caption.bold())
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.red)
+                                .cornerRadius(6)
+                                .padding(.top, 12)
+                                .padding(.trailing, 12)
+                        }
+                        Spacer()
+                    }
+                    .allowsHitTesting(false)
+                }
+
+                // Athlete detail panel
+                if let selectedId = selectedAthleteId,
+                   let index = formation.athletes.firstIndex(where: { $0.id == selectedId }) {
+                    AthleteDetailPanel(athlete: $formation.athletes[index], selectedAthleteId: $selectedAthleteId)
+                        .frame(width: 280)
+                        .padding(16)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                }
+
+                // Bug 5 fix: floating + button (more prominent than toolbar icon)
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Button(action: addAthlete) {
+                            Image(systemName: "plus")
+                                .font(.title2.bold())
+                                .frame(width: 56, height: 56)
+                                .background(Color.blue)
+                                .foregroundColor(.white)
+                                .clipShape(Circle())
+                                .shadow(radius: 4)
+                        }
+                        .padding(.trailing, 24)
+                        .padding(.bottom, 24)
+                    }
+                }
             }
         }
         .navigationTitle(formation.name)
         .toolbar {
+            // Bug 4 fix: Done button so users can leave the editor
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button("Done") { dismiss() }
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: 12) {
-                    if !collisions.isEmpty {
-                        Text("\(collisions.count) collision(s)")
-                            .font(.caption)
-                            .foregroundColor(.red)
-                    }
-
-                    Button(action: addAthlete) {
-                        Image(systemName: "person.badge.plus")
+                    // Bug 3 fix: direct transition button from editor
+                    Button(action: { showingTransitionSheet = true }) {
+                        Label("Transition", systemImage: "arrow.right.circle")
                     }
 
                     if selectedAthleteId != nil {
@@ -393,6 +571,9 @@ struct FloorGridView: View {
                         }
                         Button(action: duplicateFormation) {
                             Label("Duplicate", systemImage: "doc.on.doc")
+                        }
+                        Button(action: { showingNotesSheet = true }) {
+                            Label("Notes", systemImage: "note.text")
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
@@ -412,6 +593,31 @@ struct FloorGridView: View {
         } message: {
             Text("Enter a new name for this formation")
         }
+        // Bug 3 fix: transition picker sheet — pick end formation, go straight to player
+        .sheet(isPresented: $showingTransitionSheet) {
+            TransitionPickerView(startFormation: formation)
+        }
+        .sheet(isPresented: $showingNotesSheet) {
+            NavigationStack {
+                ZStack(alignment: .topLeading) {
+                    if formation.notes.isEmpty {
+                        Text("Add notes for dancers, counts, cues...")
+                            .foregroundColor(.gray.opacity(0.6))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 8)
+                            .allowsHitTesting(false)
+                    }
+                    TextEditor(text: $formation.notes)
+                }
+                .padding()
+                .navigationTitle("Formation Notes")
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Done") { showingNotesSheet = false }
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Actions
@@ -425,7 +631,7 @@ struct FloorGridView: View {
         let label = "P\(count)"
         let newAthlete = Athlete(
             label: label,
-            position: CGPoint(x: gridSize.width / 2, y: gridSize.height / 2)
+            position: CGPoint(x: gridCols / 2, y: gridRows / 2)
         )
         formation.addAthlete(newAthlete)
         selectedAthleteId = newAthlete.id
@@ -444,32 +650,111 @@ struct FloorGridView: View {
         persistenceManager.addFormation(duplicate)
     }
 
-    private func floorTapGesture() -> some Gesture {
+    // Bug 2 fix: combined tap+drag gesture — single source of truth for position.
+    // Stores the athlete's position at drag start so translation never compounds.
+    private func floorGesture(cellSize: CGFloat, offset: CGPoint) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
-                let tapPoint = value.location
-                let scaledPoint = CGPoint(
-                    x: tapPoint.x / cellSize,
-                    y: tapPoint.y / cellSize
+                let startScaled = CGPoint(
+                    x: (value.startLocation.x - offset.x) / cellSize,
+                    y: (value.startLocation.y - offset.y) / cellSize
                 )
 
-                for athlete in formation.athletes {
-                    let distance = hypot(
-                        scaledPoint.x - athlete.position.x,
-                        scaledPoint.y - athlete.position.y
-                    )
-                    if distance < 1.0 {
-                        withAnimation {
+                if !isDraggingAthlete {
+                    // First event: determine if a finger landed on an athlete
+                    var found = false
+                    for athlete in formation.athletes {
+                        let dist = hypot(startScaled.x - athlete.position.x,
+                                         startScaled.y - athlete.position.y)
+                        // Bug 2 fix: threshold 2.0 ft (was 1.0) — matches visible circle radius
+                        if dist < 2.0 {
                             selectedAthleteId = athlete.id
+                            isDraggingAthlete = true
+                            dragStartAthletePosition = athlete.position
+                            found = true
+                            break
                         }
-                        return
+                    }
+                    if !found {
+                        selectedAthleteId = nil
                     }
                 }
+
+                // Move selected athlete using translation from drag start (no drift)
+                if isDraggingAthlete,
+                   let selectedId = selectedAthleteId,
+                   let index = formation.athletes.firstIndex(where: { $0.id == selectedId }) {
+                    let newX = dragStartAthletePosition.x + value.translation.width / cellSize
+                    let newY = dragStartAthletePosition.y + value.translation.height / cellSize
+                    formation.athletes[index].position = CGPoint(
+                        x: max(0, min(CourtConstants.width, newX)),
+                        y: max(0, min(CourtConstants.height, newY))
+                    )
+                }
+            }
+            .onEnded { _ in
+                isDraggingAthlete = false
             }
     }
 }
 
-// MARK: - Transition Setup View
+// MARK: - Transition Picker View (launched from editor toolbar)
+
+struct TransitionPickerView: View {
+    let startFormation: Formation
+    @StateObject private var persistenceManager = PersistenceManager.shared
+    @Environment(\.dismiss) private var dismiss
+
+    var otherFormations: [Formation] {
+        persistenceManager.formations.filter { $0.id != startFormation.id }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if otherFormations.isEmpty {
+                    ContentUnavailableView(
+                        "No Other Formations",
+                        systemImage: "arrow.left.arrow.right",
+                        description: Text("Save another formation first, then come back to preview the transition.")
+                    )
+                } else {
+                    List {
+                        Section {
+                            Text("Starting from: \(startFormation.name)")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                        Section("Transition to...") {
+                            ForEach(otherFormations) { formation in
+                                NavigationLink(destination: TransitionPlayerView(
+                                    startFormation: startFormation,
+                                    endFormation: formation
+                                )) {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(formation.name).font(.headline)
+                                        Text("\(formation.athletes.count) athletes")
+                                            .font(.caption)
+                                            .foregroundColor(.gray)
+                                    }
+                                    .padding(.vertical, 4)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Preview Transition")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Transition Setup View (accessible from main menu)
 
 struct TransitionSetupView: View {
     @StateObject private var persistenceManager = PersistenceManager.shared
@@ -539,6 +824,10 @@ struct TransitionSetupView: View {
 struct TransitionPlayerView: View {
     @StateObject private var player: TransitionPlayer
     @State private var selectedAthleteId: UUID?
+    @State private var countMode: Bool = false
+
+    let gridCols: CGFloat = 52
+    let gridRows: CGFloat = 30
 
     init(startFormation: Formation, endFormation: Formation) {
         _player = StateObject(wrappedValue: TransitionPlayer(from: startFormation, to: endFormation))
@@ -546,32 +835,41 @@ struct TransitionPlayerView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Animation canvas with path visualization
-            FloorCanvasView(
-                formation: player.currentFormation,
-                selectedAthleteId: selectedAthleteId,
-                startFormation: player.startFormation,
-                endFormation: player.endFormation
-            )
-            .gesture(athleteTapGesture())
+            // Bug 1 fix: centered canvas using GeometryReader
+            GeometryReader { geometry in
+                let cellSize = min(geometry.size.width / gridCols, geometry.size.height / gridRows)
+                let canvasWidth = gridCols * cellSize
+                let canvasHeight = gridRows * cellSize
+                let offsetX = (geometry.size.width - canvasWidth) / 2
+                let offsetY = (geometry.size.height - canvasHeight) / 2
+                let canvasOffset = CGPoint(x: offsetX, y: offsetY)
+
+                FloorCanvasView(
+                    formation: player.currentFormation,
+                    selectedAthleteId: selectedAthleteId,
+                    startFormation: player.startFormation,
+                    endFormation: player.endFormation,
+                    cellSize: cellSize,
+                    offset: canvasOffset
+                )
+                .gesture(athleteTapGesture(cellSize: cellSize, offset: canvasOffset))
+            }
 
             Divider()
 
-            // Timing control for selected athlete
             if let selectedId = selectedAthleteId,
                let index = player.startFormation.athletes.firstIndex(where: { $0.id == selectedId }) {
                 TimingControlsView(athlete: Binding(
                     get: { player.startFormation.athletes[index] },
                     set: { newAthlete in
                         player.startFormation.athletes[index] = newAthlete
-                        player.seek(to: player.progress)  // refresh with new timing
+                        player.seek(to: player.progress)
                     }
                 ))
                 .padding(.horizontal)
                 .padding(.top, 8)
             }
 
-            // Progress slider
             VStack(spacing: 4) {
                 Slider(
                     value: Binding(
@@ -585,18 +883,39 @@ struct TransitionPlayerView: View {
                 )
 
                 HStack {
-                    Text(formatTime(player.progress * CGFloat(player.duration)))
-                        .font(.caption.monospacedDigit())
-                    Spacer()
-                    Text(formatTime(CGFloat(player.duration)))
-                        .font(.caption.monospacedDigit())
+                    if countMode {
+                        let currentCount = player.progress * 8
+                        Text(String(format: "Count %.1f", currentCount))
+                            .font(.caption.monospacedDigit())
+                        Spacer()
+                        Text("of 8")
+                            .font(.caption.monospacedDigit())
+                    } else {
+                        Text(formatTime(player.progress * CGFloat(player.duration)))
+                            .font(.caption.monospacedDigit())
+                        Spacer()
+                        Text(formatTime(CGFloat(player.duration)))
+                            .font(.caption.monospacedDigit())
+                    }
                 }
                 .foregroundColor(.gray)
+
+                if countMode {
+                    Divider().padding(.horizontal)
+                    HStack(spacing: 0) {
+                        ForEach(1...8, id: \.self) { count in
+                            Text("\(count)")
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .padding(.horizontal)
+                }
             }
             .padding(.horizontal)
             .padding(.top, 8)
 
-            // Playback controls
             HStack(spacing: 30) {
                 Menu {
                     Button("0.25x") { player.speed = 0.25 }
@@ -609,6 +928,15 @@ struct TransitionPlayerView: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(Color.gray.opacity(0.2))
+                        .cornerRadius(4)
+                }
+
+                Button(action: { countMode.toggle() }) {
+                    Text(countMode ? "8ct" : "sec")
+                        .font(.caption.bold())
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(countMode ? Color.blue : Color.gray.opacity(0.2))
+                        .foregroundColor(countMode ? .white : .primary)
                         .cornerRadius(4)
                 }
 
@@ -633,17 +961,17 @@ struct TransitionPlayerView: View {
         .navigationTitle("Transition")
     }
 
-    private func athleteTapGesture() -> some Gesture {
+    private func athleteTapGesture(cellSize: CGFloat, offset: CGPoint) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
-                let cellSize: CGFloat = 12
                 let scaledPoint = CGPoint(
-                    x: value.location.x / cellSize,
-                    y: value.location.y / cellSize
+                    x: (value.startLocation.x - offset.x) / cellSize,
+                    y: (value.startLocation.y - offset.y) / cellSize
                 )
 
                 for athlete in player.currentFormation.athletes {
-                    if hypot(scaledPoint.x - athlete.position.x, scaledPoint.y - athlete.position.y) < 1.0 {
+                    if hypot(scaledPoint.x - athlete.position.x,
+                             scaledPoint.y - athlete.position.y) < 2.0 {
                         selectedAthleteId = athlete.id
                         return
                     }
@@ -654,35 +982,6 @@ struct TransitionPlayerView: View {
 
     private func formatTime(_ seconds: CGFloat) -> String {
         String(format: "%.1fs", max(0, seconds))
-    }
-}
-
-// MARK: - Drag Overlay View
-
-struct DragOverlayView: View {
-    let athleteIndex: Int
-    @Binding var formation: Formation
-    @Binding var dragOffset: CGSize
-
-    let cellSize: CGFloat = 12
-
-    var body: some View {
-        Color.clear
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture()
-                    .onChanged { value in
-                        withAnimation(.easeInOut(duration: 0.05)) {
-                            let newX = (formation.athletes[athleteIndex].position.x * cellSize + value.translation.width) / cellSize
-                            let newY = (formation.athletes[athleteIndex].position.y * cellSize + value.translation.height) / cellSize
-
-                            formation.athletes[athleteIndex].position = CGPoint(
-                                x: max(0, min(52, newX)),
-                                y: max(0, min(30, newY))
-                            )
-                        }
-                    }
-            )
     }
 }
 
@@ -722,6 +1021,59 @@ struct TimingControlsView: View {
     }
 }
 
+// MARK: - Athlete Detail Panel
+
+struct AthleteDetailPanel: View {
+    @Binding var athlete: Athlete
+    @Binding var selectedAthleteId: UUID?
+
+    private let roles: [(AthleteRole, Color)] = [
+        (.base, .blue),
+        (.flyer, .yellow),
+        (.spotter, .green),
+        (.backspot, .purple),
+        (.tumbler, .orange),
+    ]
+
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack {
+                TextField("Name", text: $athlete.label)
+                    .font(.headline)
+                    .textFieldStyle(.plain)
+                Spacer()
+                Button(action: { selectedAthleteId = nil }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            HStack(spacing: 12) {
+                ForEach(roles, id: \.0) { role, color in
+                    Button {
+                        athlete.role = role
+                    } label: {
+                        ZStack {
+                            Circle()
+                                .fill(color)
+                                .frame(width: 28, height: 28)
+                            if athlete.role == role {
+                                Image(systemName: "checkmark")
+                                    .font(.caption.bold())
+                                    .foregroundColor(.white)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .background(.ultraThinMaterial)
+        .cornerRadius(12)
+        .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
+    }
+}
+
 // MARK: - Previews
 
 #Preview {
@@ -750,7 +1102,6 @@ struct TimingControlsView: View {
                 var end = Formation.sample()
                 end.id = UUID()
                 end.name = "End"
-                // Shift all athletes right by 10 feet
                 for i in 0..<end.athletes.count {
                     end.athletes[i].position.x += 10
                 }

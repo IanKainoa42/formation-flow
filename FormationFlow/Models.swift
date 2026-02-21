@@ -148,6 +148,7 @@ struct Formation: Codable, Identifiable, Equatable, Hashable {
     var id: UUID = UUID()
     var name: String = "Untitled Formation"
     var athletes: [Athlete] = []
+    var notes: String = ""
     var gridSizeWidth: CGFloat = CourtConstants.width
     var gridSizeHeight: CGFloat = CourtConstants.height
 
@@ -164,6 +165,7 @@ struct Formation: Codable, Identifiable, Equatable, Hashable {
     static func == (lhs: Formation, rhs: Formation) -> Bool {
         lhs.id == rhs.id && lhs.name == rhs.name &&
         lhs.athletes == rhs.athletes &&
+        lhs.notes == rhs.notes &&
         lhs.gridSizeWidth == rhs.gridSizeWidth &&
         lhs.gridSizeHeight == rhs.gridSizeHeight
     }
@@ -172,6 +174,7 @@ struct Formation: Codable, Identifiable, Equatable, Hashable {
         hasher.combine(id)
         hasher.combine(name)
         hasher.combine(athletes)
+        hasher.combine(notes)
         hasher.combine(gridSizeWidth)
         hasher.combine(gridSizeHeight)
     }
