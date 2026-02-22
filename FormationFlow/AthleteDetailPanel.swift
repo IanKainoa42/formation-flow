@@ -5,6 +5,7 @@ import SwiftUI
 struct AthleteDetailPanel: View {
     @Binding var athlete: Athlete
     @Binding var selectedAthleteId: UUID?
+    var onDelete: () -> Void
 
     private let roles: [(AthleteRole, Color)] = [
         (.base, .blue),
@@ -26,6 +27,11 @@ struct AthleteDetailPanel: View {
                         }
                     }
                 Spacer()
+                Button(role: .destructive, action: onDelete) {
+                    Image(systemName: "trash")
+                        .font(.caption)
+                        .foregroundColor(.red)
+                }
                 Button(action: { selectedAthleteId = nil }) {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundColor(.secondary)

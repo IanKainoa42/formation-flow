@@ -26,7 +26,6 @@ struct FloorGridView: View {
     @State private var showingNotesSheet = false
     @State private var showingNewFromHereAlert = false
     @State private var newFromHereName = ""
-    @State private var showingDeleteConfirmation = false
     @State private var activeDestination: FloorGridDestination?
 
     @State private var isDraggingAthlete = false
@@ -66,15 +65,6 @@ struct FloorGridView: View {
             Button("Cancel", role: .cancel) { }
         } message: {
             Text("Enter a new name for this formation")
-        }
-        .alert("Remove Athlete", isPresented: $showingDeleteConfirmation) {
-            Button("Remove", role: .destructive) { deleteSelectedAthlete() }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            if let id = selectedAthleteId,
-               let athlete = formation.athletes.first(where: { $0.id == id }) {
-                Text("Remove \(athlete.label) from this formation?")
-            }
         }
         .alert("New Formation from Here", isPresented: $showingNewFromHereAlert) {
             TextField("Formation name", text: $newFromHereName)
@@ -234,10 +224,14 @@ struct FloorGridView: View {
 
         if let selectedId = selectedAthleteId,
            let index = formation.athletes.firstIndex(where: { $0.id == selectedId }) {
-            AthleteDetailPanel(athlete: $formation.athletes[index], selectedAthleteId: $selectedAthleteId)
-                .frame(width: 280)
-                .padding(16)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            AthleteDetailPanel(
+                athlete: $formation.athletes[index],
+                selectedAthleteId: $selectedAthleteId,
+                onDelete: deleteSelectedAthlete
+            )
+            .frame(width: 280)
+            .padding(16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
         }
 
         VStack {
@@ -265,12 +259,6 @@ struct FloorGridView: View {
         HStack(spacing: 12) {
             Button(action: { activeDestination = .transition(formation) }) {
                 Label("Transition", systemImage: "arrow.right.circle")
-            }
-
-            if selectedAthleteId != nil {
-                Button(role: .destructive, action: { showingDeleteConfirmation = true }) {
-                    Image(systemName: "person.badge.minus")
-                }
             }
 
             Menu {

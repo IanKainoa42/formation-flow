@@ -7,15 +7,9 @@ struct FormationFlowApp: App {
     var body: some Scene {
         WindowGroup {
             NavigationStack {
-                MainMenuView()
+                FormationListView()
             }
             .environmentObject(persistenceManager)
         }
-    }
-}
-
-#Preview {
-    NavigationStack {
-        MainMenuView()
     }
 }

@@ -332,6 +332,7 @@ struct PathCalculations {
 
 class TransitionPlayer: ObservableObject {
     @Published var isPlaying = false
+    @Published var isLooping = false
     @Published var progress: CGFloat = 0.0  // 0.0 to 1.0
     @Published var currentFormation: Formation
     @Published var speed: CGFloat = 1.0  // playback speed multiplier
@@ -379,7 +380,9 @@ class TransitionPlayer: ObservableObject {
         let deltaProgress = CGFloat(1.0 / 60.0) * speed / CGFloat(duration)
         progress = min(1.0, progress + deltaProgress)
         updateFormationForProgress()
-        if progress >= 1.0 { pause() }
+        if progress >= 1.0 {
+            if isLooping { progress = 0.0 } else { pause() }
+        }
     }
 
     private func updateFormationForProgress() {

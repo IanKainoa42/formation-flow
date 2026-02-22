@@ -88,10 +88,13 @@ struct TransitionSetupView: View {
                     Section("End Formation") {
                         Picker("End", selection: $endFormationId) {
                             Text("Select...").tag(nil as UUID?)
-                            ForEach(persistenceManager.formations) { f in
+                            ForEach(persistenceManager.formations.filter { $0.id != startFormationId }) { f in
                                 Text("\(f.name) (\(f.athletes.count) athletes)").tag(f.id as UUID?)
                             }
                         }
+                    }
+                    .onChange(of: startFormationId) { _, newId in
+                        if endFormationId == newId { endFormationId = nil }
                     }
 
                     if let start = startFormation, let end = endFormation {
@@ -279,10 +282,16 @@ struct TransitionPlayerView: View {
                     Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                         .font(.largeTitle)
                 }
+
+                Button(action: { player.isLooping.toggle() }) {
+                    Image(systemName: "repeat")
+                        .font(.title2)
+                        .foregroundColor(player.isLooping ? .blue : .primary)
+                }
             }
             .padding()
         }
-        .navigationTitle("Transition")
+        .navigationTitle("\(player.startFormation.name) → \(player.endFormation.name)")
         .onChange(of: player.startFormation) { _, newFormation in
             persistenceManager.updateFormation(newFormation)
         }
