@@ -56,14 +56,12 @@ struct FormationListView: View {
         }
         .navigationTitle("Saved Formations")
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                HStack {
-                    if !persistenceManager.formations.isEmpty {
-                        EditButton()
-                    }
-                    Button(action: { showingNewFormationAlert = true }) {
-                        Image(systemName: "plus")
-                    }
+            ToolbarItemGroup(placement: .navigationBarTrailing) {
+                if !persistenceManager.formations.isEmpty {
+                    EditButton()
+                }
+                Button(action: { showingNewFormationAlert = true }) {
+                    Image(systemName: "plus")
                 }
             }
         }

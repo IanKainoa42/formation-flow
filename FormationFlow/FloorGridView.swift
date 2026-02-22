@@ -152,7 +152,7 @@ struct FloorGridView: View {
                     var hitAthlete = false
                     for athlete in formation.athletes {
                         if hypot(startScaled.x - athlete.position.x,
-                                 startScaled.y - athlete.position.y) < 2.0 {
+                                 startScaled.y - athlete.position.y) < 3.0 {
                             selectedAthleteId = athlete.id
                             isDraggingAthlete = true
                             dragStartAthletePosition = athlete.position
@@ -206,7 +206,6 @@ struct FloorGridView: View {
         if !collisions.isEmpty {
             VStack {
                 HStack {
-                    Spacer()
                     Label("\(collisions.count)", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption.bold())
                         .foregroundColor(.white)
@@ -215,7 +214,8 @@ struct FloorGridView: View {
                         .background(Color.red)
                         .cornerRadius(6)
                         .padding(.top, 12)
-                        .padding(.trailing, 12)
+                        .padding(.leading, 12)
+                    Spacer()
                 }
                 Spacer()
             }

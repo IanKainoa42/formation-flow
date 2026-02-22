@@ -41,6 +41,6 @@ struct FormationThumbnailView: View {
             }
         }
         .frame(width: thumbWidth, height: thumbHeight)
-        .background(Color(UIColor.systemBackground))
+        .background(.background)
     }
 }
