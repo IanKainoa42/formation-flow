@@ -7,7 +7,8 @@ struct FloorCanvasView: View {
     var selectedAthleteId: UUID? = nil
     var startFormation: Formation? = nil
     var endFormation: Formation? = nil
-    // Bug 1 fix: dynamic cellSize and offset passed in from parent GeometryReader
+    var collisionIds: Set<UUID> = []
+    var pathCollisionIndices: Set<Int> = []
     var cellSize: CGFloat = 12
     var offset: CGPoint = .zero
 
@@ -17,7 +18,6 @@ struct FloorCanvasView: View {
     var body: some View {
         Canvas { context, _ in
             var ctx = context
-            // Translate so the grid is centered in the available space
             ctx.translateBy(x: offset.x, y: offset.y)
             drawGrid(in: &ctx)
             if let start = startFormation, let end = endFormation {
@@ -29,14 +29,9 @@ struct FloorCanvasView: View {
         .background(.background)
     }
 
-    private var collisions: [(Athlete, Athlete)] {
-        PathCalculations.findCollisions(in: formation, minDistance: 2.0)
-    }
-
     // MARK: - Path Drawing
 
     private func drawPaths(in context: inout GraphicsContext, start: Formation, end: Formation) {
-        let pathCollisionIndices = findPathCollisionIndices(start: start, end: end)
         let count = min(start.athletes.count, end.athletes.count)
 
         for i in 0..<count {
@@ -144,38 +139,6 @@ struct FloorCanvasView: View {
         }
     }
 
-    private func findPathCollisionIndices(start: Formation, end: Formation, steps: Int = 20) -> Set<
-        Int
-    > {
-        let count = min(start.athletes.count, end.athletes.count)
-        var collidingIndices = Set<Int>()
-
-        var paths: [[CGPoint]] = []
-        for i in 0..<count {
-            paths.append(
-                PathCalculations.athletePath(
-                    from: start.athletes[i].position,
-                    to: end.athletes[i].position,
-                    control: start.athletes[i].pathControlPoint,
-                    steps: steps
-                ))
-        }
-
-        for i in 0..<count {
-            for j in (i + 1)..<count {
-                for step in 0..<min(paths[i].count, paths[j].count) {
-                    if PathCalculations.distance(from: paths[i][step], to: paths[j][step]) < 2.0 {
-                        collidingIndices.insert(i)
-                        collidingIndices.insert(j)
-                        break
-                    }
-                }
-            }
-        }
-
-        return collidingIndices
-    }
-
     private func drawGrid(in context: inout GraphicsContext) {
         let width = gridCols * cellSize
         let height = gridRows * cellSize
@@ -200,7 +163,6 @@ struct FloorCanvasView: View {
     }
 
     private func drawAthletes(in context: inout GraphicsContext) {
-        let collisionIds = Set(collisions.flatMap { [$0.0.id, $0.1.id] })
 
         for athlete in formation.athletes {
             let screenPos = CGPoint(

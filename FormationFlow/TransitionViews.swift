@@ -76,6 +76,7 @@ struct TransitionPlayerView: View {
     @State private var countMode: Bool = false
     @State private var countsPerTransition: Int = 8
     @State private var isDraggingHandle = false
+    @State private var pathCollisionIndices: Set<Int> = []
 
     let gridCols: CGFloat = 52
     let gridRows: CGFloat = 30
@@ -101,6 +102,7 @@ struct TransitionPlayerView: View {
                     selectedAthleteId: selectedAthleteId,
                     startFormation: player.startFormation,
                     endFormation: player.endFormation,
+                    pathCollisionIndices: pathCollisionIndices,
                     cellSize: cellSize,
                     offset: canvasOffset
                 )
@@ -268,8 +270,14 @@ struct TransitionPlayerView: View {
             .padding()
         }
         .navigationTitle("\(player.startFormation.name) → \(player.endFormation.name)")
+        .onAppear {
+            pathCollisionIndices = PathCalculations.findPathCollisionIndices(
+                start: player.startFormation, end: player.endFormation)
+        }
         .onChange(of: player.startFormation) { _, newFormation in
             persistenceManager.updateFormation(newFormation)
+            pathCollisionIndices = PathCalculations.findPathCollisionIndices(
+                start: newFormation, end: player.endFormation)
         }
     }
 

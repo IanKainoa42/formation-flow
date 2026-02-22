@@ -30,30 +30,31 @@ enum AthleteRole: String, Codable, CaseIterable {
 class PersistenceManager: ObservableObject {
     static let shared = PersistenceManager()
 
-    private let userDefaults = UserDefaults.standard
     private let formationsKey = "formations"
+    private var saveWorkItem: DispatchWorkItem?
 
     @Published var formations: [Formation] = [] {
-        didSet {
-            saveFormations()
-        }
+        didSet { scheduleSave() }
     }
 
     init() {
         loadFormations()
     }
 
-    private func saveFormations() {
-        do {
-            let encoded = try JSONEncoder().encode(formations)
-            userDefaults.set(encoded, forKey: formationsKey)
-        } catch {
-            print("Error saving formations: \(error)")
+    private func scheduleSave() {
+        saveWorkItem?.cancel()
+        let snapshot = formations
+        let key = formationsKey
+        let item = DispatchWorkItem {
+            guard let encoded = try? JSONEncoder().encode(snapshot) else { return }
+            UserDefaults.standard.set(encoded, forKey: key)
         }
+        saveWorkItem = item
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.5, execute: item)
     }
 
     private func loadFormations() {
-        if let data = userDefaults.data(forKey: formationsKey) {
+        if let data = UserDefaults.standard.data(forKey: formationsKey) {
             do {
                 formations = try JSONDecoder().decode([Formation].self, from: data)
             } catch {
@@ -325,6 +326,36 @@ struct PathCalculations {
             }
         }
         return collisions
+    }
+
+    /// Find the indices of athletes whose transition paths cross within minDistance
+    static func findPathCollisionIndices(
+        start: Formation, end: Formation, steps: Int = 20, minDistance: CGFloat = 2.0
+    ) -> Set<Int> {
+        let count = min(start.athletes.count, end.athletes.count)
+        var collidingIndices = Set<Int>()
+        var paths: [[CGPoint]] = []
+        for i in 0..<count {
+            paths.append(
+                athletePath(
+                    from: start.athletes[i].position,
+                    to: end.athletes[i].position,
+                    control: start.athletes[i].pathControlPoint,
+                    steps: steps
+                ))
+        }
+        for i in 0..<count {
+            for j in (i + 1)..<count {
+                for step in 0..<min(paths[i].count, paths[j].count) {
+                    if distance(from: paths[i][step], to: paths[j][step]) < minDistance {
+                        collidingIndices.insert(i)
+                        collidingIndices.insert(j)
+                        break
+                    }
+                }
+            }
+        }
+        return collidingIndices
     }
 }
 
