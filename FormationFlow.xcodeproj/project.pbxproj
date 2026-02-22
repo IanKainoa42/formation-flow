@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		27D84A53A19BEBE533051A34 /* MainMenuView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F6A47CEA81F1A900D4FD1A0 /* MainMenuView.swift */; };
 		334C42A5B839654CCBC14ACF /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F4F48ABA5AD5A9438964E6B /* Models.swift */; };
 		36514899A24799F98ADE913C /* TimingControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D0844CFBD4E1BACC19E81AC /* TimingControlsView.swift */; };
 		523D462891BE0122846B8953 /* FormationThumbnailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDC14A0F86683C0B66ABE21C /* FormationThumbnailView.swift */; };
@@ -31,7 +30,6 @@
 		4D0844CFBD4E1BACC19E81AC /* TimingControlsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TimingControlsView.swift; path = FormationFlow/TimingControlsView.swift; sourceTree = SOURCE_ROOT; };
 		4F4F48ABA5AD5A9438964E6B /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Models.swift; path = FormationFlow/Models.swift; sourceTree = SOURCE_ROOT; };
 		4FD34039AE5F73A96066C39B /* AthleteDetailPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AthleteDetailPanel.swift; path = FormationFlow/AthleteDetailPanel.swift; sourceTree = SOURCE_ROOT; };
-		5F6A47CEA81F1A900D4FD1A0 /* MainMenuView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MainMenuView.swift; path = FormationFlow/MainMenuView.swift; sourceTree = SOURCE_ROOT; };
 		EDC14A0F86683C0B66ABE21C /* FormationThumbnailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FormationThumbnailView.swift; path = FormationFlow/FormationThumbnailView.swift; sourceTree = SOURCE_ROOT; };
 		EFC34761911C80E5631C8341 /* FloorGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FloorGridView.swift; path = FormationFlow/FloorGridView.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
@@ -60,7 +58,6 @@
 				1FEE788E2F3E5EB100012373 /* Assets.xcassets */,
 				1FEE78902F3E5EB100012373 /* Info.plist */,
 				1FEE78922F3E5EB100012373 /* LaunchScreen.storyboard */,
-				5F6A47CEA81F1A900D4FD1A0 /* MainMenuView.swift */,
 				EDC14A0F86683C0B66ABE21C /* FormationThumbnailView.swift */,
 				15DE4D62846A4AD0F424534B /* FormationListView.swift */,
 				303A4352BC4FD6FB758B338C /* FloorCanvasView.swift */,
@@ -124,7 +121,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				27D84A53A19BEBE533051A34 /* MainMenuView.swift in Sources */,
 				523D462891BE0122846B8953 /* FormationThumbnailView.swift in Sources */,
 				90B74689871E4B1E89B08F9A /* FormationListView.swift in Sources */,
 				DCC44D02B9685B8277F4D198 /* FloorCanvasView.swift in Sources */,

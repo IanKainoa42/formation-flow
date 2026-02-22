@@ -34,11 +34,17 @@ struct TransitionPickerView: View {
                                     endFormation: formation
                                 )
                             ) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(formation.name).font(.headline)
-                                    Text("\(formation.athletes.count) athletes")
-                                        .font(.caption)
-                                        .foregroundColor(.gray)
+                                HStack(spacing: 12) {
+                                    FormationThumbnailView(formation: formation)
+                                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                                        .overlay(RoundedRectangle(cornerRadius: 6)
+                                            .stroke(Color.gray.opacity(0.3)))
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(formation.name).font(.headline)
+                                        Text("\(formation.athletes.count) athletes")
+                                            .font(.caption)
+                                            .foregroundColor(.gray)
+                                    }
                                 }
                                 .padding(.vertical, 4)
                             }
@@ -48,76 +54,6 @@ struct TransitionPickerView: View {
             }
         }
         .navigationTitle("Preview Transition")
-    }
-}
-
-// MARK: - Transition Setup View (accessible from main menu)
-
-struct TransitionSetupView: View {
-    @StateObject private var persistenceManager = PersistenceManager.shared
-    @State private var startFormationId: UUID?
-    @State private var endFormationId: UUID?
-
-    private var startFormation: Formation? {
-        persistenceManager.formations.first(where: { $0.id == startFormationId })
-    }
-
-    private var endFormation: Formation? {
-        persistenceManager.formations.first(where: { $0.id == endFormationId })
-    }
-
-    var body: some View {
-        Group {
-            if persistenceManager.formations.count < 2 {
-                ContentUnavailableView(
-                    "Need 2+ Formations",
-                    systemImage: "arrow.left.arrow.right",
-                    description: Text("Create at least two formations to preview a transition.")
-                )
-            } else {
-                Form {
-                    Section("Start Formation") {
-                        Picker("Start", selection: $startFormationId) {
-                            Text("Select...").tag(nil as UUID?)
-                            ForEach(persistenceManager.formations) { f in
-                                Text("\(f.name) (\(f.athletes.count) athletes)").tag(f.id as UUID?)
-                            }
-                        }
-                    }
-
-                    Section("End Formation") {
-                        Picker("End", selection: $endFormationId) {
-                            Text("Select...").tag(nil as UUID?)
-                            ForEach(persistenceManager.formations.filter { $0.id != startFormationId }) { f in
-                                Text("\(f.name) (\(f.athletes.count) athletes)").tag(f.id as UUID?)
-                            }
-                        }
-                    }
-                    .onChange(of: startFormationId) { _, newId in
-                        if endFormationId == newId { endFormationId = nil }
-                    }
-
-                    if let start = startFormation, let end = endFormation {
-                        Section {
-                            if start.athletes.count != end.athletes.count {
-                                Label(
-                                    "Athlete count differs (\(start.athletes.count) vs \(end.athletes.count)). Extra athletes stay in place.",
-                                    systemImage: "exclamationmark.triangle"
-                                )
-                                .font(.caption)
-                                .foregroundColor(.orange)
-                            }
-
-                            NavigationLink("Play Transition") {
-                                TransitionPlayerView(startFormation: start, endFormation: end)
-                            }
-                            .font(.headline)
-                        }
-                    }
-                }
-            }
-        }
-        .navigationTitle("Transitions")
     }
 }
 
@@ -178,6 +114,11 @@ struct TransitionPlayerView: View {
                 )
                 .padding(.horizontal)
                 .padding(.top, 8)
+            } else {
+                Text("Tap an athlete to adjust move timing")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.top, 8)
             }
 
             VStack(spacing: 4) {

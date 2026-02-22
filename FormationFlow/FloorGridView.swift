@@ -336,6 +336,7 @@ struct FloorGridView: View {
         duplicate.id = UUID()
         duplicate.name = "\(formation.name) (Copy)"
         persistenceManager.addFormation(duplicate)
+        activeDestination = .newFromHere(duplicate)
     }
 }
 
