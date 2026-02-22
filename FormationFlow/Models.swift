@@ -1,17 +1,18 @@
 import Foundation
+
 #if os(iOS)
-import UIKit
+    import UIKit
 #else
-import AppKit
+    import AppKit
 #endif
 
 // MARK: - Constants
 
 enum CourtConstants {
-    static let width: CGFloat = 52    // feet (standard cheerleading court)
-    static let height: CGFloat = 30   // feet
-    static let cellSize: CGFloat = 12 // pixels per foot
-    static let collisionDistance: CGFloat = 2.0 // feet
+    static let width: CGFloat = 52  // feet (standard cheerleading court)
+    static let height: CGFloat = 30  // feet
+    static let cellSize: CGFloat = 12  // pixels per foot
+    static let collisionDistance: CGFloat = 2.0  // feet
 }
 
 // MARK: - Athlete Role
@@ -87,15 +88,16 @@ class PersistenceManager: ObservableObject {
 
 struct Athlete: Codable, Identifiable, Equatable, Hashable {
     let id: UUID
-    var label: String          // "A1", "B2", etc.
-    var position: CGPoint      // x, y on floor (in feet)
+    var label: String  // "A1", "B2", etc.
+    var position: CGPoint  // x, y on floor (in feet)
     var role: AthleteRole = .base
     var moveTiming: CGFloat = 0.0  // seconds delay before this athlete starts moving
+    var pathControlPoint: CGPoint?  // Optional relative or absolute bezier control point
 
     static func == (lhs: Athlete, rhs: Athlete) -> Bool {
-        lhs.id == rhs.id && lhs.label == rhs.label &&
-        lhs.position.x == rhs.position.x && lhs.position.y == rhs.position.y &&
-        lhs.role == rhs.role && lhs.moveTiming == rhs.moveTiming
+        lhs.id == rhs.id && lhs.label == rhs.label && lhs.position.x == rhs.position.x
+            && lhs.position.y == rhs.position.y && lhs.role == rhs.role
+            && lhs.moveTiming == rhs.moveTiming && lhs.pathControlPoint == rhs.pathControlPoint
     }
 
     func hash(into hasher: inout Hasher) {
@@ -105,12 +107,16 @@ struct Athlete: Codable, Identifiable, Equatable, Hashable {
         hasher.combine(position.y)
         hasher.combine(role)
         hasher.combine(moveTiming)
+        hasher.combine(pathControlPoint?.x)
+        hasher.combine(pathControlPoint?.y)
     }
 
     enum CodingKeys: String, CodingKey {
         case id, label, role, moveTiming
         case positionX = "positionX"
         case positionY = "positionY"
+        case pathControlX = "pathControlX"
+        case pathControlY = "pathControlY"
     }
 
     func encode(to encoder: Encoder) throws {
@@ -121,6 +127,10 @@ struct Athlete: Codable, Identifiable, Equatable, Hashable {
         try container.encode(moveTiming, forKey: .moveTiming)
         try container.encode(position.x, forKey: .positionX)
         try container.encode(position.y, forKey: .positionY)
+        if let control = pathControlPoint {
+            try container.encode(control.x, forKey: .pathControlX)
+            try container.encode(control.y, forKey: .pathControlY)
+        }
     }
 
     init(from decoder: Decoder) throws {
@@ -138,6 +148,12 @@ struct Athlete: Codable, Identifiable, Equatable, Hashable {
         let x = try container.decode(CGFloat.self, forKey: .positionX)
         let y = try container.decode(CGFloat.self, forKey: .positionY)
         position = CGPoint(x: x, y: y)
+
+        if let cx = try? container.decode(CGFloat.self, forKey: .pathControlX),
+            let cy = try? container.decode(CGFloat.self, forKey: .pathControlY)
+        {
+            pathControlPoint = CGPoint(x: cx, y: cy)
+        }
     }
 
     init(id: UUID = UUID(), label: String, position: CGPoint, role: AthleteRole = .base) {
@@ -167,11 +183,9 @@ struct Formation: Codable, Identifiable, Equatable, Hashable {
     }
 
     static func == (lhs: Formation, rhs: Formation) -> Bool {
-        lhs.id == rhs.id && lhs.name == rhs.name &&
-        lhs.athletes == rhs.athletes &&
-        lhs.notes == rhs.notes &&
-        lhs.gridSizeWidth == rhs.gridSizeWidth &&
-        lhs.gridSizeHeight == rhs.gridSizeHeight
+        lhs.id == rhs.id && lhs.name == rhs.name && lhs.athletes == rhs.athletes
+            && lhs.notes == rhs.notes && lhs.gridSizeWidth == rhs.gridSizeWidth
+            && lhs.gridSizeHeight == rhs.gridSizeHeight
     }
 
     func hash(into hasher: inout Hasher) {
@@ -186,17 +200,17 @@ struct Formation: Codable, Identifiable, Equatable, Hashable {
     mutating func addAthlete(_ athlete: Athlete) {
         athletes.append(athlete)
     }
-    
+
     mutating func removeAthlete(id: UUID) {
         athletes.removeAll { $0.id == id }
     }
-    
+
     mutating func updateAthlete(_ athlete: Athlete) {
         if let index = athletes.firstIndex(where: { $0.id == athlete.id }) {
             athletes[index] = athlete
         }
     }
-    
+
     // Sample formations for POC
     static func sample() -> Formation {
         var formation = Formation()
@@ -234,7 +248,9 @@ struct PathCalculations {
     /// Calculate the bounding box of all athletes in formation (returns in floor feet)
     static func formationBounds(of formation: Formation) -> CGRect {
         guard !formation.athletes.isEmpty else {
-            return CGRect(origin: .zero, size: CGSize(width: CourtConstants.width, height: CourtConstants.height))
+            return CGRect(
+                origin: .zero,
+                size: CGSize(width: CourtConstants.width, height: CourtConstants.height))
         }
 
         let xs = formation.athletes.map { $0.position.x }
@@ -252,14 +268,32 @@ struct PathCalculations {
     }
 
     /// Calculate the path (as array of points) an athlete takes from start to end position
-    static func athletePath(from: CGPoint, to: CGPoint, steps: Int = 10) -> [CGPoint] {
+    static func athletePath(from: CGPoint, to: CGPoint, control: CGPoint? = nil, steps: Int = 10)
+        -> [CGPoint]
+    {
         guard steps > 1 else { return [from, to] }
 
         var path: [CGPoint] = [from]
         for i in 1..<steps {
             let t = CGFloat(i) / CGFloat(steps - 1)
-            let x = from.x + (to.x - from.x) * t
-            let y = from.y + (to.y - from.y) * t
+            let x: CGFloat
+            let y: CGFloat
+
+            if let c = control {
+                // Quadratic bezier interpolation
+                let u = 1.0 - t
+                let tt = t * t
+                let uu = u * u
+                let ut2 = 2.0 * u * t
+
+                x = uu * from.x + ut2 * c.x + tt * to.x
+                y = uu * from.y + ut2 * c.y + tt * to.y
+            } else {
+                // Linear interpolation
+                x = from.x + (to.x - from.x) * t
+                y = from.y + (to.y - from.y) * t
+            }
+
             path.append(CGPoint(x: x, y: y))
         }
         path.append(to)
@@ -268,17 +302,24 @@ struct PathCalculations {
 
     /// Check if two athletes collide based on minimum separation distance
     /// Returns true if distance between athletes is less than minDistance (in floor feet)
-    static func checkCollision(athleteA: Athlete, athleteB: Athlete, minDistance: CGFloat = 2.0) -> Bool {
+    static func checkCollision(athleteA: Athlete, athleteB: Athlete, minDistance: CGFloat = 2.0)
+        -> Bool
+    {
         let dist = distance(from: athleteA.position, to: athleteB.position)
         return dist < minDistance
     }
 
     /// Find all collision pairs in a formation
-    static func findCollisions(in formation: Formation, minDistance: CGFloat = 2.0) -> [(Athlete, Athlete)] {
+    static func findCollisions(in formation: Formation, minDistance: CGFloat = 2.0) -> [(
+        Athlete, Athlete
+    )] {
         var collisions: [(Athlete, Athlete)] = []
         for i in 0..<formation.athletes.count {
             for j in (i + 1)..<formation.athletes.count {
-                if checkCollision(athleteA: formation.athletes[i], athleteB: formation.athletes[j], minDistance: minDistance) {
+                if checkCollision(
+                    athleteA: formation.athletes[i], athleteB: formation.athletes[j],
+                    minDistance: minDistance)
+                {
                     collisions.append((formation.athletes[i], formation.athletes[j]))
                 }
             }
@@ -350,12 +391,28 @@ class TransitionPlayer: ObservableObject {
                 let startAthlete = startFormation.athletes[i]
                 let endAthlete = endFormation.athletes[i]
 
-                // Per-athlete timing: moveTiming seconds delay relative to total duration
                 let timingOffset = min(0.99, startAthlete.moveTiming / CGFloat(duration))
-                let athleteProgress = min(1.0, max(0, progress - timingOffset) / (1.0 - timingOffset))
+                let athleteProgress = min(
+                    1.0, max(0, progress - timingOffset) / (1.0 - timingOffset))
 
-                let newX = startAthlete.position.x + (endAthlete.position.x - startAthlete.position.x) * athleteProgress
-                let newY = startAthlete.position.y + (endAthlete.position.y - startAthlete.position.y) * athleteProgress
+                let newX: CGFloat
+                let newY: CGFloat
+                if let c = startAthlete.pathControlPoint {
+                    let u = 1.0 - athleteProgress
+                    let tt = athleteProgress * athleteProgress
+                    let uu = u * u
+                    let ut2 = 2.0 * u * athleteProgress
+
+                    newX = uu * startAthlete.position.x + ut2 * c.x + tt * endAthlete.position.x
+                    newY = uu * startAthlete.position.y + ut2 * c.y + tt * endAthlete.position.y
+                } else {
+                    newX =
+                        startAthlete.position.x + (endAthlete.position.x - startAthlete.position.x)
+                        * athleteProgress
+                    newY =
+                        startAthlete.position.y + (endAthlete.position.y - startAthlete.position.y)
+                        * athleteProgress
+                }
 
                 var athlete = startAthlete
                 athlete.position = CGPoint(x: newX, y: newY)

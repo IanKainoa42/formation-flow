@@ -56,12 +56,45 @@ struct FloorCanvasView: View {
 
             var pathLine = Path()
             pathLine.move(to: startPos)
-            pathLine.addLine(to: endPos)
+            if let c = start.athletes[i].pathControlPoint {
+                let controlPos = CGPoint(x: c.x * cellSize, y: c.y * cellSize)
+                pathLine.addQuadCurve(to: endPos, control: controlPos)
+            } else {
+                pathLine.addLine(to: endPos)
+            }
             context.stroke(
                 pathLine,
                 with: .color(pathColor.opacity(0.4)),
                 lineWidth: lineWidth
             )
+
+            // Draw midpoint handle if selected
+            if isSelected {
+                let t: CGFloat = 0.5
+                let midPoint: CGPoint
+                if let c = start.athletes[i].pathControlPoint {
+                    let cp = CGPoint(x: c.x * cellSize, y: c.y * cellSize)
+                    let u = 1.0 - t
+                    let tt = t * t
+                    let uu = u * u
+                    let ut2 = 2.0 * u * t
+                    midPoint = CGPoint(
+                        x: uu * startPos.x + ut2 * cp.x + tt * endPos.x,
+                        y: uu * startPos.y + ut2 * cp.y + tt * endPos.y
+                    )
+                } else {
+                    midPoint = CGPoint(
+                        x: startPos.x + (endPos.x - startPos.x) * t,
+                        y: startPos.y + (endPos.y - startPos.y) * t
+                    )
+                }
+
+                var handlePath = Path()
+                handlePath.addEllipse(
+                    in: CGRect(x: midPoint.x - 6, y: midPoint.y - 6, width: 12, height: 12))
+                context.fill(handlePath, with: .color(.white))
+                context.stroke(handlePath, with: .color(pathColor), lineWidth: 2)
+            }
 
             let dx = endPos.x - startPos.x
             let dy = endPos.y - startPos.y
@@ -123,6 +156,7 @@ struct FloorCanvasView: View {
                 PathCalculations.athletePath(
                     from: start.athletes[i].position,
                     to: end.athletes[i].position,
+                    control: start.athletes[i].pathControlPoint,
                     steps: steps
                 ))
         }

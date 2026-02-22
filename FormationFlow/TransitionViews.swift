@@ -16,7 +16,8 @@ struct TransitionPickerView: View {
                 ContentUnavailableView(
                     "No Other Formations",
                     systemImage: "arrow.left.arrow.right",
-                    description: Text("Save another formation first, then come back to preview the transition.")
+                    description: Text(
+                        "Save another formation first, then come back to preview the transition.")
                 )
             } else {
                 List {
@@ -27,10 +28,12 @@ struct TransitionPickerView: View {
                     }
                     Section("Transition to...") {
                         ForEach(otherFormations) { formation in
-                            NavigationLink(destination: TransitionPlayerView(
-                                startFormation: startFormation,
-                                endFormation: formation
-                            )) {
+                            NavigationLink(
+                                destination: TransitionPlayerView(
+                                    startFormation: startFormation,
+                                    endFormation: formation
+                                )
+                            ) {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(formation.name).font(.headline)
                                     Text("\(formation.athletes.count) athletes")
@@ -94,10 +97,12 @@ struct TransitionSetupView: View {
                     if let start = startFormation, let end = endFormation {
                         Section {
                             if start.athletes.count != end.athletes.count {
-                                Label("Athlete count differs (\(start.athletes.count) vs \(end.athletes.count)). Extra athletes stay in place.",
-                                      systemImage: "exclamationmark.triangle")
-                                    .font(.caption)
-                                    .foregroundColor(.orange)
+                                Label(
+                                    "Athlete count differs (\(start.athletes.count) vs \(end.athletes.count)). Extra athletes stay in place.",
+                                    systemImage: "exclamationmark.triangle"
+                                )
+                                .font(.caption)
+                                .foregroundColor(.orange)
                             }
 
                             NavigationLink("Play Transition") {
@@ -120,12 +125,14 @@ struct TransitionPlayerView: View {
     @StateObject private var persistenceManager = PersistenceManager.shared
     @State private var selectedAthleteId: UUID?
     @State private var countMode: Bool = false
+    @State private var isDraggingHandle = false
 
     let gridCols: CGFloat = 52
     let gridRows: CGFloat = 30
 
     init(startFormation: Formation, endFormation: Formation) {
-        _player = StateObject(wrappedValue: TransitionPlayer(from: startFormation, to: endFormation))
+        _player = StateObject(
+            wrappedValue: TransitionPlayer(from: startFormation, to: endFormation))
     }
 
     var body: some View {
@@ -153,7 +160,9 @@ struct TransitionPlayerView: View {
             Divider()
 
             if let selectedId = selectedAthleteId,
-               let index = player.startFormation.athletes.firstIndex(where: { $0.id == selectedId }) {
+                let index = player.startFormation.athletes.firstIndex(where: { $0.id == selectedId }
+                )
+            {
                 TimingControlsView(
                     athlete: Binding(
                         get: { player.startFormation.athletes[index] },
@@ -283,18 +292,85 @@ struct TransitionPlayerView: View {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
                 let scaledPoint = CGPoint(
+                    x: (value.location.x - offset.x) / cellSize,
+                    y: (value.location.y - offset.y) / cellSize
+                )
+
+                // If an athlete is already selected, check if we're dragging their curve handle
+                if let selectedId = selectedAthleteId,
+                    let index = player.startFormation.athletes.firstIndex(where: {
+                        $0.id == selectedId
+                    })
+                {
+
+                    let startPos = player.startFormation.athletes[index].position
+                    let endPos = player.endFormation.athletes[index].position
+                    let currentControl = player.startFormation.athletes[index].pathControlPoint
+
+                    // Determine where the current midpoint is
+                    let t: CGFloat = 0.5
+                    let midPoint: CGPoint
+                    if let c = currentControl {
+                        let u = 1.0 - t
+                        let tt = t * t
+                        let uu = u * u
+                        let ut2 = 2.0 * u * t
+                        midPoint = CGPoint(
+                            x: uu * startPos.x + ut2 * c.x + tt * endPos.x,
+                            y: uu * startPos.y + ut2 * c.y + tt * endPos.y
+                        )
+                    } else {
+                        midPoint = CGPoint(
+                            x: startPos.x + (endPos.x - startPos.x) * t,
+                            y: startPos.y + (endPos.y - startPos.y) * t
+                        )
+                    }
+
+                    // Check if initial touch was near the handle (allow generous tap target: roughly 3 feet distance)
+                    let startScaledPoint = CGPoint(
+                        x: (value.startLocation.x - offset.x) / cellSize,
+                        y: (value.startLocation.y - offset.y) / cellSize
+                    )
+
+                    if isDraggingHandle
+                        || hypot(startScaledPoint.x - midPoint.x, startScaledPoint.y - midPoint.y)
+                            < 3.0
+                    {
+                        isDraggingHandle = true
+
+                        // User's finger is dragging the midpoint. We need to back-calculate the Bezier control point 'c'.
+                        // Formula for midpoint: M = 0.25*P0 + 0.5*c + 0.25*P2
+                        // Solving for c: c = 2*M - 0.5*P0 - 0.5*P2
+
+                        let newCx = 2 * scaledPoint.x - 0.5 * startPos.x - 0.5 * endPos.x
+                        let newCy = 2 * scaledPoint.y - 0.5 * startPos.y - 0.5 * endPos.y
+
+                        player.startFormation.athletes[index].pathControlPoint = CGPoint(
+                            x: newCx, y: newCy)
+                        player.seek(to: player.progress)  // force refresh
+                        return
+                    }
+                }
+
+                // Normal athlete selection
+                let initialScaledPoint = CGPoint(
                     x: (value.startLocation.x - offset.x) / cellSize,
                     y: (value.startLocation.y - offset.y) / cellSize
                 )
 
                 for athlete in player.currentFormation.athletes {
-                    if hypot(scaledPoint.x - athlete.position.x,
-                             scaledPoint.y - athlete.position.y) < 2.0 {
+                    if hypot(
+                        initialScaledPoint.x - athlete.position.x,
+                        initialScaledPoint.y - athlete.position.y) < 2.0
+                    {
                         selectedAthleteId = athlete.id
                         return
                     }
                 }
                 selectedAthleteId = nil
+            }
+            .onEnded { _ in
+                isDraggingHandle = false
             }
     }
 
