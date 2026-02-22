@@ -11,6 +11,10 @@ struct FloorGridView: View {
     @State private var renameText = ""
     @State private var navigateToTransition = false
     @State private var showingNotesSheet = false
+    @State private var showingNewFromHereAlert = false
+    @State private var newFromHereName = ""
+    @State private var newFromHereFormation: Formation?
+    @State private var navigateToNewFromHere = false
 
     // Bug 2 fix: track drag state in parent so gesture and canvas share it
     @State private var isDraggingAthlete = false
@@ -198,6 +202,12 @@ struct FloorGridView: View {
                         Button(action: duplicateFormation) {
                             Label("Duplicate", systemImage: "doc.on.doc")
                         }
+                        Button(action: {
+                            newFromHereName = ""
+                            showingNewFromHereAlert = true
+                        }) {
+                            Label("New Formation from Here", systemImage: "plus.rectangle.on.rectangle")
+                        }
                         Button(action: { showingNotesSheet = true }) {
                             Label("Notes", systemImage: "note.text")
                         }
@@ -250,6 +260,26 @@ struct FloorGridView: View {
                         Button("Done") { showingNotesSheet = false }
                     }
                 }
+            }
+        }
+        .alert("New Formation from Here", isPresented: $showingNewFromHereAlert) {
+            TextField("Formation name", text: $newFromHereName)
+            Button("Create") {
+                var newFormation = formation
+                newFormation.id = UUID()
+                newFormation.name = newFromHereName.isEmpty ? "Untitled Formation" : newFromHereName
+                newFormation.notes = ""
+                persistenceManager.addFormation(newFormation)
+                newFromHereFormation = newFormation
+                navigateToNewFromHere = true
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Athletes and positions will be copied from \(formation.name).")
+        }
+        .navigationDestination(isPresented: $navigateToNewFromHere) {
+            if let f = newFromHereFormation {
+                FloorGridView(formation: f)
             }
         }
     }
