@@ -33,7 +33,7 @@ struct AthleteDetailPanel: View {
             }
 
             HStack(spacing: 12) {
-                ForEach(roles, id: \\.0) { role, color in
+                ForEach(roles, id: \.0) { role, color in
                     Button {
                         athlete.role = role
                     } label: {
@@ -49,6 +49,16 @@ struct AthleteDetailPanel: View {
                         }
                     }
                 }
+            }
+
+            HStack {
+                Image(systemName: "location")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                Text(String(format: "%.1f ft, %.1f ft", athlete.position.x, athlete.position.y))
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                Spacer()
             }
         }
         .padding(12)

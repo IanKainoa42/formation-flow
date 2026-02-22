@@ -35,7 +35,7 @@ struct MainMenuView: View {
                     HStack {
                         Text("Saved Formations")
                         if !persistenceManager.formations.isEmpty {
-                            Text("(\\(persistenceManager.formations.count))")
+                            Text("(\(persistenceManager.formations.count))")
                                 .foregroundColor(.gray)
                         }
                     }

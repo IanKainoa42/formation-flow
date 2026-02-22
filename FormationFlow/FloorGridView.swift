@@ -4,7 +4,7 @@ import SwiftUI
 
 struct FloorGridView: View {
     @StateObject private var persistenceManager = PersistenceManager.shared
-    @Environment(\\.dismiss) private var dismiss
+    @Environment(\.dismiss) private var dismiss
     @State var formation: Formation
     @State var selectedAthleteId: UUID?
     @State private var showingRenameAlert = false
@@ -125,7 +125,7 @@ struct FloorGridView: View {
                     VStack {
                         HStack {
                             Spacer()
-                            Label("\\(collisions.count)", systemImage: "exclamationmark.triangle.fill")
+                            Label("\(collisions.count)", systemImage: "exclamationmark.triangle.fill")
                                 .font(.caption.bold())
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 8)
@@ -228,7 +228,7 @@ struct FloorGridView: View {
         } message: {
             if let id = selectedAthleteId,
                let athlete = formation.athletes.first(where: { $0.id == id }) {
-                Text("Remove \\(athlete.label) from this formation?")
+                Text("Remove \(athlete.label) from this formation?")
             }
         }
         .sheet(isPresented: $showingNotesSheet) {
@@ -261,8 +261,13 @@ struct FloorGridView: View {
     }
 
     private func addAthlete() {
-        let count = formation.athletes.count + 1
-        let label = "P\\(count)"
+        let existingLabels = Set(formation.athletes.map { $0.label })
+        var count = formation.athletes.count + 1
+        var label = "P\(count)"
+        while existingLabels.contains(label) {
+            count += 1
+            label = "P\(count)"
+        }
         let newAthlete = Athlete(
             label: label,
             position: CGPoint(x: gridCols / 2, y: gridRows / 2)
@@ -280,7 +285,7 @@ struct FloorGridView: View {
     private func duplicateFormation() {
         var duplicate = formation
         duplicate.id = UUID()
-        duplicate.name = "\\(formation.name) (Copy)"
+        duplicate.name = "\(formation.name) (Copy)"
         persistenceManager.addFormation(duplicate)
     }
 

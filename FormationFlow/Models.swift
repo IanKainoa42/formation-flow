@@ -77,6 +77,10 @@ class PersistenceManager: ObservableObject {
             formations[index] = formation
         }
     }
+
+    func moveFormation(from source: IndexSet, to destination: Int) {
+        formations.move(fromOffsets: source, toOffset: destination)
+    }
 }
 
 // MARK: - Data Models
@@ -293,7 +297,7 @@ class TransitionPlayer: ObservableObject {
     @Published var startFormation: Formation  // mutable for timing edits
 
     let endFormation: Formation
-    let duration: TimeInterval
+    var duration: TimeInterval
     private var animationTimer: AnimationTimer?
 
     init(from start: Formation, to end: Formation, duration: TimeInterval = 2.0) {

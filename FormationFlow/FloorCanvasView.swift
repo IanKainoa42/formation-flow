@@ -128,7 +128,7 @@ struct FloorCanvasView: View {
         }
 
         for i in 0..<count {
-            for j in (i + 1) ...< count {
+            for j in (i + 1)..<count {
                 for step in 0..<min(paths[i].count, paths[j].count) {
                     if PathCalculations.distance(from: paths[i][step], to: paths[j][step]) < 2.0 {
                         collidingIndices.insert(i)

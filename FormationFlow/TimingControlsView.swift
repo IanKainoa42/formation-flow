@@ -4,18 +4,19 @@ import SwiftUI
 
 struct TimingControlsView: View {
     @Binding var athlete: Athlete
+    var duration: Double = 2.0
 
     var body: some View {
         VStack(spacing: 12) {
             HStack {
-                Text("\\(athlete.label) - Move Timing: \\(String(format: "%.1f", athlete.moveTiming))s")
+                Text("\(athlete.label) - Move Timing: \(String(format: "%.1f", athlete.moveTiming))s")
                     .font(.caption)
                 Spacer()
             }
 
             Slider(
                 value: $athlete.moveTiming,
-                in: 0...3,
+                in: 0...max(duration, 0.1),
                 step: 0.1
             )
             .frame(maxWidth: .infinity)

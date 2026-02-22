@@ -21,7 +21,7 @@ struct TransitionPickerView: View {
             } else {
                 List {
                     Section {
-                        Text("Starting from: \\(startFormation.name)")
+                        Text("Starting from: \(startFormation.name)")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
@@ -33,7 +33,7 @@ struct TransitionPickerView: View {
                             )) {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(formation.name).font(.headline)
-                                    Text("\\(formation.athletes.count) athletes")
+                                    Text("\(formation.athletes.count) athletes")
                                         .font(.caption)
                                         .foregroundColor(.gray)
                                 }
@@ -77,7 +77,7 @@ struct TransitionSetupView: View {
                         Picker("Start", selection: $startFormationId) {
                             Text("Select...").tag(nil as UUID?)
                             ForEach(persistenceManager.formations) { f in
-                                Text("\\(f.name) (\\(f.athletes.count) athletes)").tag(f.id as UUID?)
+                                Text("\(f.name) (\(f.athletes.count) athletes)").tag(f.id as UUID?)
                             }
                         }
                     }
@@ -86,7 +86,7 @@ struct TransitionSetupView: View {
                         Picker("End", selection: $endFormationId) {
                             Text("Select...").tag(nil as UUID?)
                             ForEach(persistenceManager.formations) { f in
-                                Text("\\(f.name) (\\(f.athletes.count) athletes)").tag(f.id as UUID?)
+                                Text("\(f.name) (\(f.athletes.count) athletes)").tag(f.id as UUID?)
                             }
                         }
                     }
@@ -94,7 +94,7 @@ struct TransitionSetupView: View {
                     if let start = startFormation, let end = endFormation {
                         Section {
                             if start.athletes.count != end.athletes.count {
-                                Label("Athlete count differs (\\(start.athletes.count) vs \\(end.athletes.count)). Extra athletes stay in place.",
+                                Label("Athlete count differs (\(start.athletes.count) vs \(end.athletes.count)). Extra athletes stay in place.",
                                       systemImage: "exclamationmark.triangle")
                                     .font(.caption)
                                     .foregroundColor(.orange)
@@ -117,6 +117,7 @@ struct TransitionSetupView: View {
 
 struct TransitionPlayerView: View {
     @StateObject private var player: TransitionPlayer
+    @StateObject private var persistenceManager = PersistenceManager.shared
     @State private var selectedAthleteId: UUID?
     @State private var countMode: Bool = false
 
@@ -153,13 +154,16 @@ struct TransitionPlayerView: View {
 
             if let selectedId = selectedAthleteId,
                let index = player.startFormation.athletes.firstIndex(where: { $0.id == selectedId }) {
-                TimingControlsView(athlete: Binding(
-                    get: { player.startFormation.athletes[index] },
-                    set: { newAthlete in
-                        player.startFormation.athletes[index] = newAthlete
-                        player.seek(to: player.progress)
-                    }
-                ))
+                TimingControlsView(
+                    athlete: Binding(
+                        get: { player.startFormation.athletes[index] },
+                        set: { newAthlete in
+                            player.startFormation.athletes[index] = newAthlete
+                            player.seek(to: player.progress)
+                        }
+                    ),
+                    duration: player.duration
+                )
                 .padding(.horizontal)
                 .padding(.top, 8)
             }
@@ -197,8 +201,8 @@ struct TransitionPlayerView: View {
                 if countMode {
                     Divider().padding(.horizontal)
                     HStack(spacing: 0) {
-                        ForEach(1...8, id: \\.self) { count in
-                            Text("\\(count)")
+                        ForEach(1...8, id: \.self) { count in
+                            Text("\(count)")
                                 .font(.system(size: 9, weight: .medium))
                                 .foregroundColor(.secondary)
                                 .frame(maxWidth: .infinity)
@@ -210,6 +214,23 @@ struct TransitionPlayerView: View {
             .padding(.horizontal)
             .padding(.top, 8)
 
+            HStack {
+                Text("Duration")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Stepper(
+                    "\(String(format: "%.1f", player.duration))s",
+                    value: Binding(
+                        get: { player.duration },
+                        set: { player.duration = max(0.5, $0) }
+                    ),
+                    in: 0.5...30,
+                    step: 0.5
+                )
+                .font(.caption)
+            }
+            .padding(.horizontal)
+
             HStack(spacing: 30) {
                 Menu {
                     Button("0.25x") { player.speed = 0.25 }
@@ -217,7 +238,7 @@ struct TransitionPlayerView: View {
                     Button("1x") { player.speed = 1.0 }
                     Button("2x") { player.speed = 2.0 }
                 } label: {
-                    Text("\\(String(format: "%.2g", player.speed))x")
+                    Text("\(String(format: "%.2g", player.speed))x")
                         .font(.caption)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
@@ -253,6 +274,9 @@ struct TransitionPlayerView: View {
             .padding()
         }
         .navigationTitle("Transition")
+        .onChange(of: player.startFormation) { _, newFormation in
+            persistenceManager.updateFormation(newFormation)
+        }
     }
 
     private func athleteTapGesture(cellSize: CGFloat, offset: CGPoint) -> some Gesture {
