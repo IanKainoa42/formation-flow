@@ -26,7 +26,7 @@ struct FloorCanvasView: View {
             drawAthletes(in: &ctx)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.white)
+        .background(.background)
     }
 
     private var collisions: [(Athlete, Athlete)] {

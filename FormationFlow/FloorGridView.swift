@@ -4,12 +4,10 @@ import SwiftUI
 
 private enum FloorGridDestination: Identifiable, Hashable {
     case transition(Formation)
-    case newFromHere(Formation)
 
     var id: String {
         switch self {
         case .transition(let f): return "transition-\(f.id)"
-        case .newFromHere(let f): return "newFromHere-\(f.id)"
         }
     }
 }
@@ -26,11 +24,13 @@ struct FloorGridView: View {
     @State private var showingNotesSheet = false
     @State private var showingNewFromHereAlert = false
     @State private var newFromHereName = ""
+    @State private var showingManageAthletes = false
     @State private var activeDestination: FloorGridDestination?
 
     @State private var isDraggingAthlete = false
     @State private var dragStartAthletePosition: CGPoint = .zero
     @State private var isPanning = false
+    @State private var undoStack: [(id: UUID, position: CGPoint)] = []
 
     @State private var zoomScale: CGFloat = 1.0
     @State private var panOffset: CGSize = .zero
@@ -46,8 +46,16 @@ struct FloorGridView: View {
         }
         .navigationTitle(formation.name)
         .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button("Done") { dismiss() }
+            ToolbarItemGroup(placement: .navigationBarLeading) {
+                if !collisions.isEmpty {
+                    Label("\(collisions.count)", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundColor(.red)
+                        .font(.caption.bold())
+                }
+                Button(action: undoLastMove) {
+                    Image(systemName: "arrow.uturn.backward")
+                }
+                .disabled(undoStack.isEmpty)
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 trailingToolbar
@@ -74,11 +82,39 @@ struct FloorGridView: View {
                 newFormation.name = newFromHereName.isEmpty ? "Untitled Formation" : newFromHereName
                 newFormation.notes = ""
                 persistenceManager.addFormation(newFormation)
-                activeDestination = .newFromHere(newFormation)
+                newFromHereName = ""
+                dismiss()
             }
-            Button("Cancel", role: .cancel) { }
+            Button("Cancel", role: .cancel) { newFromHereName = "" }
         } message: {
             Text("Athletes and positions will be copied from \(formation.name).")
+        }
+        .sheet(isPresented: $showingManageAthletes) {
+            NavigationStack {
+                List {
+                    ForEach(formation.athletes) { athlete in
+                        HStack(spacing: 10) {
+                            Circle()
+                                .fill(colorForRole(athlete.role))
+                                .frame(width: 10, height: 10)
+                            Text(athlete.label).font(.body)
+                            Text(athlete.role.rawValue)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .onMove { from, to in
+                        formation.athletes.move(fromOffsets: from, toOffset: to)
+                    }
+                }
+                .navigationTitle("Manage Athletes")
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) { EditButton() }
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Done") { showingManageAthletes = false }
+                    }
+                }
+            }
         }
         .sheet(isPresented: $showingNotesSheet) {
             NavigationStack {
@@ -96,7 +132,7 @@ struct FloorGridView: View {
                 .navigationTitle("Formation Notes")
                 .toolbar {
                     ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Done") { showingNotesSheet = false }
+                        Button("Close") { showingNotesSheet = false }
                     }
                 }
             }
@@ -184,6 +220,9 @@ struct FloorGridView: View {
             }
             .onEnded { _ in
                 if isPanning { lastPanOffset = panOffset }
+                if isDraggingAthlete, let id = selectedAthleteId {
+                    undoStack.append((id: id, position: dragStartAthletePosition))
+                }
                 isDraggingAthlete = false
                 isPanning = false
             }
@@ -199,25 +238,6 @@ struct FloorGridView: View {
                 Text("Tap + to add athletes")
                     .font(.title3)
                     .foregroundColor(.gray)
-            }
-            .allowsHitTesting(false)
-        }
-
-        if !collisions.isEmpty {
-            VStack {
-                HStack {
-                    Label("\(collisions.count)", systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption.bold())
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.red)
-                        .cornerRadius(6)
-                        .padding(.top, 12)
-                        .padding(.leading, 12)
-                    Spacer()
-                }
-                Spacer()
             }
             .allowsHitTesting(false)
         }
@@ -277,6 +297,9 @@ struct FloorGridView: View {
                 }) {
                     Label("New Formation from Here", systemImage: "plus.rectangle.on.rectangle")
                 }
+                Button(action: { showingManageAthletes = true }) {
+                    Label("Manage Athletes", systemImage: "list.bullet")
+                }
                 Button(action: { showingNotesSheet = true }) {
                     Label("Notes", systemImage: "note.text")
                 }
@@ -293,8 +316,6 @@ struct FloorGridView: View {
         switch dest {
         case .transition(let f):
             TransitionPickerView(startFormation: f)
-        case .newFromHere(let f):
-            FloorGridView(formation: f)
         }
     }
 
@@ -325,10 +346,27 @@ struct FloorGridView: View {
         selectedAthleteId = newAthlete.id
     }
 
+    private func undoLastMove() {
+        guard let last = undoStack.popLast(),
+              let index = formation.athletes.firstIndex(where: { $0.id == last.id }) else { return }
+        formation.athletes[index].position = last.position
+    }
+
     private func deleteSelectedAthlete() {
         guard let id = selectedAthleteId else { return }
         formation.removeAthlete(id: id)
+        undoStack.removeAll { $0.id == id }
         selectedAthleteId = nil
+    }
+
+    private func colorForRole(_ role: AthleteRole) -> Color {
+        switch role {
+        case .base: return .blue
+        case .flyer: return .yellow
+        case .spotter: return .green
+        case .backspot: return .purple
+        case .tumbler: return .orange
+        }
     }
 
     private func duplicateFormation() {
@@ -336,7 +374,6 @@ struct FloorGridView: View {
         duplicate.id = UUID()
         duplicate.name = "\(formation.name) (Copy)"
         persistenceManager.addFormation(duplicate)
-        activeDestination = .newFromHere(duplicate)
     }
 }
 

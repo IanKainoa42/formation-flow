@@ -9,7 +9,7 @@ struct TimingControlsView: View {
     var body: some View {
         VStack(spacing: 12) {
             HStack {
-                Text("\(athlete.label) - Move Timing: \(String(format: "%.1f", athlete.moveTiming))s")
+                Text("\(athlete.label) - Delay: \(String(format: "%.1f", athlete.moveTiming))s")
                     .font(.caption)
                 Spacer()
             }

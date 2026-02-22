@@ -21,10 +21,20 @@ struct TransitionPickerView: View {
                 )
             } else {
                 List {
-                    Section {
-                        Text("Starting from: \(startFormation.name)")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
+                    Section("Transition from") {
+                        HStack(spacing: 12) {
+                            FormationThumbnailView(formation: startFormation)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                                .overlay(RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.gray.opacity(0.3)))
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(startFormation.name).font(.headline)
+                                Text("\(startFormation.athletes.count) athletes")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                            }
+                        }
+                        .padding(.vertical, 4)
                     }
                     Section("Transition to...") {
                         ForEach(otherFormations) { formation in
@@ -64,6 +74,7 @@ struct TransitionPlayerView: View {
     @StateObject private var persistenceManager = PersistenceManager.shared
     @State private var selectedAthleteId: UUID?
     @State private var countMode: Bool = false
+    @State private var countsPerTransition: Int = 8
     @State private var isDraggingHandle = false
 
     let gridCols: CGFloat = 52
@@ -102,16 +113,33 @@ struct TransitionPlayerView: View {
                 let index = player.startFormation.athletes.firstIndex(where: { $0.id == selectedId }
                 )
             {
-                TimingControlsView(
-                    athlete: Binding(
-                        get: { player.startFormation.athletes[index] },
-                        set: { newAthlete in
-                            player.startFormation.athletes[index] = newAthlete
+                HStack(alignment: .top) {
+                    TimingControlsView(
+                        athlete: Binding(
+                            get: { player.startFormation.athletes[index] },
+                            set: { newAthlete in
+                                player.startFormation.athletes[index] = newAthlete
+                                player.seek(to: player.progress)
+                            }
+                        ),
+                        duration: player.duration
+                    )
+
+                    if player.startFormation.athletes[index].pathControlPoint != nil {
+                        Button(action: {
+                            player.startFormation.athletes[index].pathControlPoint = nil
                             player.seek(to: player.progress)
+                        }) {
+                            Label("Straight", systemImage: "arrow.right")
+                                .font(.caption)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.gray.opacity(0.15))
+                                .cornerRadius(6)
                         }
-                    ),
-                    duration: player.duration
-                )
+                        .padding(.top, 12)
+                    }
+                }
                 .padding(.horizontal)
                 .padding(.top, 8)
             } else {
@@ -135,11 +163,11 @@ struct TransitionPlayerView: View {
 
                 HStack {
                     if countMode {
-                        let currentCount = player.progress * 8
+                        let currentCount = player.progress * CGFloat(countsPerTransition)
                         Text(String(format: "Count %.1f", currentCount))
                             .font(.caption.monospacedDigit())
                         Spacer()
-                        Text("of 8")
+                        Text("of \(countsPerTransition)")
                             .font(.caption.monospacedDigit())
                     } else {
                         Text(formatTime(player.progress * CGFloat(player.duration)))
@@ -154,7 +182,7 @@ struct TransitionPlayerView: View {
                 if countMode {
                     Divider().padding(.horizontal)
                     HStack(spacing: 0) {
-                        ForEach(1...8, id: \.self) { count in
+                        ForEach(1...countsPerTransition, id: \.self) { count in
                             Text("\(count)")
                                 .font(.system(size: 9, weight: .medium))
                                 .foregroundColor(.secondary)
@@ -189,6 +217,7 @@ struct TransitionPlayerView: View {
                     Button("0.25x") { player.speed = 0.25 }
                     Button("0.5x") { player.speed = 0.5 }
                     Button("1x") { player.speed = 1.0 }
+                    Button("1.5x") { player.speed = 1.5 }
                     Button("2x") { player.speed = 2.0 }
                 } label: {
                     Text("\(String(format: "%.2g", player.speed))x")
@@ -199,8 +228,14 @@ struct TransitionPlayerView: View {
                         .cornerRadius(4)
                 }
 
-                Button(action: { countMode.toggle() }) {
-                    Text(countMode ? "8ct" : "sec")
+                Menu {
+                    Button("Seconds") { countMode = false }
+                    Divider()
+                    Button("4 counts") { countMode = true; countsPerTransition = 4 }
+                    Button("8 counts") { countMode = true; countsPerTransition = 8 }
+                    Button("16 counts") { countMode = true; countsPerTransition = 16 }
+                } label: {
+                    Text(countMode ? "\(countsPerTransition)ct" : "sec")
                         .font(.caption.bold())
                         .padding(.horizontal, 8).padding(.vertical, 4)
                         .background(countMode ? Color.blue : Color.gray.opacity(0.2))
@@ -311,7 +346,7 @@ struct TransitionPlayerView: View {
                 for athlete in player.currentFormation.athletes {
                     if hypot(
                         initialScaledPoint.x - athlete.position.x,
-                        initialScaledPoint.y - athlete.position.y) < 2.0
+                        initialScaledPoint.y - athlete.position.y) < 3.0
                     {
                         selectedAthleteId = athlete.id
                         return

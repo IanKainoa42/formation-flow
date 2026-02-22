@@ -7,7 +7,6 @@ struct FormationListView: View {
     @State private var showingNewFormationAlert = false
     @State private var newFormationName = ""
     @State private var activeFormation: Formation?
-    @State private var navigateToEditor = false
 
     var body: some View {
         Group {
@@ -73,14 +72,11 @@ struct FormationListView: View {
                 persistenceManager.addFormation(formation)
                 activeFormation = formation
                 newFormationName = ""
-                navigateToEditor = true
             }
             Button("Cancel", role: .cancel) { newFormationName = "" }
         }
-        .navigationDestination(isPresented: $navigateToEditor) {
-            if let formation = activeFormation {
-                FloorGridView(formation: formation)
-            }
+        .navigationDestination(item: $activeFormation) { formation in
+            FloorGridView(formation: formation)
         }
     }
 }
