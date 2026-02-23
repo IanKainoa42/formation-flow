@@ -43,6 +43,7 @@ class PersistenceManager: ObservableObject {
 
     private let formationsKey = "formations"
     private var saveWorkItem: DispatchWorkItem?
+    private let saveQueue = DispatchQueue(label: "FormationFlow.PersistenceSave", qos: .utility)
 
     @Published var formations: [Formation] = [] {
         didSet { scheduleSave() }
@@ -54,14 +55,17 @@ class PersistenceManager: ObservableObject {
 
     private func scheduleSave() {
         saveWorkItem?.cancel()
-        let snapshot = formations
         let key = formationsKey
-        let item = DispatchWorkItem {
-            guard let encoded = try? JSONEncoder().encode(snapshot) else { return }
-            UserDefaults.standard.set(encoded, forKey: key)
+        let item = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            let snapshot = self.formations
+            self.saveQueue.async {
+                guard let encoded = try? JSONEncoder().encode(snapshot) else { return }
+                UserDefaults.standard.set(encoded, forKey: key)
+            }
         }
         saveWorkItem = item
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.5, execute: item)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: item)
     }
 
     private func loadFormations() {
@@ -345,6 +349,33 @@ struct PathCalculations {
             }
         }
         return collisions
+    }
+
+    /// Return collision count and participant ids without allocating all collision pairs.
+    static func collisionSummary(in formation: Formation, minDistance: CGFloat = 2.0) -> (
+        count: Int, ids: Set<UUID>
+    ) {
+        let athletes = formation.athletes
+        guard athletes.count > 1 else { return (0, Set<UUID>()) }
+
+        let minDistanceSq = minDistance * minDistance
+        var collisionCount = 0
+        var collisionIds = Set<UUID>()
+        collisionIds.reserveCapacity(athletes.count)
+
+        for i in 0..<athletes.count {
+            for j in (i + 1)..<athletes.count {
+                if squaredDistance(from: athletes[i].position, to: athletes[j].position)
+                    < minDistanceSq
+                {
+                    collisionCount += 1
+                    collisionIds.insert(athletes[i].id)
+                    collisionIds.insert(athletes[j].id)
+                }
+            }
+        }
+
+        return (collisionCount, collisionIds)
     }
 
     /// Find the indices of athletes whose transition paths cross within minDistance

@@ -72,6 +72,13 @@ struct TransitionPickerView: View {
 // MARK: - Transition Player View
 
 struct TransitionPlayerView: View {
+    private struct PathCollisionKey: Equatable {
+        let id: UUID
+        let startPosition: CGPoint
+        let endPosition: CGPoint
+        let controlPoint: CGPoint?
+    }
+
     @StateObject private var player: TransitionPlayer
     @StateObject private var persistenceManager = PersistenceManager.shared
     @State private var selectedAthleteId: UUID?
@@ -79,6 +86,7 @@ struct TransitionPlayerView: View {
     @State private var countsPerTransition: Int = 8
     @State private var isDraggingHandle = false
     @State private var pathCollisionIndices: Set<Int> = []
+    @State private var pathCollisionKey: [PathCollisionKey] = []
 
     let gridCols: CGFloat = 52
     let gridRows: CGFloat = 30
@@ -282,15 +290,13 @@ struct TransitionPlayerView: View {
         }
         .navigationTitle("\(player.startFormation.name) → \(player.endFormation.name)")
         .onAppear {
-            pathCollisionIndices = PathCalculations.findPathCollisionIndices(
-                start: player.startFormation, end: player.endFormation)
+            updatePathCollisionCache(start: player.startFormation, force: true)
         }
         .onChange(of: player.startFormation) { _, newFormation in
             if !isDraggingHandle {
                 persistenceManager.updateFormation(newFormation)
             }
-            pathCollisionIndices = PathCalculations.findPathCollisionIndices(
-                start: newFormation, end: player.endFormation)
+            updatePathCollisionCache(start: newFormation)
         }
     }
 
@@ -351,9 +357,11 @@ struct TransitionPlayerView: View {
                         let newCx = 2 * scaledPoint.x - 0.5 * startPos.x - 0.5 * endPos.x
                         let newCy = 2 * scaledPoint.y - 0.5 * startPos.y - 0.5 * endPos.y
 
-                        player.startFormation.athletes[index].pathControlPoint = CGPoint(
-                            x: newCx, y: newCy)
-                        player.seek(to: player.progress)  // force refresh
+                        let newControlPoint = CGPoint(x: newCx, y: newCy)
+                        if player.startFormation.athletes[index].pathControlPoint != newControlPoint {
+                            player.startFormation.athletes[index].pathControlPoint = newControlPoint
+                            player.seek(to: player.progress)  // force refresh
+                        }
                         return
                     }
                 }
@@ -384,6 +392,27 @@ struct TransitionPlayerView: View {
 
     private func formatTime(_ seconds: CGFloat) -> String {
         String(format: "%.1fs", max(0, seconds))
+    }
+
+    private func updatePathCollisionCache(start: Formation, force: Bool = false) {
+        let count = min(start.athletes.count, player.endFormation.athletes.count)
+        var newKey: [PathCollisionKey] = []
+        newKey.reserveCapacity(count)
+
+        for i in 0..<count {
+            newKey.append(
+                PathCollisionKey(
+                    id: start.athletes[i].id,
+                    startPosition: start.athletes[i].position,
+                    endPosition: player.endFormation.athletes[i].position,
+                    controlPoint: start.athletes[i].pathControlPoint
+                ))
+        }
+
+        guard force || newKey != pathCollisionKey else { return }
+        pathCollisionKey = newKey
+        pathCollisionIndices = PathCalculations.findPathCollisionIndices(
+            start: start, end: player.endFormation)
     }
 }
 

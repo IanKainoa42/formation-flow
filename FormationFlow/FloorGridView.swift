@@ -15,6 +15,11 @@ private enum FloorGridDestination: Identifiable, Hashable {
 // MARK: - Floor Grid View
 
 struct FloorGridView: View {
+    private struct CollisionPositionKey: Equatable {
+        let id: UUID
+        let position: CGPoint
+    }
+
     @StateObject private var persistenceManager = PersistenceManager.shared
     @Environment(\.dismiss) private var dismiss
     @State var formation: Formation
@@ -31,9 +36,11 @@ struct FloorGridView: View {
     @State private var cachedCollisionCount: Int = 0
 
     @State private var isDraggingAthlete = false
+    @State private var draggingAthleteIndex: Int?
     @State private var dragStartAthletePosition: CGPoint = .zero
     @State private var isPanning = false
     @State private var undoStack: [(id: UUID, position: CGPoint)] = []
+    @State private var collisionPositionKey: [CollisionPositionKey] = []
 
     @State private var zoomScale: CGFloat = 1.0
     @State private var panOffset: CGSize = .zero
@@ -86,7 +93,7 @@ struct FloorGridView: View {
             #endif
         }
         .onAppear {
-            updateCollisionCache(for: formation)
+            updateCollisionCache(for: formation, force: true)
         }
         .onChange(of: formation) { _, newFormation in
             if !isDraggingAthlete && !isPanning {
@@ -231,13 +238,13 @@ struct FloorGridView: View {
                         y: (value.startLocation.y - canvasOffset.y) / cellSize
                     )
                     var hitAthlete = false
-                    for athlete in formation.athletes {
-                        if hypot(
-                            startScaled.x - athlete.position.x,
-                            startScaled.y - athlete.position.y) < 3.0
-                        {
+                    for (index, athlete) in formation.athletes.enumerated() {
+                        let dx = startScaled.x - athlete.position.x
+                        let dy = startScaled.y - athlete.position.y
+                        if (dx * dx + dy * dy) < 9.0 {
                             selectedAthleteId = athlete.id
                             isDraggingAthlete = true
+                            draggingAthleteIndex = index
                             dragStartAthletePosition = athlete.position
                             hitAthlete = true
                             break
@@ -245,20 +252,24 @@ struct FloorGridView: View {
                     }
                     if !hitAthlete {
                         selectedAthleteId = nil
+                        draggingAthleteIndex = nil
                         isPanning = true
                     }
                 }
 
                 if isDraggingAthlete,
-                    let selectedId = selectedAthleteId,
-                    let index = formation.athletes.firstIndex(where: { $0.id == selectedId })
+                    let index = draggingAthleteIndex,
+                    formation.athletes.indices.contains(index)
                 {
                     let newX = dragStartAthletePosition.x + value.translation.width / cellSize
                     let newY = dragStartAthletePosition.y + value.translation.height / cellSize
-                    formation.athletes[index].position = CGPoint(
+                    let newPosition = CGPoint(
                         x: max(0, min(CourtConstants.width, round(newX))),
                         y: max(0, min(CourtConstants.height, round(newY)))
                     )
+                    if formation.athletes[index].position != newPosition {
+                        formation.athletes[index].position = newPosition
+                    }
                 } else if isPanning {
                     panOffset = CGSize(
                         width: lastPanOffset.width + value.translation.width,
@@ -273,6 +284,7 @@ struct FloorGridView: View {
                     persistenceManager.updateFormation(formation)
                 }
                 isDraggingAthlete = false
+                draggingAthleteIndex = nil
                 isPanning = false
             }
     }
@@ -371,10 +383,16 @@ struct FloorGridView: View {
 
     // MARK: - Actions
 
-    private func updateCollisionCache(for formation: Formation) {
-        let cols = PathCalculations.findCollisions(in: formation, minDistance: 2.0)
-        cachedCollisionCount = cols.count
-        cachedCollisionIds = Set(cols.flatMap { [$0.0.id, $0.1.id] })
+    private func updateCollisionCache(for formation: Formation, force: Bool = false) {
+        let newKey = formation.athletes.map { athlete in
+            CollisionPositionKey(id: athlete.id, position: athlete.position)
+        }
+        guard force || newKey != collisionPositionKey else { return }
+        collisionPositionKey = newKey
+
+        let summary = PathCalculations.collisionSummary(in: formation, minDistance: 2.0)
+        cachedCollisionCount = summary.count
+        cachedCollisionIds = summary.ids
     }
 
     private func addAthlete() {
