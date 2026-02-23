@@ -174,14 +174,7 @@ struct FloorCanvasView: View {
             let isColliding = collisionIds.contains(athlete.id)
 
             // Bug 5 fix: role-based color coding
-            let roleColor: Color
-            switch athlete.role {
-            case .flyer: roleColor = .yellow
-            case .base: roleColor = .blue
-            case .spotter: roleColor = .green
-            case .backspot: roleColor = .purple
-            case .tumbler: roleColor = .orange
-            }
+            let roleColor = athlete.role.color
             let color: Color = isColliding ? .red : (isSelected ? .white : roleColor)
             let radius: CGFloat = isSelected ? 18 : 14
 
@@ -226,7 +219,7 @@ struct FloorCanvasView: View {
             }
 
             let labelColor: Color = isSelected ? roleColor : .white
-            let displayLabel = String(athlete.label.prefix(3))
+            let displayLabel = athlete.label
             let text = Text(displayLabel)
                 .font(.system(.caption, design: .monospaced))
                 .foregroundColor(labelColor)

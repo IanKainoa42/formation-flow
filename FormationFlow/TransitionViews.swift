@@ -25,8 +25,9 @@ struct TransitionPickerView: View {
                         HStack(spacing: 12) {
                             FormationThumbnailView(formation: startFormation)
                                 .clipShape(RoundedRectangle(cornerRadius: 6))
-                                .overlay(RoundedRectangle(cornerRadius: 6)
-                                    .stroke(Color.gray.opacity(0.3)))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color.gray.opacity(0.3)))
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(startFormation.name).font(.headline)
                                 Text("\(startFormation.athletes.count) athletes")
@@ -47,8 +48,9 @@ struct TransitionPickerView: View {
                                 HStack(spacing: 12) {
                                     FormationThumbnailView(formation: formation)
                                         .clipShape(RoundedRectangle(cornerRadius: 6))
-                                        .overlay(RoundedRectangle(cornerRadius: 6)
-                                            .stroke(Color.gray.opacity(0.3)))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 6)
+                                                .stroke(Color.gray.opacity(0.3)))
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text(formation.name).font(.headline)
                                         Text("\(formation.athletes.count) athletes")
@@ -233,9 +235,18 @@ struct TransitionPlayerView: View {
                 Menu {
                     Button("Seconds") { countMode = false }
                     Divider()
-                    Button("4 counts") { countMode = true; countsPerTransition = 4 }
-                    Button("8 counts") { countMode = true; countsPerTransition = 8 }
-                    Button("16 counts") { countMode = true; countsPerTransition = 16 }
+                    Button("4 counts") {
+                        countMode = true
+                        countsPerTransition = 4
+                    }
+                    Button("8 counts") {
+                        countMode = true
+                        countsPerTransition = 8
+                    }
+                    Button("16 counts") {
+                        countMode = true
+                        countsPerTransition = 16
+                    }
                 } label: {
                     Text(countMode ? "\(countsPerTransition)ct" : "sec")
                         .font(.caption.bold())
@@ -275,7 +286,9 @@ struct TransitionPlayerView: View {
                 start: player.startFormation, end: player.endFormation)
         }
         .onChange(of: player.startFormation) { _, newFormation in
-            persistenceManager.updateFormation(newFormation)
+            if !isDraggingHandle {
+                persistenceManager.updateFormation(newFormation)
+            }
             pathCollisionIndices = PathCalculations.findPathCollisionIndices(
                 start: newFormation, end: player.endFormation)
         }
@@ -293,7 +306,8 @@ struct TransitionPlayerView: View {
                 if let selectedId = selectedAthleteId,
                     let index = player.startFormation.athletes.firstIndex(where: {
                         $0.id == selectedId
-                    })
+                    }),
+                    index < player.endFormation.athletes.count
                 {
 
                     let startPos = player.startFormation.athletes[index].position
@@ -325,10 +339,9 @@ struct TransitionPlayerView: View {
                         y: (value.startLocation.y - offset.y) / cellSize
                     )
 
-                    if isDraggingHandle
-                        || hypot(startScaledPoint.x - midPoint.x, startScaledPoint.y - midPoint.y)
-                            < 3.0
-                    {
+                    let dx = startScaledPoint.x - midPoint.x
+                    let dy = startScaledPoint.y - midPoint.y
+                    if isDraggingHandle || (dx * dx + dy * dy) < 9.0 {
                         isDraggingHandle = true
 
                         // User's finger is dragging the midpoint. We need to back-calculate the Bezier control point 'c'.
@@ -352,10 +365,9 @@ struct TransitionPlayerView: View {
                 )
 
                 for athlete in player.currentFormation.athletes {
-                    if hypot(
-                        initialScaledPoint.x - athlete.position.x,
-                        initialScaledPoint.y - athlete.position.y) < 3.0
-                    {
+                    let adx = initialScaledPoint.x - athlete.position.x
+                    let ady = initialScaledPoint.y - athlete.position.y
+                    if (adx * adx + ady * ady) < 9.0 {
                         selectedAthleteId = athlete.id
                         return
                     }
@@ -363,6 +375,9 @@ struct TransitionPlayerView: View {
                 selectedAthleteId = nil
             }
             .onEnded { _ in
+                if isDraggingHandle {
+                    persistenceManager.updateFormation(player.startFormation)
+                }
                 isDraggingHandle = false
             }
     }

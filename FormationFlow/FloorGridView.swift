@@ -49,26 +49,49 @@ struct FloorGridView: View {
         }
         .navigationTitle(formation.name)
         .toolbar {
-            ToolbarItemGroup(placement: .navigationBarLeading) {
-                if cachedCollisionCount > 0 {
-                    Label("\(cachedCollisionCount)", systemImage: "exclamationmark.triangle.fill")
+            #if os(iOS)
+                ToolbarItemGroup(placement: .navigationBarLeading) {
+                    if cachedCollisionCount > 0 {
+                        Label(
+                            "\(cachedCollisionCount)", systemImage: "exclamationmark.triangle.fill"
+                        )
                         .foregroundColor(.red)
                         .font(.caption.bold())
+                    }
+                    Button(action: undoLastMove) {
+                        Image(systemName: "arrow.uturn.backward")
+                    }
+                    .disabled(undoStack.isEmpty)
                 }
-                Button(action: undoLastMove) {
-                    Image(systemName: "arrow.uturn.backward")
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    trailingToolbar
                 }
-                .disabled(undoStack.isEmpty)
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                trailingToolbar
-            }
+            #else
+                ToolbarItemGroup {
+                    if cachedCollisionCount > 0 {
+                        Label(
+                            "\(cachedCollisionCount)", systemImage: "exclamationmark.triangle.fill"
+                        )
+                        .foregroundColor(.red)
+                        .font(.caption.bold())
+                    }
+                    Button(action: undoLastMove) {
+                        Image(systemName: "arrow.uturn.backward")
+                    }
+                    .disabled(undoStack.isEmpty)
+                }
+                ToolbarItem {
+                    trailingToolbar
+                }
+            #endif
         }
         .onAppear {
             updateCollisionCache(for: formation)
         }
         .onChange(of: formation) { _, newFormation in
-            persistenceManager.updateFormation(newFormation)
+            if !isDraggingAthlete && !isPanning {
+                persistenceManager.updateFormation(newFormation)
+            }
             updateCollisionCache(for: newFormation)
         }
         .navigationDestination(item: $activeDestination) { dest in
@@ -102,7 +125,7 @@ struct FloorGridView: View {
                     ForEach(formation.athletes) { athlete in
                         HStack(spacing: 10) {
                             Circle()
-                                .fill(colorForRole(athlete.role))
+                                .fill(athlete.role.color)
                                 .frame(width: 10, height: 10)
                             Text(athlete.label).font(.body)
                             Text(athlete.role.rawValue)
@@ -116,10 +139,16 @@ struct FloorGridView: View {
                 }
                 .navigationTitle("Manage Athletes")
                 .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) { EditButton() }
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Done") { showingManageAthletes = false }
-                    }
+                    #if os(iOS)
+                        ToolbarItem(placement: .navigationBarLeading) { EditButton() }
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button("Done") { showingManageAthletes = false }
+                        }
+                    #else
+                        ToolbarItem {
+                            Button("Done") { showingManageAthletes = false }
+                        }
+                    #endif
                 }
             }
         }
@@ -138,9 +167,15 @@ struct FloorGridView: View {
                 .padding()
                 .navigationTitle("Formation Notes")
                 .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Close") { showingNotesSheet = false }
-                    }
+                    #if os(iOS)
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button("Close") { showingNotesSheet = false }
+                        }
+                    #else
+                        ToolbarItem {
+                            Button("Close") { showingNotesSheet = false }
+                        }
+                    #endif
                 }
             }
         }
@@ -235,6 +270,7 @@ struct FloorGridView: View {
                 if isPanning { lastPanOffset = panOffset }
                 if isDraggingAthlete, let id = selectedAthleteId {
                     undoStack.append((id: id, position: dragStartAthletePosition))
+                    persistenceManager.updateFormation(formation)
                 }
                 isDraggingAthlete = false
                 isPanning = false
@@ -374,16 +410,6 @@ struct FloorGridView: View {
         formation.removeAthlete(id: id)
         undoStack.removeAll { $0.id == id }
         selectedAthleteId = nil
-    }
-
-    private func colorForRole(_ role: AthleteRole) -> Color {
-        switch role {
-        case .base: return .blue
-        case .flyer: return .yellow
-        case .spotter: return .green
-        case .backspot: return .purple
-        case .tumbler: return .orange
-        }
     }
 
     private func duplicateFormation() {

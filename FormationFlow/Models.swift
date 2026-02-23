@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 #if os(iOS)
     import UIKit
@@ -23,6 +24,16 @@ enum AthleteRole: String, Codable, CaseIterable {
     case spotter
     case backspot
     case tumbler
+
+    var color: Color {
+        switch self {
+        case .base: return .blue
+        case .flyer: return .yellow
+        case .spotter: return .green
+        case .backspot: return .purple
+        case .tumbler: return .orange
+        }
+    }
 }
 
 // MARK: - Persistence Manager
@@ -233,16 +244,24 @@ struct Formation: Codable, Identifiable, Equatable, Hashable {
 // MARK: - Path Calculation Utilities
 
 struct PathCalculations {
-    /// Calculate distance between two points in floor feet
+    /// Calculate standard distance between two points in floor feet
     static func distance(from: CGPoint, to: CGPoint) -> CGFloat {
         hypot(to.x - from.x, to.y - from.y)
+    }
+
+    /// Calculate mathematically cheaper squared distance between two points in floor feet
+    static func squaredDistance(from: CGPoint, to: CGPoint) -> CGFloat {
+        let dx = to.x - from.x
+        let dy = to.y - from.y
+        return dx * dx + dy * dy
     }
 
     /// Find the nearest athlete to a given position
     static func nearestAthlete(to position: CGPoint, in formation: Formation) -> Athlete? {
         guard !formation.athletes.isEmpty else { return nil }
         return formation.athletes.min { a, b in
-            distance(from: position, to: a.position) < distance(from: position, to: b.position)
+            squaredDistance(from: position, to: a.position)
+                < squaredDistance(from: position, to: b.position)
         }
     }
 
@@ -306,8 +325,8 @@ struct PathCalculations {
     static func checkCollision(athleteA: Athlete, athleteB: Athlete, minDistance: CGFloat = 2.0)
         -> Bool
     {
-        let dist = distance(from: athleteA.position, to: athleteB.position)
-        return dist < minDistance
+        let distSq = squaredDistance(from: athleteA.position, to: athleteB.position)
+        return distSq < (minDistance * minDistance)
     }
 
     /// Find all collision pairs in a formation
@@ -344,10 +363,11 @@ struct PathCalculations {
                     steps: steps
                 ))
         }
+        let minDistanceSq = minDistance * minDistance
         for i in 0..<count {
             for j in (i + 1)..<count {
                 for step in 0..<min(paths[i].count, paths[j].count) {
-                    if distance(from: paths[i][step], to: paths[j][step]) < minDistance {
+                    if squaredDistance(from: paths[i][step], to: paths[j][step]) < minDistanceSq {
                         collidingIndices.insert(i)
                         collidingIndices.insert(j)
                         break

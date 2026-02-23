@@ -55,14 +55,22 @@ struct FormationListView: View {
         }
         .navigationTitle("Saved Formations")
         .toolbar {
-            ToolbarItemGroup(placement: .navigationBarTrailing) {
-                if !persistenceManager.formations.isEmpty {
-                    EditButton()
+            #if os(iOS)
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    if !persistenceManager.formations.isEmpty {
+                        EditButton()
+                    }
+                    Button(action: { showingNewFormationAlert = true }) {
+                        Image(systemName: "plus")
+                    }
                 }
-                Button(action: { showingNewFormationAlert = true }) {
-                    Image(systemName: "plus")
+            #else
+                ToolbarItemGroup {
+                    Button(action: { showingNewFormationAlert = true }) {
+                        Image(systemName: "plus")
+                    }
                 }
-            }
+            #endif
         }
         .alert("New Formation", isPresented: $showingNewFormationAlert) {
             TextField("Formation name", text: $newFormationName)
