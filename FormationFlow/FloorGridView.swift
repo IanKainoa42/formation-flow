@@ -26,9 +26,6 @@ struct FloorGridView: View {
     @State var selectedAthleteId: UUID?
     @State private var showingRenameAlert = false
     @State private var renameText = ""
-    @State private var showingNotesSheet = false
-    @State private var showingNewFromHereAlert = false
-    @State private var newFromHereName = ""
     @State private var showingManageAthletes = false
     @State private var activeDestination: FloorGridDestination?
 
@@ -47,8 +44,8 @@ struct FloorGridView: View {
     @State private var lastPanOffset: CGSize = .zero
     @State private var lastZoomScale: CGFloat = 1.0
 
-    let gridCols: CGFloat = 52
-    let gridRows: CGFloat = 30
+    let gridCols: CGFloat = 72
+    let gridRows: CGFloat = 56
 
     var body: some View {
         GeometryReader { geometry in
@@ -111,21 +108,6 @@ struct FloorGridView: View {
         } message: {
             Text("Enter a new name for this formation")
         }
-        .alert("New Formation from Here", isPresented: $showingNewFromHereAlert) {
-            TextField("Formation name", text: $newFromHereName)
-            Button("Create") {
-                var newFormation = formation
-                newFormation.id = UUID()
-                newFormation.name = newFromHereName.isEmpty ? "Untitled Formation" : newFromHereName
-                newFormation.notes = ""
-                persistenceManager.addFormation(newFormation)
-                newFromHereName = ""
-                dismiss()
-            }
-            Button("Cancel", role: .cancel) { newFromHereName = "" }
-        } message: {
-            Text("Athletes and positions will be copied from \(formation.name).")
-        }
         .sheet(isPresented: $showingManageAthletes) {
             NavigationStack {
                 List {
@@ -154,33 +136,6 @@ struct FloorGridView: View {
                     #else
                         ToolbarItem {
                             Button("Done") { showingManageAthletes = false }
-                        }
-                    #endif
-                }
-            }
-        }
-        .sheet(isPresented: $showingNotesSheet) {
-            NavigationStack {
-                ZStack(alignment: .topLeading) {
-                    if formation.notes.isEmpty {
-                        Text("Add notes for dancers, counts, cues...")
-                            .foregroundColor(.gray.opacity(0.6))
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 8)
-                            .allowsHitTesting(false)
-                    }
-                    TextEditor(text: $formation.notes)
-                }
-                .padding()
-                .navigationTitle("Formation Notes")
-                .toolbar {
-                    #if os(iOS)
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            Button("Close") { showingNotesSheet = false }
-                        }
-                    #else
-                        ToolbarItem {
-                            Button("Close") { showingNotesSheet = false }
                         }
                     #endif
                 }
@@ -323,7 +278,7 @@ struct FloorGridView: View {
                 Button(action: addAthlete) {
                     Image(systemName: "plus")
                         .font(.title2.bold())
-                        .frame(width: 56, height: 56)
+                        .frame(width: 48, height: 48)
                         .background(Color.blue)
                         .foregroundColor(.white)
                         .clipShape(Circle())
@@ -340,7 +295,7 @@ struct FloorGridView: View {
     private var trailingToolbar: some View {
         HStack(spacing: 12) {
             Button(action: { activeDestination = .transition(formation) }) {
-                Label("Transition", systemImage: "arrow.right.circle")
+                Image(systemName: "arrow.right.circle")
             }
 
             Menu {
@@ -353,17 +308,8 @@ struct FloorGridView: View {
                 Button(action: duplicateFormation) {
                     Label("Duplicate", systemImage: "doc.on.doc")
                 }
-                Button(action: {
-                    newFromHereName = ""
-                    showingNewFromHereAlert = true
-                }) {
-                    Label("New Formation from Here", systemImage: "plus.rectangle.on.rectangle")
-                }
                 Button(action: { showingManageAthletes = true }) {
                     Label("Manage Athletes", systemImage: "list.bullet")
-                }
-                Button(action: { showingNotesSheet = true }) {
-                    Label("Notes", systemImage: "note.text")
                 }
             } label: {
                 Image(systemName: "ellipsis.circle")

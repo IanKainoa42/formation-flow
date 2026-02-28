@@ -10,8 +10,8 @@ import SwiftUI
 // MARK: - Constants
 
 enum CourtConstants {
-    static let width: CGFloat = 52  // feet (standard cheerleading court)
-    static let height: CGFloat = 30  // feet
+    static let width: CGFloat = 72   // 54ft wide — 9 panels × 8 units
+    static let height: CGFloat = 56  // 42ft long — 7 panels × 8 units
     static let cellSize: CGFloat = 12  // pixels per foot
     static let collisionDistance: CGFloat = 2.0  // feet
 }

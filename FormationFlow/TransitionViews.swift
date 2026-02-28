@@ -6,66 +6,89 @@ struct TransitionPickerView: View {
     let startFormation: Formation
     @StateObject private var persistenceManager = PersistenceManager.shared
 
-    var otherFormations: [Formation] {
-        persistenceManager.formations.filter { $0.id != startFormation.id }
+    private var currentIndex: Int? {
+        persistenceManager.formations.firstIndex(where: { $0.id == startFormation.id })
+    }
+
+    private var prevFormation: Formation? {
+        guard let idx = currentIndex, idx > 0 else { return nil }
+        return persistenceManager.formations[idx - 1]
+    }
+
+    private var nextFormation: Formation? {
+        guard let idx = currentIndex, idx < persistenceManager.formations.count - 1 else { return nil }
+        return persistenceManager.formations[idx + 1]
     }
 
     var body: some View {
-        Group {
-            if otherFormations.isEmpty {
-                ContentUnavailableView(
-                    "No Other Formations",
-                    systemImage: "arrow.left.arrow.right",
-                    description: Text(
-                        "Save another formation first, then come back to preview the transition.")
-                )
-            } else {
-                List {
-                    Section("Transition from") {
-                        HStack(spacing: 12) {
-                            FormationThumbnailView(formation: startFormation)
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .stroke(Color.gray.opacity(0.3)))
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(startFormation.name).font(.headline)
-                                Text("\(startFormation.athletes.count) athletes")
-                                    .font(.caption)
-                                    .foregroundColor(.gray)
-                            }
-                        }
-                        .padding(.vertical, 4)
+        HStack(spacing: 0) {
+            // Left: Prev button
+            if let prev = prevFormation {
+                NavigationLink(
+                    destination: TransitionPlayerView(
+                        startFormation: prev,
+                        endFormation: startFormation
+                    )
+                ) {
+                    VStack(spacing: 6) {
+                        Image(systemName: "arrow.left.circle.fill")
+                            .font(.title)
+                        Text("Prev")
+                            .font(.caption.bold())
+                        Text(prev.name)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
                     }
-                    Section("Transition to...") {
-                        ForEach(otherFormations) { formation in
-                            NavigationLink(
-                                destination: TransitionPlayerView(
-                                    startFormation: startFormation,
-                                    endFormation: formation
-                                )
-                            ) {
-                                HStack(spacing: 12) {
-                                    FormationThumbnailView(formation: formation)
-                                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 6)
-                                                .stroke(Color.gray.opacity(0.3)))
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(formation.name).font(.headline)
-                                        Text("\(formation.athletes.count) athletes")
-                                            .font(.caption)
-                                            .foregroundColor(.gray)
-                                    }
-                                }
-                                .padding(.vertical, 4)
-                            }
-                        }
-                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
                 }
+            } else {
+                Color.clear.frame(maxWidth: .infinity)
+            }
+
+            // Center: Current formation
+            VStack(spacing: 8) {
+                FormationThumbnailView(formation: startFormation)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.gray.opacity(0.3)))
+                Text(startFormation.name)
+                    .font(.headline)
+                Text("\(startFormation.athletes.count) athletes")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding()
+
+            // Right: Next button
+            if let next = nextFormation {
+                NavigationLink(
+                    destination: TransitionPlayerView(
+                        startFormation: startFormation,
+                        endFormation: next
+                    )
+                ) {
+                    VStack(spacing: 6) {
+                        Image(systemName: "arrow.right.circle.fill")
+                            .font(.title)
+                        Text("Next")
+                            .font(.caption.bold())
+                        Text(next.name)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                }
+            } else {
+                Color.clear.frame(maxWidth: .infinity)
             }
         }
-        .navigationTitle("Preview Transition")
+        .navigationTitle("Transition")
     }
 }
 
@@ -88,8 +111,8 @@ struct TransitionPlayerView: View {
     @State private var pathCollisionIndices: Set<Int> = []
     @State private var pathCollisionKey: [PathCollisionKey] = []
 
-    let gridCols: CGFloat = 52
-    let gridRows: CGFloat = 30
+    let gridCols: CGFloat = 72
+    let gridRows: CGFloat = 56
 
     init(startFormation: Formation, endFormation: Formation) {
         _player = StateObject(

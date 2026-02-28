@@ -4,8 +4,6 @@ import SwiftUI
 
 struct FormationListView: View {
     @StateObject private var persistenceManager = PersistenceManager.shared
-    @State private var showingNewFormationAlert = false
-    @State private var newFormationName = ""
     @State private var activeFormation: Formation?
 
     var body: some View {
@@ -60,32 +58,29 @@ struct FormationListView: View {
                     if !persistenceManager.formations.isEmpty {
                         EditButton()
                     }
-                    Button(action: { showingNewFormationAlert = true }) {
+                    Button(action: createFormation) {
                         Image(systemName: "plus")
                     }
                 }
             #else
                 ToolbarItemGroup {
-                    Button(action: { showingNewFormationAlert = true }) {
+                    Button(action: createFormation) {
                         Image(systemName: "plus")
                     }
                 }
             #endif
         }
-        .alert("New Formation", isPresented: $showingNewFormationAlert) {
-            TextField("Formation name", text: $newFormationName)
-            Button("Create") {
-                var formation = Formation()
-                formation.name = newFormationName.isEmpty ? "Untitled Formation" : newFormationName
-                persistenceManager.addFormation(formation)
-                activeFormation = formation
-                newFormationName = ""
-            }
-            Button("Cancel", role: .cancel) { newFormationName = "" }
-        }
         .navigationDestination(item: $activeFormation) { formation in
             FloorGridView(formation: formation)
         }
+    }
+
+    private func createFormation() {
+        let n = persistenceManager.formations.count + 1
+        var formation = Formation()
+        formation.name = "Formation \(n)"
+        persistenceManager.addFormation(formation)
+        activeFormation = formation
     }
 }
 

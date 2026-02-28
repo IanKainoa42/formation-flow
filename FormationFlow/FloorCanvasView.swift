@@ -12,8 +12,8 @@ struct FloorCanvasView: View {
     var cellSize: CGFloat = 12
     var offset: CGPoint = .zero
 
-    let gridCols: CGFloat = 52
-    let gridRows: CGFloat = 30
+    let gridCols: CGFloat = 72  // 9 panels × 8 units
+    let gridRows: CGFloat = 56
 
     var body: some View {
         Canvas { context, _ in
@@ -143,23 +143,35 @@ struct FloorCanvasView: View {
         let width = gridCols * cellSize
         let height = gridRows * cellSize
 
-        var gridPath = Path()
-
+        // Fine grid — 1 unit squares inside each panel
+        var finePath = Path()
         for x in stride(from: 0, through: width, by: cellSize) {
-            gridPath.move(to: CGPoint(x: x, y: 0))
-            gridPath.addLine(to: CGPoint(x: x, y: height))
+            finePath.move(to: CGPoint(x: x, y: 0))
+            finePath.addLine(to: CGPoint(x: x, y: height))
         }
-
         for y in stride(from: 0, through: height, by: cellSize) {
-            gridPath.move(to: CGPoint(x: 0, y: y))
-            gridPath.addLine(to: CGPoint(x: width, y: y))
+            finePath.move(to: CGPoint(x: 0, y: y))
+            finePath.addLine(to: CGPoint(x: width, y: y))
         }
+        context.stroke(finePath, with: .color(.gray.opacity(0.15)), lineWidth: 0.5)
 
-        context.stroke(
-            gridPath,
-            with: .color(.gray.opacity(0.3)),
-            lineWidth: 0.5
-        )
+        // Panel dividers — every 8 units (9 cols × 7 rows)
+        var panelPath = Path()
+        for col in stride(from: 8, through: Int(gridCols) - 1, by: 8) {
+            let screenX = CGFloat(col) * cellSize
+            panelPath.move(to: CGPoint(x: screenX, y: 0))
+            panelPath.addLine(to: CGPoint(x: screenX, y: height))
+        }
+        // Single halfway horizontal line
+        let midY = (gridRows / 2) * cellSize
+        panelPath.move(to: CGPoint(x: 0, y: midY))
+        panelPath.addLine(to: CGPoint(x: width, y: midY))
+        context.stroke(panelPath, with: .color(.gray.opacity(0.6)), lineWidth: 2.0)
+
+        // Floor border
+        var borderPath = Path()
+        borderPath.addRect(CGRect(x: 0, y: 0, width: width, height: height))
+        context.stroke(borderPath, with: .color(.gray.opacity(0.6)), lineWidth: 2.0)
     }
 
     private func drawAthletes(in context: inout GraphicsContext) {
