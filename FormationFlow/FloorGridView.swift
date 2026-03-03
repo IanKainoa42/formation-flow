@@ -28,6 +28,7 @@ struct FloorGridView: View {
     @State private var renameText = ""
     @State private var showingManageAthletes = false
     @State private var showingNotes = false
+    @State private var showingDeleteFormation = false
     @State private var activeDestination: FloorGridDestination?
 
     @State private var cachedCollisionIds: Set<UUID> = []
@@ -119,6 +120,19 @@ struct FloorGridView: View {
         }
         .sheet(isPresented: $showingNotes) {
             notesSheet
+        }
+        .confirmationDialog(
+            "Delete \"\(formation.name)\"?",
+            isPresented: $showingDeleteFormation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                persistenceManager.deleteFormation(id: formation.id)
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will permanently delete this formation and its \(formation.athletes.count) athletes.")
         }
     }
 
@@ -374,6 +388,32 @@ struct FloorGridView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
         }
 
+        if zoomScale != 1.0 || panOffset != .zero {
+            VStack {
+                HStack {
+                    Spacer()
+                    Button {
+                        withAnimation(.spring()) {
+                            zoomScale = 1.0
+                            lastZoomScale = 1.0
+                            panOffset = .zero
+                            lastPanOffset = .zero
+                        }
+                    } label: {
+                        Label("Reset View", systemImage: "arrow.counterclockwise")
+                            .font(.caption)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(.ultraThinMaterial)
+                            .cornerRadius(8)
+                    }
+                    .padding(.trailing, 16)
+                    .padding(.top, 8)
+                }
+                Spacer()
+            }
+        }
+
         VStack {
             Spacer()
             HStack {
@@ -419,6 +459,10 @@ struct FloorGridView: View {
                 }
                 Button(action: { showingManageAthletes = true }) {
                     Label("Manage Athletes", systemImage: "list.bullet")
+                }
+                Divider()
+                Button(role: .destructive, action: { showingDeleteFormation = true }) {
+                    Label("Delete Formation", systemImage: "trash")
                 }
             } label: {
                 Image(systemName: "ellipsis.circle")
