@@ -14,6 +14,7 @@ enum CourtConstants {
     static let height: CGFloat = 56  // 42ft long — 7 panels × 8 units
     static let cellSize: CGFloat = 12  // pixels per foot
     static let collisionDistance: CGFloat = 2.0  // feet
+    static let hitRadiusSquared: CGFloat = 9.0  // 3-foot tap radius, squared
 }
 
 // MARK: - Athlete Role
@@ -260,6 +261,18 @@ struct PathCalculations {
         return dx * dx + dy * dy
     }
 
+    /// Evaluate a quadratic Bezier curve at parameter t (0...1).
+    static func quadraticBezierPoint(from p0: CGPoint, control c: CGPoint, to p2: CGPoint, t: CGFloat) -> CGPoint {
+        let u = 1.0 - t
+        let uu = u * u
+        let ut2 = 2.0 * u * t
+        let tt = t * t
+        return CGPoint(
+            x: uu * p0.x + ut2 * c.x + tt * p2.x,
+            y: uu * p0.y + ut2 * c.y + tt * p2.y
+        )
+    }
+
     /// Find the nearest athlete to a given position
     static func nearestAthlete(to position: CGPoint, in formation: Formation) -> Athlete? {
         guard !formation.athletes.isEmpty else { return nil }
@@ -300,25 +313,16 @@ struct PathCalculations {
         var path: [CGPoint] = [from]
         for i in 1..<steps {
             let t = CGFloat(i) / CGFloat(steps - 1)
-            let x: CGFloat
-            let y: CGFloat
-
+            let point: CGPoint
             if let c = control {
-                // Quadratic bezier interpolation
-                let u = 1.0 - t
-                let tt = t * t
-                let uu = u * u
-                let ut2 = 2.0 * u * t
-
-                x = uu * from.x + ut2 * c.x + tt * to.x
-                y = uu * from.y + ut2 * c.y + tt * to.y
+                point = quadraticBezierPoint(from: from, control: c, to: to, t: t)
             } else {
-                // Linear interpolation
-                x = from.x + (to.x - from.x) * t
-                y = from.y + (to.y - from.y) * t
+                point = CGPoint(
+                    x: from.x + (to.x - from.x) * t,
+                    y: from.y + (to.y - from.y) * t
+                )
             }
-
-            path.append(CGPoint(x: x, y: y))
+            path.append(point)
         }
         path.append(to)
         return path
@@ -480,27 +484,19 @@ class TransitionPlayer: ObservableObject {
                 let athleteProgress = min(
                     1.0, max(0, progress - timingOffset) / (1.0 - timingOffset))
 
-                let newX: CGFloat
-                let newY: CGFloat
+                let newPosition: CGPoint
                 if let c = startAthlete.pathControlPoint {
-                    let u = 1.0 - athleteProgress
-                    let tt = athleteProgress * athleteProgress
-                    let uu = u * u
-                    let ut2 = 2.0 * u * athleteProgress
-
-                    newX = uu * startAthlete.position.x + ut2 * c.x + tt * endAthlete.position.x
-                    newY = uu * startAthlete.position.y + ut2 * c.y + tt * endAthlete.position.y
+                    newPosition = PathCalculations.quadraticBezierPoint(
+                        from: startAthlete.position, control: c, to: endAthlete.position, t: athleteProgress)
                 } else {
-                    newX =
-                        startAthlete.position.x + (endAthlete.position.x - startAthlete.position.x)
-                        * athleteProgress
-                    newY =
-                        startAthlete.position.y + (endAthlete.position.y - startAthlete.position.y)
-                        * athleteProgress
+                    newPosition = CGPoint(
+                        x: startAthlete.position.x + (endAthlete.position.x - startAthlete.position.x) * athleteProgress,
+                        y: startAthlete.position.y + (endAthlete.position.y - startAthlete.position.y) * athleteProgress
+                    )
                 }
 
                 var athlete = startAthlete
-                athlete.position = CGPoint(x: newX, y: newY)
+                athlete.position = newPosition
                 newFormation.athletes.append(athlete)
             } else {
                 newFormation.athletes.append(startFormation.athletes[i])

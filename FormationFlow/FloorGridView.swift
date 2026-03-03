@@ -44,9 +44,6 @@ struct FloorGridView: View {
     @State private var lastPanOffset: CGSize = .zero
     @State private var lastZoomScale: CGFloat = 1.0
 
-    let gridCols: CGFloat = 72
-    let gridRows: CGFloat = 56
-
     var body: some View {
         GeometryReader { geometry in
             canvasStack(geometry: geometry)
@@ -146,10 +143,12 @@ struct FloorGridView: View {
     // MARK: - Canvas
 
     private func canvasStack(geometry: GeometryProxy) -> some View {
-        let baseCellSize = min(geometry.size.width / gridCols, geometry.size.height / gridRows)
+        let baseCellSize = min(
+            geometry.size.width / CourtConstants.width, geometry.size.height / CourtConstants.height
+        )
         let cellSize = baseCellSize * zoomScale
-        let canvasWidth = gridCols * cellSize
-        let canvasHeight = gridRows * cellSize
+        let canvasWidth = CourtConstants.width * cellSize
+        let canvasHeight = CourtConstants.height * cellSize
         let offsetX = (geometry.size.width - canvasWidth) / 2 + panOffset.width
         let offsetY = (geometry.size.height - canvasHeight) / 2 + panOffset.height
         let canvasOffset = CGPoint(x: offsetX, y: offsetY)
@@ -194,9 +193,9 @@ struct FloorGridView: View {
                     )
                     var hitAthlete = false
                     for (index, athlete) in formation.athletes.enumerated() {
-                        let dx = startScaled.x - athlete.position.x
-                        let dy = startScaled.y - athlete.position.y
-                        if (dx * dx + dy * dy) < 9.0 {
+                        if PathCalculations.squaredDistance(from: startScaled, to: athlete.position)
+                            < CourtConstants.hitRadiusSquared
+                        {
                             selectedAthleteId = athlete.id
                             isDraggingAthlete = true
                             draggingAthleteIndex = index

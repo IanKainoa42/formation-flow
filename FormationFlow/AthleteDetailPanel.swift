@@ -7,14 +7,6 @@ struct AthleteDetailPanel: View {
     @Binding var selectedAthleteId: UUID?
     var onDelete: () -> Void
 
-    private let roles: [(AthleteRole, Color)] = [
-        (.base, .blue),
-        (.flyer, .yellow),
-        (.spotter, .green),
-        (.backspot, .purple),
-        (.tumbler, .orange),
-    ]
-
     var body: some View {
         VStack(spacing: 12) {
             HStack {
@@ -39,13 +31,13 @@ struct AthleteDetailPanel: View {
             }
 
             HStack(spacing: 12) {
-                ForEach(roles, id: \.0) { role, color in
+                ForEach(AthleteRole.allCases, id: \.self) { role in
                     Button {
                         athlete.role = role
                     } label: {
                         ZStack {
                             Circle()
-                                .fill(color)
+                                .fill(role.color)
                                 .frame(width: 28, height: 28)
                             if athlete.role == role {
                                 Image(systemName: "checkmark")
