@@ -12,9 +12,6 @@ struct FloorCanvasView: View {
     var cellSize: CGFloat = 12
     var offset: CGPoint = .zero
 
-    let gridCols: CGFloat = 52
-    let gridRows: CGFloat = 30
-
     var body: some View {
         Canvas { context, _ in
             var ctx = context
@@ -136,15 +133,16 @@ struct FloorCanvasView: View {
 
         // Panel dividers — every 8 units (9 cols × 7 rows)
         var panelPath = Path()
-        for col in stride(from: 8, through: Int(gridCols) - 1, by: 8) {
+        for col in stride(from: 8, through: Int(CourtConstants.width) - 1, by: 8) {
             let screenX = CGFloat(col) * cellSize
             panelPath.move(to: CGPoint(x: screenX, y: 0))
             panelPath.addLine(to: CGPoint(x: screenX, y: height))
         }
-        // Single halfway horizontal line
-        let midY = (gridRows / 2) * cellSize
-        panelPath.move(to: CGPoint(x: 0, y: midY))
-        panelPath.addLine(to: CGPoint(x: width, y: midY))
+        for row in stride(from: 8, through: Int(CourtConstants.height) - 1, by: 8) {
+            let screenY = CGFloat(row) * cellSize
+            panelPath.move(to: CGPoint(x: 0, y: screenY))
+            panelPath.addLine(to: CGPoint(x: width, y: screenY))
+        }
         context.stroke(panelPath, with: .color(.gray.opacity(0.6)), lineWidth: 2.0)
 
         // Floor border

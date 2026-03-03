@@ -10,7 +10,7 @@ import SwiftUI
 // MARK: - Constants
 
 enum CourtConstants {
-    static let width: CGFloat = 72   // 54ft wide — 9 panels × 8 units
+    static let width: CGFloat = 72  // 54ft wide — 9 panels × 8 units
     static let height: CGFloat = 56  // 42ft long — 7 panels × 8 units
     static let cellSize: CGFloat = 12  // pixels per foot
     static let collisionDistance: CGFloat = 2.0  // feet
@@ -228,6 +228,16 @@ struct Formation: Codable, Identifiable, Equatable, Hashable {
         }
     }
 
+    mutating func swapAthletePositions(id1: UUID, id2: UUID) {
+        guard let index1 = athletes.firstIndex(where: { $0.id == id1 }),
+            let index2 = athletes.firstIndex(where: { $0.id == id2 }),
+            index1 != index2
+        else { return }
+        let tempPosition = athletes[index1].position
+        athletes[index1].position = athletes[index2].position
+        athletes[index2].position = tempPosition
+    }
+
     // Sample formations for POC
     static func sample() -> Formation {
         var formation = Formation()
@@ -262,7 +272,9 @@ struct PathCalculations {
     }
 
     /// Evaluate a quadratic Bezier curve at parameter t (0...1).
-    static func quadraticBezierPoint(from p0: CGPoint, control c: CGPoint, to p2: CGPoint, t: CGFloat) -> CGPoint {
+    static func quadraticBezierPoint(
+        from p0: CGPoint, control c: CGPoint, to p2: CGPoint, t: CGFloat
+    ) -> CGPoint {
         let u = 1.0 - t
         let uu = u * u
         let ut2 = 2.0 * u * t
@@ -424,7 +436,7 @@ class TransitionPlayer: ObservableObject {
     @Published var speed: CGFloat = 1.0  // playback speed multiplier
     @Published var startFormation: Formation  // mutable for timing edits
 
-    let endFormation: Formation
+    @Published var endFormation: Formation
     var duration: TimeInterval
     private var animationTimer: AnimationTimer?
 
@@ -487,11 +499,14 @@ class TransitionPlayer: ObservableObject {
                 let newPosition: CGPoint
                 if let c = startAthlete.pathControlPoint {
                     newPosition = PathCalculations.quadraticBezierPoint(
-                        from: startAthlete.position, control: c, to: endAthlete.position, t: athleteProgress)
+                        from: startAthlete.position, control: c, to: endAthlete.position,
+                        t: athleteProgress)
                 } else {
                     newPosition = CGPoint(
-                        x: startAthlete.position.x + (endAthlete.position.x - startAthlete.position.x) * athleteProgress,
-                        y: startAthlete.position.y + (endAthlete.position.y - startAthlete.position.y) * athleteProgress
+                        x: startAthlete.position.x
+                            + (endAthlete.position.x - startAthlete.position.x) * athleteProgress,
+                        y: startAthlete.position.y
+                            + (endAthlete.position.y - startAthlete.position.y) * athleteProgress
                     )
                 }
 

@@ -112,6 +112,9 @@ struct TransitionPlayerView: View {
     @State private var isDraggingHandle = false
     @State private var pathCollisionIndices: Set<Int> = []
     @State private var pathCollisionKey: [PathCollisionKey] = []
+    @State private var isSwapMode = false
+    @State private var swapSourceAthleteId: UUID?
+    @State private var swapTargetIsEnd = false
 
     init(startFormation: Formation, endFormation: Formation) {
         _player = StateObject(
@@ -141,6 +144,41 @@ struct TransitionPlayerView: View {
                     offset: canvasOffset
                 )
                 .gesture(athleteTapGesture(cellSize: cellSize, offset: canvasOffset))
+
+                // Swap mode banner
+                if isSwapMode, let sourceId = swapSourceAthleteId,
+                    let sourceAthlete = player.startFormation.athletes.first(where: {
+                        $0.id == sourceId
+                    })
+                        ?? player.endFormation.athletes.first(where: { $0.id == sourceId })
+                {
+                    VStack(spacing: 8) {
+                        HStack {
+                            Image(systemName: "arrow.triangle.swap")
+                            Text("Tap an athlete to swap with \(sourceAthlete.label)")
+                                .font(.subheadline.bold())
+                            Spacer()
+                            Picker("", selection: $swapTargetIsEnd) {
+                                Text("Start").tag(false)
+                                Text("End").tag(true)
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 140)
+                            Button("Cancel") {
+                                isSwapMode = false
+                                swapSourceAthleteId = nil
+                            }
+                            .font(.subheadline)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(Color.blue.opacity(0.15))
+                        .cornerRadius(10)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                }
             }
 
             Divider()
@@ -313,6 +351,33 @@ struct TransitionPlayerView: View {
             .padding()
         }
         .navigationTitle("\(player.startFormation.name) → \(player.endFormation.name)")
+        .toolbar {
+            #if os(iOS)
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: {
+                        if let selectedId = selectedAthleteId {
+                            swapSourceAthleteId = selectedId
+                            isSwapMode = true
+                        }
+                    }) {
+                        Image(systemName: "arrow.triangle.swap")
+                    }
+                    .disabled(selectedAthleteId == nil || isSwapMode)
+                }
+            #else
+                ToolbarItem {
+                    Button(action: {
+                        if let selectedId = selectedAthleteId {
+                            swapSourceAthleteId = selectedId
+                            isSwapMode = true
+                        }
+                    }) {
+                        Image(systemName: "arrow.triangle.swap")
+                    }
+                    .disabled(selectedAthleteId == nil || isSwapMode)
+                }
+            #endif
+        }
         .onAppear {
             updatePathCollisionCache(start: player.startFormation, force: true)
         }
@@ -327,6 +392,9 @@ struct TransitionPlayerView: View {
     private func athleteTapGesture(cellSize: CGFloat, offset: CGPoint) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
+                // In swap mode, skip normal drag/selection
+                if isSwapMode { return }
+
                 let scaledPoint = CGPoint(
                     x: (value.location.x - offset.x) / cellSize,
                     y: (value.location.y - offset.y) / cellSize
@@ -403,7 +471,47 @@ struct TransitionPlayerView: View {
                 }
                 selectedAthleteId = nil
             }
-            .onEnded { _ in
+            .onEnded { value in
+                // Handle swap mode tap
+                if isSwapMode, let sourceId = swapSourceAthleteId {
+                    let tapScaled = CGPoint(
+                        x: (value.location.x - offset.x) / cellSize,
+                        y: (value.location.y - offset.y) / cellSize
+                    )
+
+                    let athletes =
+                        swapTargetIsEnd
+                        ? player.endFormation.athletes
+                        : player.startFormation.athletes
+
+                    for athlete in athletes {
+                        if athlete.id != sourceId,
+                            PathCalculations.squaredDistance(from: tapScaled, to: athlete.position)
+                                < CourtConstants.hitRadiusSquared
+                        {
+                            if swapTargetIsEnd {
+                                player.endFormation.swapAthletePositions(
+                                    id1: sourceId, id2: athlete.id)
+                                persistenceManager.updateFormation(player.endFormation)
+                            } else {
+                                player.startFormation.swapAthletePositions(
+                                    id1: sourceId, id2: athlete.id)
+                                persistenceManager.updateFormation(player.startFormation)
+                            }
+                            player.seek(to: player.progress)
+                            isSwapMode = false
+                            swapSourceAthleteId = nil
+                            return
+                        }
+                    }
+
+                    // Tapped background — cancel
+                    isSwapMode = false
+                    swapSourceAthleteId = nil
+                    selectedAthleteId = nil
+                    return
+                }
+
                 if isDraggingHandle {
                     persistenceManager.updateFormation(player.startFormation)
                 }

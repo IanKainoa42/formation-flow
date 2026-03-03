@@ -34,6 +34,8 @@ struct FloorGridView: View {
 
     @State private var isDraggingAthlete = false
     @State private var draggingAthleteIndex: Int?
+    @State private var isSwapMode = false
+    @State private var swapSourceAthleteId: UUID?
     @State private var dragStartAthletePosition: CGPoint = .zero
     @State private var isPanning = false
     @State private var undoStack: [(id: UUID, position: CGPoint)] = []
@@ -106,36 +108,42 @@ struct FloorGridView: View {
             Text("Enter a new name for this formation")
         }
         .sheet(isPresented: $showingManageAthletes) {
-            NavigationStack {
-                List {
-                    ForEach(formation.athletes) { athlete in
-                        HStack(spacing: 10) {
-                            Circle()
-                                .fill(athlete.role.color)
-                                .frame(width: 10, height: 10)
-                            Text(athlete.label).font(.body)
-                            Text(athlete.role.rawValue)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    .onMove { from, to in
-                        formation.athletes.move(fromOffsets: from, toOffset: to)
+            manageAthletesSheet
+        }
+    }
+
+    // MARK: - Manage Athletes Sheet
+
+    private var manageAthletesSheet: some View {
+        NavigationStack {
+            List {
+                ForEach(formation.athletes) { athlete in
+                    HStack(spacing: 10) {
+                        Circle()
+                            .fill(athlete.role.color)
+                            .frame(width: 10, height: 10)
+                        Text(athlete.label).font(.body)
+                        Text(athlete.role.rawValue)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
                 }
-                .navigationTitle("Manage Athletes")
-                .toolbar {
-                    #if os(iOS)
-                        ToolbarItem(placement: .navigationBarLeading) { EditButton() }
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            Button("Done") { showingManageAthletes = false }
-                        }
-                    #else
-                        ToolbarItem {
-                            Button("Done") { showingManageAthletes = false }
-                        }
-                    #endif
+                .onMove { from, to in
+                    formation.athletes.move(fromOffsets: from, toOffset: to)
                 }
+            }
+            .navigationTitle("Manage Athletes")
+            .toolbar {
+                #if os(iOS)
+                    ToolbarItem(placement: .navigationBarLeading) { EditButton() }
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Done") { showingManageAthletes = false }
+                    }
+                #else
+                    ToolbarItem {
+                        Button("Done") { showingManageAthletes = false }
+                    }
+                #endif
             }
         }
     }
@@ -186,6 +194,9 @@ struct FloorGridView: View {
     private func dragGesture(cellSize: CGFloat, canvasOffset: CGPoint) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
+                // Swap mode: tap to swap, no dragging
+                if isSwapMode { return }
+
                 if !isDraggingAthlete && !isPanning {
                     let startScaled = CGPoint(
                         x: (value.startLocation.x - canvasOffset.x) / cellSize,
@@ -231,7 +242,39 @@ struct FloorGridView: View {
                     )
                 }
             }
-            .onEnded { _ in
+            .onEnded { value in
+                // Swap mode: handle tap on end
+                if isSwapMode, let sourceId = swapSourceAthleteId {
+                    let tapScaled = CGPoint(
+                        x: (value.location.x - canvasOffset.x) / cellSize,
+                        y: (value.location.y - canvasOffset.y) / cellSize
+                    )
+                    var tappedTarget = false
+                    for athlete in formation.athletes {
+                        if athlete.id != sourceId,
+                            PathCalculations.squaredDistance(from: tapScaled, to: athlete.position)
+                                < CourtConstants.hitRadiusSquared
+                        {
+                            // Record undo for both athletes
+                            if let srcIdx = formation.athletes.firstIndex(where: {
+                                $0.id == sourceId
+                            }) {
+                                undoStack.append(
+                                    (id: sourceId, position: formation.athletes[srcIdx].position))
+                            }
+                            undoStack.append((id: athlete.id, position: athlete.position))
+                            formation.swapAthletePositions(id1: sourceId, id2: athlete.id)
+                            persistenceManager.updateFormation(formation)
+                            tappedTarget = true
+                            break
+                        }
+                    }
+                    isSwapMode = false
+                    swapSourceAthleteId = nil
+                    if !tappedTarget { selectedAthleteId = nil }
+                    return
+                }
+
                 if isPanning { lastPanOffset = panOffset }
                 if isDraggingAthlete, let id = selectedAthleteId {
                     undoStack.append((id: id, position: dragStartAthletePosition))
@@ -257,13 +300,43 @@ struct FloorGridView: View {
             .allowsHitTesting(false)
         }
 
-        if let selectedId = selectedAthleteId,
+        // Swap mode banner
+        if isSwapMode, let sourceId = swapSourceAthleteId,
+            let sourceAthlete = formation.athletes.first(where: { $0.id == sourceId })
+        {
+            VStack(spacing: 8) {
+                HStack {
+                    Image(systemName: "arrow.triangle.swap")
+                    Text("Tap an athlete to swap with \(sourceAthlete.label)")
+                        .font(.subheadline.bold())
+                    Spacer()
+                    Button("Cancel") {
+                        isSwapMode = false
+                        swapSourceAthleteId = nil
+                    }
+                    .font(.subheadline)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(Color.blue.opacity(0.15))
+                .cornerRadius(10)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
+
+        if let selectedId = selectedAthleteId, !isSwapMode,
             let index = formation.athletes.firstIndex(where: { $0.id == selectedId })
         {
             AthleteDetailPanel(
                 athlete: $formation.athletes[index],
                 selectedAthleteId: $selectedAthleteId,
-                onDelete: deleteSelectedAthlete
+                onDelete: deleteSelectedAthlete,
+                onSwap: {
+                    swapSourceAthleteId = selectedId
+                    isSwapMode = true
+                }
             )
             .frame(width: 280)
             .padding(16)

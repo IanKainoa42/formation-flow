@@ -6,6 +6,7 @@ struct AthleteDetailPanel: View {
     @Binding var athlete: Athlete
     @Binding var selectedAthleteId: UUID?
     var onDelete: () -> Void
+    var onSwap: (() -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 12) {
@@ -19,6 +20,13 @@ struct AthleteDetailPanel: View {
                         }
                     }
                 Spacer()
+                if let onSwap {
+                    Button(action: onSwap) {
+                        Image(systemName: "arrow.triangle.swap")
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                    }
+                }
                 Button(role: .destructive, action: onDelete) {
                     Image(systemName: "trash")
                         .font(.caption)
