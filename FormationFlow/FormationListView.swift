@@ -5,6 +5,7 @@ import SwiftUI
 struct FormationListView: View {
     @StateObject private var persistenceManager = PersistenceManager.shared
     @State private var activeFormation: Formation?
+    @State private var formationToDelete: Formation?
 
     var body: some View {
         Group {
@@ -40,9 +41,8 @@ struct FormationListView: View {
                         }
                     }
                     .onDelete { indexSet in
-                        for index in indexSet {
-                            persistenceManager.deleteFormation(
-                                id: persistenceManager.formations[index].id)
+                        if let index = indexSet.first {
+                            formationToDelete = persistenceManager.formations[index]
                         }
                     }
                     .onMove { from, to in
@@ -73,6 +73,26 @@ struct FormationListView: View {
         }
         .navigationDestination(item: $activeFormation) { formation in
             FloorGridView(formation: formation)
+        }
+        .confirmationDialog(
+            "Delete \"\(formationToDelete?.name ?? "")\"?",
+            isPresented: Binding(
+                get: { formationToDelete != nil },
+                set: { if !$0 { formationToDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let formation = formationToDelete {
+                    persistenceManager.deleteFormation(id: formation.id)
+                    formationToDelete = nil
+                }
+            }
+            Button("Cancel", role: .cancel) { formationToDelete = nil }
+        } message: {
+            if let formation = formationToDelete {
+                Text("This will permanently delete this formation and its \(formation.athletes.count) athletes.")
+            }
         }
     }
 

@@ -27,6 +27,7 @@ struct FloorGridView: View {
     @State private var showingRenameAlert = false
     @State private var renameText = ""
     @State private var showingManageAthletes = false
+    @State private var showingNotes = false
     @State private var activeDestination: FloorGridDestination?
 
     @State private var cachedCollisionIds: Set<UUID> = []
@@ -103,13 +104,21 @@ struct FloorGridView: View {
         }
         .alert("Rename Formation", isPresented: $showingRenameAlert) {
             TextField("Name", text: $renameText)
-            Button("Save") { formation.name = renameText }
+            Button("Save") {
+                let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    formation.name = trimmed
+                }
+            }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Enter a new name for this formation")
         }
         .sheet(isPresented: $showingManageAthletes) {
             manageAthletesSheet
+        }
+        .sheet(isPresented: $showingNotes) {
+            notesSheet
         }
     }
 
@@ -146,6 +155,27 @@ struct FloorGridView: View {
                     }
                 #endif
             }
+        }
+    }
+
+    // MARK: - Notes Sheet
+
+    private var notesSheet: some View {
+        NavigationStack {
+            TextEditor(text: $formation.notes)
+                .padding()
+                .navigationTitle("Formation Notes")
+                .toolbar {
+                    #if os(iOS)
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button("Done") { showingNotes = false }
+                        }
+                    #else
+                        ToolbarItem {
+                            Button("Done") { showingNotes = false }
+                        }
+                    #endif
+                }
         }
     }
 
@@ -372,6 +402,7 @@ struct FloorGridView: View {
                 Image(systemName: "arrow.right.circle")
             }
             .accessibilityLabel("Transitions")
+            .disabled(persistenceManager.formations.count < 2)
 
             Menu {
                 Button(action: {
@@ -382,6 +413,9 @@ struct FloorGridView: View {
                 }
                 Button(action: duplicateFormation) {
                     Label("Duplicate", systemImage: "doc.on.doc")
+                }
+                Button(action: { showingNotes = true }) {
+                    Label("Notes", systemImage: "note.text")
                 }
                 Button(action: { showingManageAthletes = true }) {
                     Label("Manage Athletes", systemImage: "list.bullet")
