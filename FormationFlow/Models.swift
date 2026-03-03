@@ -394,29 +394,37 @@ struct PathCalculations {
         return (collisionCount, collisionIds)
     }
 
-    /// Find the indices of athletes whose transition paths cross within minDistance
+    /// Find the indices of athletes whose transition paths cross within minDistance.
+    /// Athletes are matched by ID between start and end formations.
     static func findPathCollisionIndices(
         start: Formation, end: Formation, steps: Int = 20, minDistance: CGFloat = 2.0
     ) -> Set<Int> {
-        let count = min(start.athletes.count, end.athletes.count)
+        // Build matched pairs: (startIndex, startAthlete, endAthlete)
+        var matchedPairs: [(index: Int, start: Athlete, end: Athlete)] = []
+        for (i, startAthlete) in start.athletes.enumerated() {
+            if let endAthlete = end.athletes.first(where: { $0.id == startAthlete.id }) {
+                matchedPairs.append((index: i, start: startAthlete, end: endAthlete))
+            }
+        }
+
         var collidingIndices = Set<Int>()
         var paths: [[CGPoint]] = []
-        for i in 0..<count {
+        for pair in matchedPairs {
             paths.append(
                 athletePath(
-                    from: start.athletes[i].position,
-                    to: end.athletes[i].position,
-                    control: start.athletes[i].pathControlPoint,
+                    from: pair.start.position,
+                    to: pair.end.position,
+                    control: pair.start.pathControlPoint,
                     steps: steps
                 ))
         }
         let minDistanceSq = minDistance * minDistance
-        for i in 0..<count {
-            for j in (i + 1)..<count {
+        for i in 0..<matchedPairs.count {
+            for j in (i + 1)..<matchedPairs.count {
                 for step in 0..<min(paths[i].count, paths[j].count) {
                     if squaredDistance(from: paths[i][step], to: paths[j][step]) < minDistanceSq {
-                        collidingIndices.insert(i)
-                        collidingIndices.insert(j)
+                        collidingIndices.insert(matchedPairs[i].index)
+                        collidingIndices.insert(matchedPairs[j].index)
                         break
                     }
                 }
@@ -491,11 +499,8 @@ class TransitionPlayer: ObservableObject {
         var newFormation = startFormation
         newFormation.athletes = []
 
-        for i in 0..<startFormation.athletes.count {
-            if i < endFormation.athletes.count {
-                let startAthlete = startFormation.athletes[i]
-                let endAthlete = endFormation.athletes[i]
-
+        for startAthlete in startFormation.athletes {
+            if let endAthlete = endFormation.athletes.first(where: { $0.id == startAthlete.id }) {
                 let timingOffset = min(0.99, startAthlete.moveTiming / CGFloat(duration))
                 let athleteProgress = min(
                     1.0, max(0, progress - timingOffset) / (1.0 - timingOffset))
@@ -518,7 +523,8 @@ class TransitionPlayer: ObservableObject {
                 athlete.position = newPosition
                 newFormation.athletes.append(athlete)
             } else {
-                newFormation.athletes.append(startFormation.athletes[i])
+                // No matching end athlete — keep start position
+                newFormation.athletes.append(startAthlete)
             }
         }
 

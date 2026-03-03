@@ -46,7 +46,7 @@ struct TransitionPickerView: View {
             // Other formations to transition to
             Section {
                 if otherFormations.isEmpty {
-                    Text("No other formations yet. Create one below.")
+                    Text("Create another formation to animate transitions between them. Athletes will move from their positions here to their positions in the other formation.")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                         .padding(.vertical, 8)
@@ -79,6 +79,8 @@ struct TransitionPickerView: View {
                 }
             } header: {
                 Text("Transition To")
+            } footer: {
+                Text("Athletes are matched by their position in the roster. Use Manage Athletes to reorder.")
             }
 
             // Add new formation
@@ -104,7 +106,7 @@ struct TransitionPickerView: View {
         formation.name = "Formation \(n)"
         // Copy the same athletes so there's a 1-to-1 mapping for transition paths
         formation.athletes = startFormation.athletes.map { athlete in
-            Athlete(label: athlete.label, position: athlete.position, role: athlete.role)
+            Athlete(id: athlete.id, label: athlete.label, position: athlete.position, role: athlete.role)
         }
         persistenceManager.addFormation(formation)
         newFormationDestination = formation
@@ -233,7 +235,7 @@ struct TransitionPlayerView: View {
                 .padding(.horizontal)
                 .padding(.top, 8)
             } else {
-                Text("Tap an athlete to adjust move timing")
+                Text("Tap an athlete to adjust timing \u{00B7} Drag path midpoint to curve it")
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .padding(.top, 8)
@@ -544,18 +546,19 @@ struct TransitionPlayerView: View {
     }
 
     private func updatePathCollisionCache(start: Formation, force: Bool = false) {
-        let count = min(start.athletes.count, player.endFormation.athletes.count)
         var newKey: [PathCollisionKey] = []
-        newKey.reserveCapacity(count)
+        newKey.reserveCapacity(start.athletes.count)
 
-        for i in 0..<count {
-            newKey.append(
-                PathCollisionKey(
-                    id: start.athletes[i].id,
-                    startPosition: start.athletes[i].position,
-                    endPosition: player.endFormation.athletes[i].position,
-                    controlPoint: start.athletes[i].pathControlPoint
-                ))
+        for startAthlete in start.athletes {
+            if let endAthlete = player.endFormation.athletes.first(where: { $0.id == startAthlete.id }) {
+                newKey.append(
+                    PathCollisionKey(
+                        id: startAthlete.id,
+                        startPosition: startAthlete.position,
+                        endPosition: endAthlete.position,
+                        controlPoint: startAthlete.pathControlPoint
+                    ))
+            }
         }
 
         guard force || newKey != pathCollisionKey else { return }

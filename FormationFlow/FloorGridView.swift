@@ -57,11 +57,14 @@ struct FloorGridView: View {
             #if os(iOS)
                 ToolbarItemGroup(placement: .navigationBarLeading) {
                     if cachedCollisionCount > 0 {
-                        Label(
-                            "\(cachedCollisionCount)", systemImage: "exclamationmark.triangle.fill"
-                        )
-                        .foregroundColor(.red)
-                        .font(.caption.bold())
+                        Button(action: selectNextCollidingAthlete) {
+                            Label(
+                                "\(cachedCollisionCount)", systemImage: "exclamationmark.triangle.fill"
+                            )
+                            .foregroundColor(.red)
+                            .font(.caption.bold())
+                        }
+                        .accessibilityLabel("Cycle through \(cachedCollisionCount) colliding athletes")
                     }
                     Button(action: undoLastMove) {
                         Image(systemName: "arrow.uturn.backward")
@@ -75,11 +78,14 @@ struct FloorGridView: View {
             #else
                 ToolbarItemGroup {
                     if cachedCollisionCount > 0 {
-                        Label(
-                            "\(cachedCollisionCount)", systemImage: "exclamationmark.triangle.fill"
-                        )
-                        .foregroundColor(.red)
-                        .font(.caption.bold())
+                        Button(action: selectNextCollidingAthlete) {
+                            Label(
+                                "\(cachedCollisionCount)", systemImage: "exclamationmark.triangle.fill"
+                            )
+                            .foregroundColor(.red)
+                            .font(.caption.bold())
+                        }
+                        .accessibilityLabel("Cycle through \(cachedCollisionCount) colliding athletes")
                     }
                     Button(action: undoLastMove) {
                         Image(systemName: "arrow.uturn.backward")
@@ -495,6 +501,20 @@ struct FloorGridView: View {
         let summary = PathCalculations.collisionSummary(in: formation, minDistance: 2.0)
         cachedCollisionCount = summary.count
         cachedCollisionIds = summary.ids
+    }
+
+    private func selectNextCollidingAthlete() {
+        let collidingAthletes = formation.athletes.filter { cachedCollisionIds.contains($0.id) }
+        guard !collidingAthletes.isEmpty else { return }
+
+        if let currentId = selectedAthleteId,
+            let currentIndex = collidingAthletes.firstIndex(where: { $0.id == currentId })
+        {
+            let nextIndex = (currentIndex + 1) % collidingAthletes.count
+            selectedAthleteId = collidingAthletes[nextIndex].id
+        } else {
+            selectedAthleteId = collidingAthletes.first?.id
+        }
     }
 
     private func addAthlete() {
