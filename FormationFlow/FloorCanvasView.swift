@@ -12,9 +12,6 @@ struct FloorCanvasView: View {
     var cellSize: CGFloat = 12
     var offset: CGPoint = .zero
 
-    let gridCols: CGFloat = 52
-    let gridRows: CGFloat = 30
-
     var body: some View {
         Canvas { context, _ in
             var ctx = context
@@ -69,14 +66,8 @@ struct FloorCanvasView: View {
                 let midPoint: CGPoint
                 if let c = start.athletes[i].pathControlPoint {
                     let cp = CGPoint(x: c.x * cellSize, y: c.y * cellSize)
-                    let u = 1.0 - t
-                    let tt = t * t
-                    let uu = u * u
-                    let ut2 = 2.0 * u * t
-                    midPoint = CGPoint(
-                        x: uu * startPos.x + ut2 * cp.x + tt * endPos.x,
-                        y: uu * startPos.y + ut2 * cp.y + tt * endPos.y
-                    )
+                    midPoint = PathCalculations.quadraticBezierPoint(
+                        from: startPos, control: cp, to: endPos, t: t)
                 } else {
                     midPoint = CGPoint(
                         x: startPos.x + (endPos.x - startPos.x) * t,
@@ -119,29 +110,14 @@ struct FloorCanvasView: View {
                 lineWidth: 2
             )
 
-            var startGhost = Path()
-            startGhost.addEllipse(
-                in: CGRect(x: startPos.x - 10, y: startPos.y - 10, width: 20, height: 20))
-            context.stroke(
-                startGhost,
-                with: .color(.gray.opacity(0.25)),
-                style: StrokeStyle(lineWidth: 1, dash: [4, 4])
-            )
-
-            var endGhost = Path()
-            endGhost.addEllipse(
-                in: CGRect(x: endPos.x - 10, y: endPos.y - 10, width: 20, height: 20))
-            context.stroke(
-                endGhost,
-                with: .color(.gray.opacity(0.25)),
-                style: StrokeStyle(lineWidth: 1, dash: [4, 4])
-            )
+            drawGhostCircle(in: &context, center: startPos)
+            drawGhostCircle(in: &context, center: endPos)
         }
     }
 
     private func drawGrid(in context: inout GraphicsContext) {
-        let width = gridCols * cellSize
-        let height = gridRows * cellSize
+        let width = CourtConstants.width * cellSize
+        let height = CourtConstants.height * cellSize
 
         var gridPath = Path()
 
@@ -159,6 +135,16 @@ struct FloorCanvasView: View {
             gridPath,
             with: .color(.gray.opacity(0.3)),
             lineWidth: 0.5
+        )
+    }
+
+    private func drawGhostCircle(in context: inout GraphicsContext, center: CGPoint) {
+        var ghost = Path()
+        ghost.addEllipse(in: CGRect(x: center.x - 10, y: center.y - 10, width: 20, height: 20))
+        context.stroke(
+            ghost,
+            with: .color(.gray.opacity(0.25)),
+            style: StrokeStyle(lineWidth: 1, dash: [4, 4])
         )
     }
 

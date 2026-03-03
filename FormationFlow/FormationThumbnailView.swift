@@ -7,16 +7,14 @@ struct FormationThumbnailView: View {
 
     private let thumbWidth: CGFloat = 80
     private let thumbHeight: CGFloat = 46
-    private let gridCols: CGFloat = 52
-    private let gridRows: CGFloat = 30
 
     var body: some View {
         Canvas { context, _ in
-            let cellSize = min(thumbWidth / gridCols, thumbHeight / gridRows)
+            let cellSize = min(thumbWidth / CourtConstants.width, thumbHeight / CourtConstants.height)
 
             // Border
             let borderRect = CGRect(
-                x: 0, y: 0, width: gridCols * cellSize, height: gridRows * cellSize)
+                x: 0, y: 0, width: CourtConstants.width * cellSize, height: CourtConstants.height * cellSize)
             context.stroke(Path(borderRect), with: .color(.gray.opacity(0.4)), lineWidth: 0.5)
 
             // Athletes
@@ -25,14 +23,7 @@ struct FormationThumbnailView: View {
                 let y = athlete.position.y * cellSize
                 let radius: CGFloat = 4
 
-                let roleColor: Color
-                switch athlete.role {
-                case .flyer: roleColor = .yellow
-                case .base: roleColor = .blue
-                case .spotter: roleColor = .green
-                case .backspot: roleColor = .purple
-                case .tumbler: roleColor = .orange
-                }
+                let roleColor = athlete.role.color
 
                 var circle = Path()
                 circle.addEllipse(

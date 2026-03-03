@@ -88,9 +88,6 @@ struct TransitionPlayerView: View {
     @State private var pathCollisionIndices: Set<Int> = []
     @State private var pathCollisionKey: [PathCollisionKey] = []
 
-    let gridCols: CGFloat = 52
-    let gridRows: CGFloat = 30
-
     init(startFormation: Formation, endFormation: Formation) {
         _player = StateObject(
             wrappedValue: TransitionPlayer(from: startFormation, to: endFormation))
@@ -100,9 +97,9 @@ struct TransitionPlayerView: View {
         VStack(spacing: 0) {
             // Bug 1 fix: centered canvas using GeometryReader
             GeometryReader { geometry in
-                let cellSize = min(geometry.size.width / gridCols, geometry.size.height / gridRows)
-                let canvasWidth = gridCols * cellSize
-                let canvasHeight = gridRows * cellSize
+                let cellSize = min(geometry.size.width / CourtConstants.width, geometry.size.height / CourtConstants.height)
+                let canvasWidth = CourtConstants.width * cellSize
+                let canvasHeight = CourtConstants.height * cellSize
                 let offsetX = (geometry.size.width - canvasWidth) / 2
                 let offsetY = (geometry.size.height - canvasHeight) / 2
                 let canvasOffset = CGPoint(x: offsetX, y: offsetY)
@@ -324,14 +321,8 @@ struct TransitionPlayerView: View {
                     let t: CGFloat = 0.5
                     let midPoint: CGPoint
                     if let c = currentControl {
-                        let u = 1.0 - t
-                        let tt = t * t
-                        let uu = u * u
-                        let ut2 = 2.0 * u * t
-                        midPoint = CGPoint(
-                            x: uu * startPos.x + ut2 * c.x + tt * endPos.x,
-                            y: uu * startPos.y + ut2 * c.y + tt * endPos.y
-                        )
+                        midPoint = PathCalculations.quadraticBezierPoint(
+                            from: startPos, control: c, to: endPos, t: t)
                     } else {
                         midPoint = CGPoint(
                             x: startPos.x + (endPos.x - startPos.x) * t,
@@ -345,9 +336,7 @@ struct TransitionPlayerView: View {
                         y: (value.startLocation.y - offset.y) / cellSize
                     )
 
-                    let dx = startScaledPoint.x - midPoint.x
-                    let dy = startScaledPoint.y - midPoint.y
-                    if isDraggingHandle || (dx * dx + dy * dy) < 9.0 {
+                    if isDraggingHandle || PathCalculations.squaredDistance(from: startScaledPoint, to: midPoint) < CourtConstants.hitRadiusSquared {
                         isDraggingHandle = true
 
                         // User's finger is dragging the midpoint. We need to back-calculate the Bezier control point 'c'.
@@ -373,9 +362,7 @@ struct TransitionPlayerView: View {
                 )
 
                 for athlete in player.currentFormation.athletes {
-                    let adx = initialScaledPoint.x - athlete.position.x
-                    let ady = initialScaledPoint.y - athlete.position.y
-                    if (adx * adx + ady * ady) < 9.0 {
+                    if PathCalculations.squaredDistance(from: initialScaledPoint, to: athlete.position) < CourtConstants.hitRadiusSquared {
                         selectedAthleteId = athlete.id
                         return
                     }
