@@ -132,7 +132,9 @@ struct FloorGridView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will permanently delete this formation and its \(formation.athletes.count) athletes.")
+            Text(
+                "This will permanently delete this formation and its \(formation.athletes.count) athletes."
+            )
         }
     }
 
@@ -223,7 +225,9 @@ struct FloorGridView: View {
         .gesture(dragGesture(cellSize: cellSize, canvasOffset: canvasOffset))
         .gesture(
             MagnifyGesture()
-                .onChanged { value in zoomScale = max(0.5, min(4.0, lastZoomScale * value.magnification)) }
+                .onChanged { value in
+                    zoomScale = max(0.5, min(4.0, lastZoomScale * value.magnification))
+                }
                 .onEnded { _ in lastZoomScale = zoomScale }
         )
         .onTapGesture(count: 2) {
@@ -439,10 +443,8 @@ struct FloorGridView: View {
     private var trailingToolbar: some View {
         HStack(spacing: 12) {
             Button(action: { activeDestination = .transition(formation) }) {
-                Image(systemName: "arrow.right.circle")
+                Label("Transitions", systemImage: "arrow.right.circle")
             }
-            .accessibilityLabel("Transitions")
-            .disabled(persistenceManager.formations.count < 2)
 
             Menu {
                 Button(action: {

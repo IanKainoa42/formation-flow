@@ -5,92 +5,109 @@ import SwiftUI
 struct TransitionPickerView: View {
     let startFormation: Formation
     @StateObject private var persistenceManager = PersistenceManager.shared
+    @State private var newFormationDestination: Formation?
 
-    private var currentIndex: Int? {
-        persistenceManager.formations.firstIndex(where: { $0.id == startFormation.id })
-    }
-
-    private var prevFormation: Formation? {
-        guard let idx = currentIndex, idx > 0 else { return nil }
-        return persistenceManager.formations[idx - 1]
-    }
-
-    private var nextFormation: Formation? {
-        guard let idx = currentIndex, idx < persistenceManager.formations.count - 1 else {
-            return nil
-        }
-        return persistenceManager.formations[idx + 1]
+    private var otherFormations: [Formation] {
+        persistenceManager.formations.filter { $0.id != startFormation.id }
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            // Left: Prev button
-            if let prev = prevFormation {
-                NavigationLink(
-                    destination: TransitionPlayerView(
-                        startFormation: prev,
-                        endFormation: startFormation
-                    )
-                ) {
-                    VStack(spacing: 6) {
-                        Image(systemName: "arrow.left.circle.fill")
-                            .font(.title)
-                        Text("Prev")
-                            .font(.caption.bold())
-                        Text(prev.name)
-                            .font(.caption2)
+        List {
+            // Start formation (current)
+            Section {
+                HStack(spacing: 12) {
+                    FormationThumbnailView(formation: startFormation)
+                        .frame(width: 80, height: 60)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.blue, lineWidth: 2))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(startFormation.name)
+                            .font(.headline)
+                        Text("\(startFormation.athletes.count) athletes")
+                            .font(.caption)
                             .foregroundColor(.secondary)
-                            .lineLimit(1)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding()
+                    Spacer()
+                    Text("START")
+                        .font(.caption2.bold())
+                        .foregroundColor(.blue)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.blue.opacity(0.1))
+                        .cornerRadius(4)
                 }
-            } else {
-                Color.clear.frame(maxWidth: .infinity)
+                .listRowBackground(Color.blue.opacity(0.05))
+            } header: {
+                Text("Transitioning From")
             }
 
-            // Center: Current formation
-            VStack(spacing: 8) {
-                FormationThumbnailView(formation: startFormation)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.gray.opacity(0.3)))
-                Text(startFormation.name)
-                    .font(.headline)
-                Text("\(startFormation.athletes.count) athletes")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding()
-
-            // Right: Next button
-            if let next = nextFormation {
-                NavigationLink(
-                    destination: TransitionPlayerView(
-                        startFormation: startFormation,
-                        endFormation: next
-                    )
-                ) {
-                    VStack(spacing: 6) {
-                        Image(systemName: "arrow.right.circle.fill")
-                            .font(.title)
-                        Text("Next")
-                            .font(.caption.bold())
-                        Text(next.name)
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
+            // Other formations to transition to
+            Section {
+                if otherFormations.isEmpty {
+                    Text("No other formations yet. Create one below.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .padding(.vertical, 8)
+                } else {
+                    ForEach(otherFormations) { formation in
+                        NavigationLink(
+                            destination: TransitionPlayerView(
+                                startFormation: startFormation,
+                                endFormation: formation
+                            )
+                        ) {
+                            HStack(spacing: 12) {
+                                FormationThumbnailView(formation: formation)
+                                    .frame(width: 80, height: 60)
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(Color.gray.opacity(0.3)))
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(formation.name)
+                                        .font(.headline)
+                                    Text("\(formation.athletes.count) athletes")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding()
                 }
-            } else {
-                Color.clear.frame(maxWidth: .infinity)
+            } header: {
+                Text("Transition To")
+            }
+
+            // Add new formation
+            Section {
+                Button(action: addFormation) {
+                    Label("New Formation", systemImage: "plus.circle.fill")
+                        .font(.body.bold())
+                }
             }
         }
-        .navigationTitle("Transition")
+        .navigationTitle("Transitions")
+        .navigationDestination(item: $newFormationDestination) { formation in
+            TransitionPlayerView(
+                startFormation: startFormation,
+                endFormation: formation
+            )
+        }
+    }
+
+    private func addFormation() {
+        let n = persistenceManager.formations.count + 1
+        var formation = Formation()
+        formation.name = "Formation \(n)"
+        // Copy the same athletes so there's a 1-to-1 mapping for transition paths
+        formation.athletes = startFormation.athletes.map { athlete in
+            Athlete(label: athlete.label, position: athlete.position, role: athlete.role)
+        }
+        persistenceManager.addFormation(formation)
+        newFormationDestination = formation
     }
 }
 
