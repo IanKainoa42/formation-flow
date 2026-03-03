@@ -20,9 +20,9 @@
 
 /* Begin PBXFileReference section */
 		15DE4D62846A4AD0F424534B /* FormationListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FormationListView.swift; path = FormationFlow/FormationListView.swift; sourceTree = SOURCE_ROOT; };
+		1F08C9AC2F57AAC400425930 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = FormationFlow/Assets.xcassets; sourceTree = SOURCE_ROOT; };
+		1F08C9AD2F57AAED00425930 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = FormationFlow/Info.plist; sourceTree = SOURCE_ROOT; };
 		1FEE788C2F3E5E9900012373 /* FormationFlow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FormationFlow.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		1FEE788E2F3E5EB100012373 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		1FEE78902F3E5EB100012373 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		1FEE78912F3E5EB100012373 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		21E94990B494F1D3D617A4E7 /* FormationFlowApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FormationFlowApp.swift; path = FormationFlow/FormationFlowApp.swift; sourceTree = SOURCE_ROOT; };
 		22EB4E82B510B78E55C92084 /* TransitionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TransitionViews.swift; path = FormationFlow/TransitionViews.swift; sourceTree = SOURCE_ROOT; };
@@ -55,8 +55,8 @@
 		1FEE78952F3E5EB100012373 /* FormationFlow */ = {
 			isa = PBXGroup;
 			children = (
-				1FEE788E2F3E5EB100012373 /* Assets.xcassets */,
-				1FEE78902F3E5EB100012373 /* Info.plist */,
+				1F08C9AC2F57AAC400425930 /* Assets.xcassets */,
+				1F08C9AD2F57AAED00425930 /* Info.plist */,
 				1FEE78922F3E5EB100012373 /* LaunchScreen.storyboard */,
 				EDC14A0F86683C0B66ABE21C /* FormationThumbnailView.swift */,
 				15DE4D62846A4AD0F424534B /* FormationListView.swift */,
@@ -150,6 +150,7 @@
 		0F1A1A7A1A1A1A1A1A1A1A7A /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
