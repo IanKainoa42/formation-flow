@@ -10,8 +10,8 @@ import SwiftUI
 // MARK: - Constants
 
 enum CourtConstants {
-    static let width: CGFloat = 72  // 54ft wide — 9 panels × 8 units
-    static let height: CGFloat = 56  // 42ft long — 7 panels × 8 units
+    static let width: CGFloat = 72  // 72ft wide — 9 panels × 8 units
+    static let height: CGFloat = 56  // 56ft tall — 7 panels × 8 units
     static let cellSize: CGFloat = 12  // pixels per foot
     static let collisionDistance: CGFloat = 2.0  // feet
     static let hitRadiusSquared: CGFloat = 9.0  // 3-foot tap radius, squared
@@ -447,6 +447,10 @@ class TransitionPlayer: ObservableObject {
         self.currentFormation = start
     }
 
+    deinit {
+        animationTimer?.invalidate()
+    }
+
     func play() {
         guard !isPlaying else { return }
         if progress >= 1.0 { progress = 0.0 }
@@ -536,5 +540,9 @@ class AnimationTimer {
     func invalidate() {
         timer?.invalidate()
         timer = nil
+    }
+
+    deinit {
+        invalidate()
     }
 }

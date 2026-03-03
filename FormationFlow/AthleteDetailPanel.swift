@@ -7,6 +7,7 @@ struct AthleteDetailPanel: View {
     @Binding var selectedAthleteId: UUID?
     var onDelete: () -> Void
     var onSwap: (() -> Void)? = nil
+    @State private var showDeleteConfirmation = false
 
     var body: some View {
         VStack(spacing: 12) {
@@ -14,6 +15,7 @@ struct AthleteDetailPanel: View {
                 TextField("Name", text: $athlete.label)
                     .font(.headline)
                     .textFieldStyle(.plain)
+                    .accessibilityLabel("Athlete label")
                     .onChange(of: athlete.label) { _, newValue in
                         if newValue.count > 3 {
                             athlete.label = String(newValue.prefix(3))
@@ -26,16 +28,29 @@ struct AthleteDetailPanel: View {
                             .font(.caption)
                             .foregroundColor(.blue)
                     }
+                    .accessibilityLabel("Swap position with another athlete")
                 }
-                Button(role: .destructive, action: onDelete) {
+                Button(role: .destructive) {
+                    showDeleteConfirmation = true
+                } label: {
                     Image(systemName: "trash")
                         .font(.caption)
                         .foregroundColor(.red)
+                }
+                .accessibilityLabel("Delete athlete")
+                .confirmationDialog(
+                    "Delete \(athlete.label)?",
+                    isPresented: $showDeleteConfirmation,
+                    titleVisibility: .visible
+                ) {
+                    Button("Delete", role: .destructive, action: onDelete)
+                    Button("Cancel", role: .cancel) {}
                 }
                 Button(action: { selectedAthleteId = nil }) {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundColor(.secondary)
                 }
+                .accessibilityLabel("Deselect athlete")
             }
 
             HStack(spacing: 12) {
@@ -54,6 +69,8 @@ struct AthleteDetailPanel: View {
                             }
                         }
                     }
+                    .accessibilityLabel("Set role to \(role.rawValue)")
+                    .accessibilityAddTraits(athlete.role == role ? .isSelected : [])
                 }
             }
 

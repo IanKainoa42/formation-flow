@@ -123,7 +123,6 @@ struct TransitionPlayerView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Bug 1 fix: centered canvas using GeometryReader
             GeometryReader { geometry in
                 let cellSize = min(
                     geometry.size.width / CourtConstants.width,
@@ -330,6 +329,7 @@ struct TransitionPlayerView: View {
                     Image(systemName: "backward.end.fill")
                         .font(.title2)
                 }
+                .accessibilityLabel("Reset to beginning")
 
                 Button(action: {
                     if player.isPlaying {
@@ -341,12 +341,15 @@ struct TransitionPlayerView: View {
                     Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                         .font(.largeTitle)
                 }
+                .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
 
                 Button(action: { player.isLooping.toggle() }) {
                     Image(systemName: "repeat")
                         .font(.title2)
                         .foregroundColor(player.isLooping ? .blue : .primary)
                 }
+                .accessibilityLabel("Loop playback")
+                .accessibilityAddTraits(player.isLooping ? .isSelected : [])
             }
             .padding()
         }

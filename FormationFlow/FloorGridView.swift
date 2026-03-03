@@ -65,6 +65,7 @@ struct FloorGridView: View {
                         Image(systemName: "arrow.uturn.backward")
                     }
                     .disabled(undoStack.isEmpty)
+                    .accessibilityLabel("Undo last move")
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     trailingToolbar
@@ -177,8 +178,8 @@ struct FloorGridView: View {
         )
         .gesture(dragGesture(cellSize: cellSize, canvasOffset: canvasOffset))
         .gesture(
-            MagnificationGesture()
-                .onChanged { value in zoomScale = max(0.5, min(4.0, lastZoomScale * value)) }
+            MagnifyGesture()
+                .onChanged { value in zoomScale = max(0.5, min(4.0, lastZoomScale * value.magnification)) }
                 .onEnded { _ in lastZoomScale = zoomScale }
         )
         .onTapGesture(count: 2) {
@@ -356,6 +357,7 @@ struct FloorGridView: View {
                         .clipShape(Circle())
                         .shadow(radius: 4)
                 }
+                .accessibilityLabel("Add athlete")
                 .padding(.trailing, 24)
                 .padding(.bottom, 24)
             }
@@ -369,6 +371,7 @@ struct FloorGridView: View {
             Button(action: { activeDestination = .transition(formation) }) {
                 Image(systemName: "arrow.right.circle")
             }
+            .accessibilityLabel("Transitions")
 
             Menu {
                 Button(action: {
@@ -386,6 +389,7 @@ struct FloorGridView: View {
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
+            .accessibilityLabel("More options")
         }
     }
 

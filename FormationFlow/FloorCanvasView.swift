@@ -162,7 +162,6 @@ struct FloorCanvasView: View {
     }
 
     private func drawAthletes(in context: inout GraphicsContext) {
-
         for athlete in formation.athletes {
             let screenPos = CGPoint(
                 x: athlete.position.x * cellSize,
@@ -172,7 +171,6 @@ struct FloorCanvasView: View {
             let isSelected = athlete.id == selectedAthleteId
             let isColliding = collisionIds.contains(athlete.id)
 
-            // Bug 5 fix: role-based color coding
             let roleColor = athlete.role.color
             let color: Color = isColliding ? .red : (isSelected ? .white : roleColor)
             let radius: CGFloat = isSelected ? 18 : 14
@@ -218,8 +216,7 @@ struct FloorCanvasView: View {
             }
 
             let labelColor: Color = isSelected ? roleColor : .white
-            let displayLabel = athlete.label
-            let text = Text(displayLabel)
+            let text = Text(athlete.label)
                 .font(.system(.caption, design: .monospaced))
                 .foregroundColor(labelColor)
 

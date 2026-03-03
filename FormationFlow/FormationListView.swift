@@ -61,6 +61,7 @@ struct FormationListView: View {
                     Button(action: createFormation) {
                         Image(systemName: "plus")
                     }
+                    .accessibilityLabel("Create new formation")
                 }
             #else
                 ToolbarItemGroup {
