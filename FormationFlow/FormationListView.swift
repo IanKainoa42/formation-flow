@@ -4,94 +4,96 @@ import SwiftUI
 
 struct FormationListView: View {
     @StateObject private var persistenceManager = PersistenceManager.shared
-    @State private var activeFormation: Formation?
+    @State private var navigationPath = NavigationPath()
     @State private var formationToDelete: Formation?
 
     var body: some View {
-        Group {
-            if persistenceManager.formations.isEmpty {
-                ContentUnavailableView(
-                    "No Saved Formations",
-                    systemImage: "square.grid.2x2",
-                    description: Text("Tap + to create your first formation.")
-                )
-            } else {
-                List {
-                    ForEach(persistenceManager.formations) { formation in
-                        NavigationLink(destination: FloorGridView(formation: formation)) {
-                            HStack(spacing: 12) {
-                                FormationThumbnailView(formation: formation)
-                                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 6).stroke(
-                                            Color.gray.opacity(0.3)))
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(formation.name).font(.headline)
-                                    Text("\(formation.athletes.count) athletes")
-                                        .font(.caption).foregroundColor(.gray)
+        NavigationStack(path: $navigationPath) {
+            Group {
+                if persistenceManager.formations.isEmpty {
+                    ContentUnavailableView(
+                        "No Saved Formations",
+                        systemImage: "square.grid.2x2",
+                        description: Text("Tap + to create your first formation.")
+                    )
+                } else {
+                    List {
+                        ForEach(persistenceManager.formations) { formation in
+                            NavigationLink(value: formation) {
+                                HStack(spacing: 12) {
+                                    FormationThumbnailView(formation: formation)
+                                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 6).stroke(
+                                                Color.gray.opacity(0.3)))
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(formation.name).font(.headline)
+                                        Text("\(formation.athletes.count) athletes")
+                                            .font(.caption).foregroundColor(.gray)
+                                    }
+                                    Spacer()
+                                    if !formation.notes.isEmpty {
+                                        Image(systemName: "note.text")
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                    }
                                 }
-                                Spacer()
-                                if !formation.notes.isEmpty {
-                                    Image(systemName: "note.text")
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
-                                }
+                                .padding(.vertical, 4)
                             }
-                            .padding(.vertical, 4)
                         }
-                    }
-                    .onDelete { indexSet in
-                        if let index = indexSet.first {
-                            formationToDelete = persistenceManager.formations[index]
+                        .onDelete { indexSet in
+                            if let index = indexSet.first {
+                                formationToDelete = persistenceManager.formations[index]
+                            }
                         }
-                    }
-                    .onMove { from, to in
-                        persistenceManager.moveFormation(from: from, to: to)
+                        .onMove { from, to in
+                            persistenceManager.moveFormation(from: from, to: to)
+                        }
                     }
                 }
             }
-        }
-        .navigationTitle("Saved Formations")
-        .toolbar {
-            #if os(iOS)
-                ToolbarItemGroup(placement: .navigationBarTrailing) {
-                    if !persistenceManager.formations.isEmpty {
-                        EditButton()
+            .navigationTitle("Saved Formations")
+            .toolbar {
+                #if os(iOS)
+                    ToolbarItemGroup(placement: .navigationBarTrailing) {
+                        if !persistenceManager.formations.isEmpty {
+                            EditButton()
+                        }
+                        Button(action: createFormation) {
+                            Image(systemName: "plus")
+                        }
+                        .accessibilityLabel("Create new formation")
                     }
-                    Button(action: createFormation) {
-                        Image(systemName: "plus")
+                #else
+                    ToolbarItemGroup {
+                        Button(action: createFormation) {
+                            Image(systemName: "plus")
+                        }
                     }
-                    .accessibilityLabel("Create new formation")
+                #endif
+            }
+            .navigationDestination(for: Formation.self) { formation in
+                FloorGridView(formation: formation)
+            }
+            .confirmationDialog(
+                "Delete \"\(formationToDelete?.name ?? "")\"?",
+                isPresented: Binding(
+                    get: { formationToDelete != nil },
+                    set: { if !$0 { formationToDelete = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) {
+                    if let formation = formationToDelete {
+                        persistenceManager.deleteFormation(id: formation.id)
+                        formationToDelete = nil
+                    }
                 }
-            #else
-                ToolbarItemGroup {
-                    Button(action: createFormation) {
-                        Image(systemName: "plus")
-                    }
-                }
-            #endif
-        }
-        .navigationDestination(item: $activeFormation) { formation in
-            FloorGridView(formation: formation)
-        }
-        .confirmationDialog(
-            "Delete \"\(formationToDelete?.name ?? "")\"?",
-            isPresented: Binding(
-                get: { formationToDelete != nil },
-                set: { if !$0 { formationToDelete = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("Delete", role: .destructive) {
+                Button("Cancel", role: .cancel) { formationToDelete = nil }
+            } message: {
                 if let formation = formationToDelete {
-                    persistenceManager.deleteFormation(id: formation.id)
-                    formationToDelete = nil
+                    Text("This will permanently delete this formation and its \(formation.athletes.count) athletes.")
                 }
-            }
-            Button("Cancel", role: .cancel) { formationToDelete = nil }
-        } message: {
-            if let formation = formationToDelete {
-                Text("This will permanently delete this formation and its \(formation.athletes.count) athletes.")
             }
         }
     }
@@ -101,14 +103,12 @@ struct FormationListView: View {
         var formation = Formation()
         formation.name = "Formation \(n)"
         persistenceManager.addFormation(formation)
-        activeFormation = formation
+        navigationPath.append(formation)
     }
 }
 
 // MARK: - Previews
 
 #Preview("Formation List") {
-    NavigationStack {
-        FormationListView()
-    }
+    FormationListView()
 }

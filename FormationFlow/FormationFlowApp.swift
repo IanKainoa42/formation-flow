@@ -6,9 +6,7 @@ struct FormationFlowApp: App {
 
     var body: some Scene {
         WindowGroup {
-            NavigationStack {
-                FormationListView()
-            }
+            FormationListView()
             .environmentObject(persistenceManager)
         }
     }
