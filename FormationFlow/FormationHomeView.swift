@@ -10,8 +10,17 @@ struct FormationHomeView: View {
     }
 
     @State private var selectedTab: Tab = .start
-    @State private var startFormation = Formation.bowlingPin(name: "Start")
-    @State private var endFormation = Formation.bowlingPin(name: "End")
+    @State private var startFormation: Formation
+    @State private var endFormation: Formation
+
+    init() {
+        let base = Formation.bowlingPin(name: "Start")
+        var end = base
+        end.id = UUID()
+        end.name = "End"
+        _startFormation = State(initialValue: base)
+        _endFormation = State(initialValue: end)
+    }
 
     var body: some View {
         NavigationStack {
@@ -57,8 +66,12 @@ struct FormationHomeView: View {
     }
 
     private func resetAll() {
-        startFormation = Formation.bowlingPin(name: "Start")
-        endFormation = Formation.bowlingPin(name: "End")
+        let base = Formation.bowlingPin(name: "Start")
+        var end = base
+        end.id = UUID()
+        end.name = "End"
+        startFormation = base
+        endFormation = end
     }
 }
 

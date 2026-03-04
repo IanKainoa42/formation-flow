@@ -90,99 +90,6 @@ struct TransitionPlayerView: View {
 
             Divider()
 
-            if let selectedId = selectedAthleteId,
-                let index = player.startFormation.athletes.firstIndex(where: { $0.id == selectedId }
-                )
-            {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(alignment: .top) {
-                        TimingControlsView(
-                            athlete: Binding(
-                                get: { player.startFormation.athletes[index] },
-                                set: { newAthlete in
-                                    player.startFormation.athletes[index] = newAthlete
-                                    player.seek(to: player.progress)
-                                }
-                            ),
-                            duration: player.duration
-                        )
-
-                        Spacer()
-
-                        if !player.startFormation.athletes[index].pathWaypoints.isEmpty
-                            || player.startFormation.athletes[index].pathControlPoint != nil
-                        {
-                            Button(action: {
-                                player.startFormation.athletes[index].pathWaypoints = []
-                                player.startFormation.athletes[index].pathControlPoint = nil
-                                player.seek(to: player.progress)
-                            }) {
-                                Label("Reset Path", systemImage: "arrow.uturn.backward")
-                                    .font(.caption)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color.gray.opacity(0.15))
-                                    .cornerRadius(6)
-                            }
-                            .padding(.top, 12)
-                        }
-                    }
-
-                    // Waypoint list
-                    if !player.startFormation.athletes[index].pathWaypoints.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(
-                                    Array(
-                                        player.startFormation.athletes[index].pathWaypoints
-                                            .enumerated()),
-                                    id: \.element.id
-                                ) { wpIdx, waypoint in
-                                    HStack(spacing: 4) {
-                                        Text("WP\(wpIdx + 1)")
-                                            .font(.caption2.bold())
-
-                                        Button(action: {
-                                            player.startFormation.athletes[index]
-                                                .pathWaypoints[wpIdx].isSmooth.toggle()
-                                            player.seek(to: player.progress)
-                                        }) {
-                                            Image(
-                                                systemName: waypoint.isSmooth
-                                                    ? "line.diagonal" : "chevron.right"
-                                            )
-                                            .font(.caption2)
-                                        }
-                                        .help(waypoint.isSmooth ? "Smooth curve" : "Sharp cut")
-
-                                        Button(action: {
-                                            player.startFormation.athletes[index]
-                                                .pathWaypoints.remove(at: wpIdx)
-                                            player.seek(to: player.progress)
-                                        }) {
-                                            Image(systemName: "xmark.circle.fill")
-                                                .font(.caption2)
-                                                .foregroundColor(.red)
-                                        }
-                                    }
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 3)
-                                    .background(Color.gray.opacity(0.1))
-                                    .cornerRadius(4)
-                                }
-                            }
-                        }
-                    }
-                }
-                .padding(.horizontal)
-                .padding(.top, 8)
-            } else {
-                Text("Tap an athlete to adjust timing \u{00B7} Drag path midpoint to curve it")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .padding(.top, 8)
-            }
-
             VStack(spacing: 4) {
                 Slider(
                     value: Binding(
@@ -228,6 +135,8 @@ struct TransitionPlayerView: View {
             }
             .padding(.horizontal)
             .padding(.top, 8)
+
+            selectedAthleteTimingBar
 
             HStack {
                 Text("Duration")
@@ -346,6 +255,101 @@ struct TransitionPlayerView: View {
         }
         .onChange(of: player.startFormation) { _, newFormation in
             updatePathCollisionCache(start: newFormation)
+        }
+    }
+
+    private func athleteTimingBinding(id: UUID) -> Binding<Double> {
+        Binding<Double>(
+            get: {
+                guard let i = player.startFormation.athletes.firstIndex(where: { $0.id == id })
+                else { return 0 }
+                return player.startFormation.athletes[i].moveTiming
+            },
+            set: { newVal in
+                guard let i = player.startFormation.athletes.firstIndex(where: { $0.id == id })
+                else { return }
+                player.startFormation.athletes[i].moveTiming = newVal
+                player.seek(to: player.progress)
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var selectedAthleteTimingBar: some View {
+        if let selectedId = selectedAthleteId,
+            let i = player.startFormation.athletes.firstIndex(where: { $0.id == selectedId })
+        {
+            let athlete = player.startFormation.athletes[i]
+            HStack(spacing: 8) {
+                Text("\(athlete.label) delay:")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Slider(
+                    value: athleteTimingBinding(id: selectedId),
+                    in: 0...max(player.duration, 0.1),
+                    step: 0.1
+                )
+                Text(String(format: "%.1fs", athlete.moveTiming))
+                    .font(.caption.monospacedDigit())
+                    .frame(width: 36, alignment: .trailing)
+
+                if !athlete.pathWaypoints.isEmpty || athlete.pathControlPoint != nil {
+                    Button(action: {
+                        player.startFormation.athletes[i].pathWaypoints = []
+                        player.startFormation.athletes[i].pathControlPoint = nil
+                        player.seek(to: player.progress)
+                    }) {
+                        Image(systemName: "arrow.uturn.backward")
+                            .font(.caption)
+                    }
+                }
+
+                Button(action: { selectedAthleteId = nil }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(.horizontal)
+            .padding(.top, 4)
+
+            if !athlete.pathWaypoints.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(
+                            Array(athlete.pathWaypoints.enumerated()),
+                            id: \.element.id
+                        ) { wpIdx, waypoint in
+                            HStack(spacing: 3) {
+                                Text("WP\(wpIdx + 1)")
+                                    .font(.system(size: 9, weight: .bold))
+                                Button(action: {
+                                    player.startFormation.athletes[i]
+                                        .pathWaypoints[wpIdx].isSmooth.toggle()
+                                    player.seek(to: player.progress)
+                                }) {
+                                    Image(systemName: waypoint.isSmooth ? "line.diagonal" : "chevron.right")
+                                        .font(.system(size: 9))
+                                }
+                                Button(action: {
+                                    player.startFormation.athletes[i]
+                                        .pathWaypoints.remove(at: wpIdx)
+                                    player.seek(to: player.progress)
+                                }) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 9))
+                                        .foregroundColor(.red)
+                                }
+                            }
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.gray.opacity(0.1))
+                            .cornerRadius(4)
+                        }
+                    }
+                }
+                .padding(.horizontal)
+            }
         }
     }
 
