@@ -101,6 +101,42 @@ class PersistenceManager: ObservableObject {
     }
 }
 
+// MARK: - Path Waypoint
+
+struct PathWaypoint: Codable, Identifiable, Equatable, Hashable {
+    let id: UUID
+    var position: CGPoint  // waypoint position in floor feet
+    var isSmooth: Bool  // true = bezier curve through point, false = sharp cut
+
+    init(id: UUID = UUID(), position: CGPoint, isSmooth: Bool = true) {
+        self.id = id
+        self.position = position
+        self.isSmooth = isSmooth
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, isSmooth
+        case positionX, positionY
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(isSmooth, forKey: .isSmooth)
+        try container.encode(position.x, forKey: .positionX)
+        try container.encode(position.y, forKey: .positionY)
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        isSmooth = (try? container.decode(Bool.self, forKey: .isSmooth)) ?? true
+        let x = try container.decode(CGFloat.self, forKey: .positionX)
+        let y = try container.decode(CGFloat.self, forKey: .positionY)
+        position = CGPoint(x: x, y: y)
+    }
+}
+
 // MARK: - Data Models
 
 struct Athlete: Codable, Identifiable, Equatable, Hashable {
@@ -109,12 +145,14 @@ struct Athlete: Codable, Identifiable, Equatable, Hashable {
     var position: CGPoint  // x, y on floor (in feet)
     var role: AthleteRole = .base
     var moveTiming: CGFloat = 0.0  // seconds delay before this athlete starts moving
-    var pathControlPoint: CGPoint?  // Optional relative or absolute bezier control point
+    var pathControlPoint: CGPoint?  // Legacy single bezier control point (kept for backward compat)
+    var pathWaypoints: [PathWaypoint] = []  // Ordered intermediate waypoints for multi-segment paths
 
     static func == (lhs: Athlete, rhs: Athlete) -> Bool {
         lhs.id == rhs.id && lhs.label == rhs.label && lhs.position.x == rhs.position.x
             && lhs.position.y == rhs.position.y && lhs.role == rhs.role
             && lhs.moveTiming == rhs.moveTiming && lhs.pathControlPoint == rhs.pathControlPoint
+            && lhs.pathWaypoints == rhs.pathWaypoints
     }
 
     func hash(into hasher: inout Hasher) {
@@ -126,10 +164,11 @@ struct Athlete: Codable, Identifiable, Equatable, Hashable {
         hasher.combine(moveTiming)
         hasher.combine(pathControlPoint?.x)
         hasher.combine(pathControlPoint?.y)
+        hasher.combine(pathWaypoints)
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, label, role, moveTiming
+        case id, label, role, moveTiming, pathWaypoints
         case positionX = "positionX"
         case positionY = "positionY"
         case pathControlX = "pathControlX"
@@ -147,6 +186,9 @@ struct Athlete: Codable, Identifiable, Equatable, Hashable {
         if let control = pathControlPoint {
             try container.encode(control.x, forKey: .pathControlX)
             try container.encode(control.y, forKey: .pathControlY)
+        }
+        if !pathWaypoints.isEmpty {
+            try container.encode(pathWaypoints, forKey: .pathWaypoints)
         }
     }
 
@@ -170,6 +212,14 @@ struct Athlete: Codable, Identifiable, Equatable, Hashable {
             let cy = try? container.decode(CGFloat.self, forKey: .pathControlY)
         {
             pathControlPoint = CGPoint(x: cx, y: cy)
+        }
+
+        // Decode waypoints, or migrate legacy pathControlPoint to a single waypoint
+        if let waypoints = try? container.decode([PathWaypoint].self, forKey: .pathWaypoints) {
+            pathWaypoints = waypoints
+        } else if let cp = pathControlPoint {
+            // Migration: convert legacy single control point to a waypoint
+            pathWaypoints = [PathWaypoint(position: cp, isSmooth: true)]
         }
     }
 
@@ -283,6 +333,153 @@ struct PathCalculations {
             x: uu * p0.x + ut2 * c.x + tt * p2.x,
             y: uu * p0.y + ut2 * c.y + tt * p2.y
         )
+    }
+
+    /// Evaluate a cubic Bezier curve at parameter t (0...1).
+    static func cubicBezierPoint(
+        p0: CGPoint, c1: CGPoint, c2: CGPoint, p3: CGPoint, t: CGFloat
+    ) -> CGPoint {
+        let u = 1.0 - t
+        let uu = u * u
+        let uuu = uu * u
+        let tt = t * t
+        let ttt = tt * t
+        return CGPoint(
+            x: uuu * p0.x + 3 * uu * t * c1.x + 3 * u * tt * c2.x + ttt * p3.x,
+            y: uuu * p0.y + 3 * uu * t * c1.y + 3 * u * tt * c2.y + ttt * p3.y
+        )
+    }
+
+    /// Build a complete point-sequence (nodes) for a multi-waypoint path: [start, wp1, wp2, ..., end]
+    static func waypointNodes(from start: CGPoint, to end: CGPoint, waypoints: [PathWaypoint])
+        -> [CGPoint]
+    {
+        var nodes = [start]
+        nodes.append(contentsOf: waypoints.map { $0.position })
+        nodes.append(end)
+        return nodes
+    }
+
+    /// Calculate segment lengths for a multi-node path. Returns array of distances.
+    static func segmentLengths(_ nodes: [CGPoint]) -> [CGFloat] {
+        guard nodes.count > 1 else { return [] }
+        var lengths: [CGFloat] = []
+        for i in 0..<(nodes.count - 1) {
+            lengths.append(distance(from: nodes[i], to: nodes[i + 1]))
+        }
+        return lengths
+    }
+
+    /// Sample a multi-waypoint path into discrete points for collision detection.
+    /// Smooth waypoints use Catmull-Rom-style cubic bezier; sharp waypoints use straight line segments.
+    static func waypointPath(
+        from start: CGPoint, to end: CGPoint, waypoints: [PathWaypoint], steps: Int = 20
+    ) -> [CGPoint] {
+        guard !waypoints.isEmpty else {
+            return athletePath(from: start, to: end, steps: steps)
+        }
+
+        let nodes = waypointNodes(from: start, to: end, waypoints: waypoints)
+        let lengths = segmentLengths(nodes)
+        let totalLength = lengths.reduce(0, +)
+        guard totalLength > 0 else { return [start, end] }
+
+        // Distribute steps proportionally across segments
+        var path: [CGPoint] = [start]
+        for segIdx in 0..<(nodes.count - 1) {
+            let segSteps = max(2, Int(round(CGFloat(steps) * lengths[segIdx] / totalLength)))
+            let p0 = nodes[segIdx]
+            let p1 = nodes[segIdx + 1]
+
+            // Check if the endpoint waypoint is smooth (Catmull-Rom) or sharp (straight line).
+            // The first node is start (no waypoint), last is end (no waypoint).
+            let waypointAtEnd: PathWaypoint? =
+                (segIdx + 1 > 0 && segIdx + 1 <= waypoints.count) ? waypoints[segIdx] : nil
+            let isSmooth = waypointAtEnd?.isSmooth ?? false
+
+            if isSmooth {
+                // Catmull-Rom control points for the segment
+                let prev = segIdx > 0 ? nodes[segIdx - 1] : p0
+                let next = segIdx + 2 < nodes.count ? nodes[segIdx + 2] : p1
+                let c1 = CGPoint(
+                    x: p0.x + (p1.x - prev.x) / 6.0,
+                    y: p0.y + (p1.y - prev.y) / 6.0
+                )
+                let c2 = CGPoint(
+                    x: p1.x - (next.x - p0.x) / 6.0,
+                    y: p1.y - (next.y - p0.y) / 6.0
+                )
+                for i in 1...segSteps {
+                    let t = CGFloat(i) / CGFloat(segSteps)
+                    path.append(cubicBezierPoint(p0: p0, c1: c1, c2: c2, p3: p1, t: t))
+                }
+            } else {
+                // Sharp / straight line segment
+                for i in 1...segSteps {
+                    let t = CGFloat(i) / CGFloat(segSteps)
+                    path.append(CGPoint(x: p0.x + (p1.x - p0.x) * t, y: p0.y + (p1.y - p0.y) * t))
+                }
+            }
+        }
+        return path
+    }
+
+    /// Interpolate position along a multi-waypoint path at a given progress (0...1).
+    /// This distributes progress proportionally across segment lengths for natural speed.
+    static func interpolateWaypointPath(
+        from start: CGPoint, to end: CGPoint, waypoints: [PathWaypoint], progress: CGFloat
+    ) -> CGPoint {
+        guard !waypoints.isEmpty else {
+            return CGPoint(
+                x: start.x + (end.x - start.x) * progress,
+                y: start.y + (end.y - start.y) * progress
+            )
+        }
+
+        let nodes = waypointNodes(from: start, to: end, waypoints: waypoints)
+        let lengths = segmentLengths(nodes)
+        let totalLength = lengths.reduce(0, +)
+        guard totalLength > 0 else { return start }
+
+        // Find which segment the progress falls into
+        let targetDist = progress * totalLength
+        var accumulated: CGFloat = 0
+        for segIdx in 0..<lengths.count {
+            let segLen = lengths[segIdx]
+            if accumulated + segLen >= targetDist || segIdx == lengths.count - 1 {
+                let segProgress = segLen > 0 ? (targetDist - accumulated) / segLen : 0
+                let clampedT = max(0, min(1, segProgress))
+
+                let p0 = nodes[segIdx]
+                let p1 = nodes[segIdx + 1]
+
+                // Check if we should use smooth or sharp interpolation
+                let waypointAtEnd: PathWaypoint? =
+                    (segIdx < waypoints.count) ? waypoints[segIdx] : nil
+                let isSmooth = waypointAtEnd?.isSmooth ?? false
+
+                if isSmooth {
+                    let prev = segIdx > 0 ? nodes[segIdx - 1] : p0
+                    let next = segIdx + 2 < nodes.count ? nodes[segIdx + 2] : p1
+                    let c1 = CGPoint(
+                        x: p0.x + (p1.x - prev.x) / 6.0,
+                        y: p0.y + (p1.y - prev.y) / 6.0
+                    )
+                    let c2 = CGPoint(
+                        x: p1.x - (next.x - p0.x) / 6.0,
+                        y: p1.y - (next.y - p0.y) / 6.0
+                    )
+                    return cubicBezierPoint(p0: p0, c1: c1, c2: c2, p3: p1, t: clampedT)
+                } else {
+                    return CGPoint(
+                        x: p0.x + (p1.x - p0.x) * clampedT,
+                        y: p0.y + (p1.y - p0.y) * clampedT
+                    )
+                }
+            }
+            accumulated += segLen
+        }
+        return end
     }
 
     /// Find the nearest athlete to a given position
@@ -410,13 +607,23 @@ struct PathCalculations {
         var collidingIndices = Set<Int>()
         var paths: [[CGPoint]] = []
         for pair in matchedPairs {
-            paths.append(
-                athletePath(
-                    from: pair.start.position,
-                    to: pair.end.position,
-                    control: pair.start.pathControlPoint,
-                    steps: steps
-                ))
+            if !pair.start.pathWaypoints.isEmpty {
+                paths.append(
+                    waypointPath(
+                        from: pair.start.position,
+                        to: pair.end.position,
+                        waypoints: pair.start.pathWaypoints,
+                        steps: steps
+                    ))
+            } else {
+                paths.append(
+                    athletePath(
+                        from: pair.start.position,
+                        to: pair.end.position,
+                        control: pair.start.pathControlPoint,
+                        steps: steps
+                    ))
+            }
         }
         let minDistanceSq = minDistance * minDistance
         for i in 0..<matchedPairs.count {
@@ -506,7 +713,11 @@ class TransitionPlayer: ObservableObject {
                     1.0, max(0, progress - timingOffset) / (1.0 - timingOffset))
 
                 let newPosition: CGPoint
-                if let c = startAthlete.pathControlPoint {
+                if !startAthlete.pathWaypoints.isEmpty {
+                    newPosition = PathCalculations.interpolateWaypointPath(
+                        from: startAthlete.position, to: endAthlete.position,
+                        waypoints: startAthlete.pathWaypoints, progress: athleteProgress)
+                } else if let c = startAthlete.pathControlPoint {
                     newPosition = PathCalculations.quadraticBezierPoint(
                         from: startAthlete.position, control: c, to: endAthlete.position,
                         t: athleteProgress)

@@ -23,7 +23,7 @@ struct FloorGridView: View {
     @StateObject private var persistenceManager = PersistenceManager.shared
     @Environment(\.dismiss) private var dismiss
     @State var formation: Formation
-    @State var selectedAthleteId: UUID?
+    @State var selectedAthleteIds: Set<UUID> = []
     @State private var showingRenameAlert = false
     @State private var renameText = ""
     @State private var showingManageAthletes = false
@@ -39,8 +39,12 @@ struct FloorGridView: View {
     @State private var isSwapMode = false
     @State private var swapSourceAthleteId: UUID?
     @State private var dragStartAthletePosition: CGPoint = .zero
+    @State private var dragStartPositions: [UUID: CGPoint] = [:]  // For group move
     @State private var isPanning = false
-    @State private var undoStack: [(id: UUID, position: CGPoint)] = []
+    @State private var isDrawingSelectionBox = false
+    @State private var selectionRect: CGRect? = nil
+    @State private var selectionStartPoint: CGPoint = .zero
+    @State private var undoStack: [[(id: UUID, position: CGPoint)]] = []  // Group undo
     @State private var collisionPositionKey: [CollisionPositionKey] = []
 
     @State private var zoomScale: CGFloat = 1.0
@@ -59,12 +63,15 @@ struct FloorGridView: View {
                     if cachedCollisionCount > 0 {
                         Button(action: selectNextCollidingAthlete) {
                             Label(
-                                "\(cachedCollisionCount)", systemImage: "exclamationmark.triangle.fill"
+                                "\(cachedCollisionCount)",
+                                systemImage: "exclamationmark.triangle.fill"
                             )
                             .foregroundColor(.red)
                             .font(.caption.bold())
                         }
-                        .accessibilityLabel("Cycle through \(cachedCollisionCount) colliding athletes")
+                        .accessibilityLabel(
+                            "Cycle through \(cachedCollisionCount) colliding athletes")
+                        .help("\(cachedCollisionCount) athletes are within 2ft of each other. Tap to cycle through them.")
                     }
                     Button(action: undoLastMove) {
                         Image(systemName: "arrow.uturn.backward")
@@ -80,12 +87,15 @@ struct FloorGridView: View {
                     if cachedCollisionCount > 0 {
                         Button(action: selectNextCollidingAthlete) {
                             Label(
-                                "\(cachedCollisionCount)", systemImage: "exclamationmark.triangle.fill"
+                                "\(cachedCollisionCount)",
+                                systemImage: "exclamationmark.triangle.fill"
                             )
                             .foregroundColor(.red)
                             .font(.caption.bold())
                         }
-                        .accessibilityLabel("Cycle through \(cachedCollisionCount) colliding athletes")
+                        .accessibilityLabel(
+                            "Cycle through \(cachedCollisionCount) colliding athletes")
+                        .help("\(cachedCollisionCount) athletes are within 2ft of each other. Tap to cycle through them.")
                     }
                     Button(action: undoLastMove) {
                         Image(systemName: "arrow.uturn.backward")
@@ -223,10 +233,12 @@ struct FloorGridView: View {
     private func canvasWithGestures(cellSize: CGFloat, canvasOffset: CGPoint) -> some View {
         FloorCanvasView(
             formation: formation,
-            selectedAthleteId: selectedAthleteId,
+            selectedAthleteIds: selectedAthleteIds,
             collisionIds: cachedCollisionIds,
             cellSize: cellSize,
-            offset: canvasOffset
+            offset: canvasOffset,
+            swapSourceId: swapSourceAthleteId,
+            selectionRect: selectionRect
         )
         .gesture(dragGesture(cellSize: cellSize, canvasOffset: canvasOffset))
         .gesture(
@@ -252,44 +264,81 @@ struct FloorGridView: View {
                 // Swap mode: tap to swap, no dragging
                 if isSwapMode { return }
 
-                if !isDraggingAthlete && !isPanning {
+                if !isDraggingAthlete && !isPanning && !isDrawingSelectionBox {
                     let startScaled = CGPoint(
                         x: (value.startLocation.x - canvasOffset.x) / cellSize,
                         y: (value.startLocation.y - canvasOffset.y) / cellSize
                     )
+
+                    // Check if touch started on an athlete
                     var hitAthlete = false
                     for (index, athlete) in formation.athletes.enumerated() {
                         if PathCalculations.squaredDistance(from: startScaled, to: athlete.position)
                             < CourtConstants.hitRadiusSquared
                         {
-                            selectedAthleteId = athlete.id
+                            // If tapping a non-selected athlete, make it the sole selection
+                            if !selectedAthleteIds.contains(athlete.id) {
+                                selectedAthleteIds = [athlete.id]
+                            }
                             isDraggingAthlete = true
                             draggingAthleteIndex = index
                             dragStartAthletePosition = athlete.position
+                            #if os(iOS)
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            #endif
+                            // Record start positions for all selected athletes (group move)
+                            dragStartPositions = [:]
+                            for id in selectedAthleteIds {
+                                if let a = formation.athletes.first(where: { $0.id == id }) {
+                                    dragStartPositions[id] = a.position
+                                }
+                            }
                             hitAthlete = true
                             break
                         }
                     }
                     if !hitAthlete {
-                        selectedAthleteId = nil
-                        draggingAthleteIndex = nil
-                        isPanning = true
+                        // Start drawing selection box
+                        isDrawingSelectionBox = true
+                        selectionStartPoint = value.startLocation
+                        selectionRect = CGRect(
+                            origin: value.startLocation,
+                            size: .zero
+                        )
                     }
                 }
 
-                if isDraggingAthlete,
-                    let index = draggingAthleteIndex,
-                    formation.athletes.indices.contains(index)
-                {
-                    let newX = dragStartAthletePosition.x + value.translation.width / cellSize
-                    let newY = dragStartAthletePosition.y + value.translation.height / cellSize
-                    let newPosition = CGPoint(
-                        x: max(0, min(CourtConstants.width, round(newX))),
-                        y: max(0, min(CourtConstants.height, round(newY)))
-                    )
-                    if formation.athletes[index].position != newPosition {
-                        formation.athletes[index].position = newPosition
+                if isDraggingAthlete {
+                    // Move all selected athletes together
+                    let translationX = value.translation.width / cellSize
+                    let translationY = value.translation.height / cellSize
+
+                    for id in selectedAthleteIds {
+                        guard let startPos = dragStartPositions[id],
+                            let idx = formation.athletes.firstIndex(where: { $0.id == id })
+                        else { continue }
+
+                        let newX = startPos.x + translationX
+                        let newY = startPos.y + translationY
+                        let newPosition = CGPoint(
+                            x: max(0, min(CourtConstants.width, round(newX))),
+                            y: max(0, min(CourtConstants.height, round(newY)))
+                        )
+                        if formation.athletes[idx].position != newPosition {
+                            formation.athletes[idx].position = newPosition
+                        }
                     }
+                } else if isDrawingSelectionBox {
+                    // Update selection rectangle
+                    let origin = CGPoint(
+                        x: min(selectionStartPoint.x, value.location.x),
+                        y: min(selectionStartPoint.y, value.location.y)
+                    )
+                    let size = CGSize(
+                        width: abs(value.location.x - selectionStartPoint.x),
+                        height: abs(value.location.y - selectionStartPoint.y)
+                    )
+                    selectionRect = CGRect(origin: origin, size: size)
                 } else if isPanning {
                     panOffset = CGSize(
                         width: lastPanOffset.width + value.translation.width,
@@ -311,13 +360,15 @@ struct FloorGridView: View {
                                 < CourtConstants.hitRadiusSquared
                         {
                             // Record undo for both athletes
+                            var undoEntries: [(id: UUID, position: CGPoint)] = []
                             if let srcIdx = formation.athletes.firstIndex(where: {
                                 $0.id == sourceId
                             }) {
-                                undoStack.append(
+                                undoEntries.append(
                                     (id: sourceId, position: formation.athletes[srcIdx].position))
                             }
-                            undoStack.append((id: athlete.id, position: athlete.position))
+                            undoEntries.append((id: athlete.id, position: athlete.position))
+                            undoStack.append(undoEntries)
                             formation.swapAthletePositions(id1: sourceId, id2: athlete.id)
                             persistenceManager.updateFormation(formation)
                             tappedTarget = true
@@ -326,18 +377,50 @@ struct FloorGridView: View {
                     }
                     isSwapMode = false
                     swapSourceAthleteId = nil
-                    if !tappedTarget { selectedAthleteId = nil }
+                    if !tappedTarget { selectedAthleteIds = [] }
                     return
                 }
 
                 if isPanning { lastPanOffset = panOffset }
-                if isDraggingAthlete, let id = selectedAthleteId {
-                    undoStack.append((id: id, position: dragStartAthletePosition))
+
+                if isDraggingAthlete {
+                    // Record group undo
+                    var undoEntries: [(id: UUID, position: CGPoint)] = []
+                    for (id, startPos) in dragStartPositions {
+                        undoEntries.append((id: id, position: startPos))
+                    }
+                    if !undoEntries.isEmpty {
+                        undoStack.append(undoEntries)
+                    }
                     persistenceManager.updateFormation(formation)
                 }
+
+                if isDrawingSelectionBox, let rect = selectionRect {
+                    // Select all athletes within the selection rectangle
+                    var newSelection: Set<UUID> = []
+                    for athlete in formation.athletes {
+                        let screenPos = CGPoint(
+                            x: athlete.position.x * cellSize + canvasOffset.x,
+                            y: athlete.position.y * cellSize + canvasOffset.y
+                        )
+                        if rect.contains(screenPos) {
+                            newSelection.insert(athlete.id)
+                        }
+                    }
+                    // If box was tiny (just a tap on empty space), deselect all
+                    if rect.width < 5 && rect.height < 5 {
+                        selectedAthleteIds = []
+                    } else {
+                        selectedAthleteIds = newSelection
+                    }
+                    selectionRect = nil
+                }
+
                 isDraggingAthlete = false
                 draggingAthleteIndex = nil
                 isPanning = false
+                isDrawingSelectionBox = false
+                dragStartPositions = [:]
             }
     }
 
@@ -381,12 +464,21 @@ struct FloorGridView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
 
-        if let selectedId = selectedAthleteId, !isSwapMode,
+        if let selectedId = selectedAthleteIds.first, selectedAthleteIds.count == 1, !isSwapMode,
             let index = formation.athletes.firstIndex(where: { $0.id == selectedId })
         {
             AthleteDetailPanel(
                 athlete: $formation.athletes[index],
-                selectedAthleteId: $selectedAthleteId,
+                selectedAthleteId: Binding(
+                    get: { selectedAthleteIds.first },
+                    set: { newId in
+                        if let id = newId {
+                            selectedAthleteIds = [id]
+                        } else {
+                            selectedAthleteIds = []
+                        }
+                    }
+                ),
                 onDelete: deleteSelectedAthlete,
                 onSwap: {
                     swapSourceAthleteId = selectedId
@@ -396,6 +488,25 @@ struct FloorGridView: View {
             .frame(width: 280)
             .padding(16)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+        } else if selectedAthleteIds.count > 1, !isSwapMode {
+            HStack(spacing: 12) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.blue)
+                Text("\(selectedAthleteIds.count) athletes selected")
+                    .font(.subheadline.bold())
+                Spacer()
+                Button("Deselect") {
+                    selectedAthleteIds = []
+                }
+                .font(.subheadline)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(.ultraThinMaterial)
+            .cornerRadius(10)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         }
 
         if zoomScale != 1.0 || panOffset != .zero {
@@ -449,7 +560,8 @@ struct FloorGridView: View {
     private var trailingToolbar: some View {
         HStack(spacing: 12) {
             Button(action: { activeDestination = .transition(formation) }) {
-                Label("Transitions", systemImage: "arrow.right.circle")
+                Label("Transitions", systemImage: "play.circle")
+                    .labelStyle(.titleAndIcon)
             }
 
             Menu {
@@ -507,13 +619,13 @@ struct FloorGridView: View {
         let collidingAthletes = formation.athletes.filter { cachedCollisionIds.contains($0.id) }
         guard !collidingAthletes.isEmpty else { return }
 
-        if let currentId = selectedAthleteId,
+        if let currentId = selectedAthleteIds.first, selectedAthleteIds.count == 1,
             let currentIndex = collidingAthletes.firstIndex(where: { $0.id == currentId })
         {
             let nextIndex = (currentIndex + 1) % collidingAthletes.count
-            selectedAthleteId = collidingAthletes[nextIndex].id
+            selectedAthleteIds = [collidingAthletes[nextIndex].id]
         } else {
-            selectedAthleteId = collidingAthletes.first?.id
+            selectedAthleteIds = [collidingAthletes.first!.id]
         }
     }
 
@@ -526,30 +638,46 @@ struct FloorGridView: View {
             label = "P\(count)"
         }
 
-        // Grid layout: 8 per row, 6 ft spacing, starting at (4, 4)
-        // so athletes don't spawn stacked on each other.
-        let col = formation.athletes.count % 8
-        let row = formation.athletes.count / 8
-        let spawnX = min(CourtConstants.width - 2, 4.0 + CGFloat(col) * 6.0)
-        let spawnY = min(CourtConstants.height - 2, 4.0 + CGFloat(row) * 6.0)
+        // "Windows" layout: 8 athletes per row, 1 panel (8 ft) apart on x.
+        // Rows alternate: row 0 on a panel line (y=8), row 1 on center (y=12),
+        // row 2 on next line (y=16), row 3 on center (y=20), etc.
+        let athletesPerRow = 8
+        let col = formation.athletes.count % athletesPerRow
+        let row = formation.athletes.count / athletesPerRow
+
+        // X: start at first panel line (x=8), each column 1 panel (8 ft) apart
+        let spawnX = min(CourtConstants.width - 2, 8.0 + CGFloat(col) * 8.0)
+
+        // Y: odd rows on panel centers, even rows on panel lines
+        // Row 0 → y=8 (first line), Row 1 → y=12 (center), Row 2 → y=16 (line), ...
+        let panelIndex = row / 2  // which pair of line/center we're in
+        let isCenter = row % 2 == 1
+        let spawnY: CGFloat
+        if isCenter {
+            spawnY = min(CourtConstants.height - 2, 8.0 + CGFloat(panelIndex) * 8.0 + 4.0)
+        } else {
+            spawnY = min(CourtConstants.height - 2, 8.0 + CGFloat(panelIndex) * 8.0)
+        }
 
         let newAthlete = Athlete(label: label, position: CGPoint(x: spawnX, y: spawnY))
         formation.addAthlete(newAthlete)
-        selectedAthleteId = newAthlete.id
+        selectedAthleteIds = [newAthlete.id]
     }
 
     private func undoLastMove() {
-        guard let last = undoStack.popLast(),
-            let index = formation.athletes.firstIndex(where: { $0.id == last.id })
-        else { return }
-        formation.athletes[index].position = last.position
+        guard let lastGroup = undoStack.popLast() else { return }
+        for entry in lastGroup {
+            if let index = formation.athletes.firstIndex(where: { $0.id == entry.id }) {
+                formation.athletes[index].position = entry.position
+            }
+        }
     }
 
     private func deleteSelectedAthlete() {
-        guard let id = selectedAthleteId else { return }
+        guard let id = selectedAthleteIds.first, selectedAthleteIds.count == 1 else { return }
         formation.removeAthlete(id: id)
-        undoStack.removeAll { $0.id == id }
-        selectedAthleteId = nil
+        undoStack.removeAll { group in group.contains(where: { $0.id == id }) }
+        selectedAthleteIds = []
     }
 
     private func duplicateFormation() {

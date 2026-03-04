@@ -4,13 +4,15 @@ import SwiftUI
 
 struct FloorCanvasView: View {
     let formation: Formation
-    var selectedAthleteId: UUID? = nil
+    var selectedAthleteIds: Set<UUID> = []
     var startFormation: Formation? = nil
     var endFormation: Formation? = nil
     var collisionIds: Set<UUID> = []
     var pathCollisionIndices: Set<Int> = []
     var cellSize: CGFloat = 12
     var offset: CGPoint = .zero
+    var swapSourceId: UUID? = nil
+    var selectionRect: CGRect? = nil  // Selection box in screen coordinates (already offset)
 
     var body: some View {
         Canvas { context, _ in
@@ -21,6 +23,24 @@ struct FloorCanvasView: View {
                 drawPaths(in: &ctx, start: start, end: end)
             }
             drawAthletes(in: &ctx)
+
+            // Draw selection rectangle (coordinates are relative to offset)
+            if let rect = selectionRect {
+                let adjustedRect = CGRect(
+                    x: rect.origin.x - offset.x,
+                    y: rect.origin.y - offset.y,
+                    width: rect.width,
+                    height: rect.height
+                )
+                var selPath = Path()
+                selPath.addRect(adjustedRect)
+                ctx.fill(selPath, with: .color(.blue.opacity(0.1)))
+                ctx.stroke(
+                    selPath,
+                    with: .color(.blue.opacity(0.5)),
+                    style: StrokeStyle(lineWidth: 1.5, dash: [6, 3])
+                )
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.background)
@@ -42,46 +62,136 @@ struct FloorCanvasView: View {
             )
 
             let isPathColliding = pathCollisionIndices.contains(i)
-            let isSelected = start.athletes[i].id == selectedAthleteId
+            let isSelected = selectedAthleteIds.contains(start.athletes[i].id)
             let pathColor: Color = isPathColliding ? .red : (isSelected ? .blue : .green)
             let lineWidth: CGFloat = isSelected ? 3 : 1.5
 
-            var pathLine = Path()
-            pathLine.move(to: startPos)
-            if let c = start.athletes[i].pathControlPoint {
-                let controlPos = CGPoint(x: c.x * cellSize, y: c.y * cellSize)
-                pathLine.addQuadCurve(to: endPos, control: controlPos)
-            } else {
-                pathLine.addLine(to: endPos)
-            }
-            context.stroke(
-                pathLine,
-                with: .color(pathColor.opacity(0.4)),
-                lineWidth: lineWidth
-            )
+            let waypoints = start.athletes[i].pathWaypoints
 
-            // Draw midpoint handle if selected
-            if isSelected {
-                let t: CGFloat = 0.5
-                let midPoint: CGPoint
-                if let c = start.athletes[i].pathControlPoint {
-                    let cp = CGPoint(x: c.x * cellSize, y: c.y * cellSize)
-                    midPoint = PathCalculations.quadraticBezierPoint(
-                        from: startPos, control: cp, to: endPos, t: t)
-                } else {
-                    midPoint = CGPoint(
-                        x: startPos.x + (endPos.x - startPos.x) * t,
-                        y: startPos.y + (endPos.y - startPos.y) * t
+            if !waypoints.isEmpty {
+                // --- Multi-waypoint path ---
+                let nodes = PathCalculations.waypointNodes(
+                    from: start.athletes[i].position, to: end.athletes[i].position,
+                    waypoints: waypoints
+                )
+                let screenNodes = nodes.map { CGPoint(x: $0.x * cellSize, y: $0.y * cellSize) }
+
+                // Draw each segment
+                for segIdx in 0..<(screenNodes.count - 1) {
+                    let p0 = screenNodes[segIdx]
+                    let p1 = screenNodes[segIdx + 1]
+
+                    let waypointAtEnd: PathWaypoint? =
+                        (segIdx < waypoints.count) ? waypoints[segIdx] : nil
+                    let isSmooth = waypointAtEnd?.isSmooth ?? false
+
+                    var segPath = Path()
+                    segPath.move(to: p0)
+
+                    if isSmooth {
+                        let prev = segIdx > 0 ? screenNodes[segIdx - 1] : p0
+                        let next = segIdx + 2 < screenNodes.count ? screenNodes[segIdx + 2] : p1
+                        let c1 = CGPoint(
+                            x: p0.x + (p1.x - prev.x) / 6.0,
+                            y: p0.y + (p1.y - prev.y) / 6.0
+                        )
+                        let c2 = CGPoint(
+                            x: p1.x - (next.x - p0.x) / 6.0,
+                            y: p1.y - (next.y - p0.y) / 6.0
+                        )
+                        segPath.addCurve(to: p1, control1: c1, control2: c2)
+                    } else {
+                        segPath.addLine(to: p1)
+                    }
+
+                    context.stroke(
+                        segPath,
+                        with: .color(pathColor.opacity(0.4)),
+                        lineWidth: lineWidth
                     )
+
+                    // Draw "+" add-waypoint handle at segment midpoint when selected
+                    if isSelected {
+                        let mid = CGPoint(x: (p0.x + p1.x) / 2, y: (p0.y + p1.y) / 2)
+                        var plusBg = Path()
+                        plusBg.addEllipse(
+                            in: CGRect(x: mid.x - 8, y: mid.y - 8, width: 16, height: 16))
+                        context.fill(plusBg, with: .color(.white.opacity(0.7)))
+                        context.stroke(plusBg, with: .color(pathColor.opacity(0.5)), lineWidth: 1)
+                        let plusText = Text("+").font(.system(size: 12, weight: .bold))
+                            .foregroundColor(pathColor)
+                        context.draw(plusText, at: mid, anchor: .center)
+                    }
                 }
 
-                var handlePath = Path()
-                handlePath.addEllipse(
-                    in: CGRect(x: midPoint.x - 6, y: midPoint.y - 6, width: 12, height: 12))
-                context.fill(handlePath, with: .color(.white))
-                context.stroke(handlePath, with: .color(pathColor), lineWidth: 2)
+                // Draw waypoint handles when selected
+                if isSelected {
+                    for wp in waypoints {
+                        let wpScreen = CGPoint(
+                            x: wp.position.x * cellSize, y: wp.position.y * cellSize)
+                        let handleSize: CGFloat = wp.isSmooth ? 10 : 8
+                        var handlePath = Path()
+                        if wp.isSmooth {
+                            handlePath.addEllipse(
+                                in: CGRect(
+                                    x: wpScreen.x - handleSize / 2, y: wpScreen.y - handleSize / 2,
+                                    width: handleSize, height: handleSize))
+                        } else {
+                            // Sharp cut: draw a diamond
+                            handlePath.move(
+                                to: CGPoint(x: wpScreen.x, y: wpScreen.y - handleSize / 2))
+                            handlePath.addLine(
+                                to: CGPoint(x: wpScreen.x + handleSize / 2, y: wpScreen.y))
+                            handlePath.addLine(
+                                to: CGPoint(x: wpScreen.x, y: wpScreen.y + handleSize / 2))
+                            handlePath.addLine(
+                                to: CGPoint(x: wpScreen.x - handleSize / 2, y: wpScreen.y))
+                            handlePath.closeSubpath()
+                        }
+                        context.fill(handlePath, with: .color(.white))
+                        context.stroke(handlePath, with: .color(pathColor), lineWidth: 2)
+                    }
+                }
+            } else {
+                // --- Legacy single-control-point path ---
+                var pathLine = Path()
+                pathLine.move(to: startPos)
+                if let c = start.athletes[i].pathControlPoint {
+                    let controlPos = CGPoint(x: c.x * cellSize, y: c.y * cellSize)
+                    pathLine.addQuadCurve(to: endPos, control: controlPos)
+                } else {
+                    pathLine.addLine(to: endPos)
+                }
+                context.stroke(
+                    pathLine,
+                    with: .color(pathColor.opacity(0.4)),
+                    lineWidth: lineWidth
+                )
+
+                // Draw midpoint handle if selected
+                if isSelected {
+                    let t: CGFloat = 0.5
+                    let midPoint: CGPoint
+                    if let c = start.athletes[i].pathControlPoint {
+                        let cp = CGPoint(x: c.x * cellSize, y: c.y * cellSize)
+                        midPoint = PathCalculations.quadraticBezierPoint(
+                            from: startPos, control: cp, to: endPos, t: t)
+                    } else {
+                        midPoint = CGPoint(
+                            x: startPos.x + (endPos.x - startPos.x) * t,
+                            y: startPos.y + (endPos.y - startPos.y) * t
+                        )
+                    }
+
+                    var handlePath = Path()
+                    handlePath.addEllipse(
+                        in: CGRect(x: midPoint.x - 6, y: midPoint.y - 6, width: 12, height: 12))
+                    context.fill(handlePath, with: .color(.white))
+                    context.stroke(handlePath, with: .color(pathColor), lineWidth: 2)
+                }
             }
 
+            // Arrow at end position
             let dx = endPos.x - startPos.x
             let dy = endPos.y - startPos.y
             let dist = hypot(dx, dy)
@@ -168,7 +278,7 @@ struct FloorCanvasView: View {
                 y: athlete.position.y * cellSize
             )
 
-            let isSelected = athlete.id == selectedAthleteId
+            let isSelected = selectedAthleteIds.contains(athlete.id)
             let isColliding = collisionIds.contains(athlete.id)
 
             let roleColor = athlete.role.color
@@ -212,6 +322,22 @@ struct FloorCanvasView: View {
                     warningRing,
                     with: .color(.red),
                     lineWidth: 2
+                )
+            }
+
+            if athlete.id == swapSourceId {
+                var swapRing = Path()
+                swapRing.addEllipse(
+                    in: CGRect(
+                        x: screenPos.x - (radius + 6),
+                        y: screenPos.y - (radius + 6),
+                        width: (radius + 6) * 2,
+                        height: (radius + 6) * 2
+                    ))
+                context.stroke(
+                    swapRing,
+                    with: .color(.blue),
+                    style: StrokeStyle(lineWidth: 3, dash: [6, 3])
                 )
             }
 

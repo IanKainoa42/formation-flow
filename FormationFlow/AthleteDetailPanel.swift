@@ -53,20 +53,25 @@ struct AthleteDetailPanel: View {
                 .accessibilityLabel("Deselect athlete")
             }
 
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
                 ForEach(AthleteRole.allCases, id: \.self) { role in
                     Button {
                         athlete.role = role
                     } label: {
-                        ZStack {
-                            Circle()
-                                .fill(role.color)
-                                .frame(width: 28, height: 28)
-                            if athlete.role == role {
-                                Image(systemName: "checkmark")
-                                    .font(.caption.bold())
-                                    .foregroundColor(.white)
+                        VStack(spacing: 2) {
+                            ZStack {
+                                Circle()
+                                    .fill(role.color)
+                                    .frame(width: 28, height: 28)
+                                if athlete.role == role {
+                                    Image(systemName: "checkmark")
+                                        .font(.caption.bold())
+                                        .foregroundColor(.white)
+                                }
                             }
+                            Text(role.rawValue.capitalized)
+                                .font(.system(size: 9))
+                                .foregroundColor(athlete.role == role ? .primary : .secondary)
                         }
                     }
                     .accessibilityLabel("Set role to \(role.rawValue)")
