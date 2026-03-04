@@ -2,12 +2,9 @@ import SwiftUI
 
 @main
 struct FormationFlowApp: App {
-    @StateObject private var persistenceManager = PersistenceManager.shared
-
     var body: some Scene {
         WindowGroup {
-            FormationListView()
-            .environmentObject(persistenceManager)
+            FormationHomeView()
         }
     }
 }

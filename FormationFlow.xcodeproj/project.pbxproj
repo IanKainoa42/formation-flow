@@ -9,17 +9,15 @@
 /* Begin PBXBuildFile section */
 		334C42A5B839654CCBC14ACF /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F4F48ABA5AD5A9438964E6B /* Models.swift */; };
 		36514899A24799F98ADE913C /* TimingControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D0844CFBD4E1BACC19E81AC /* TimingControlsView.swift */; };
-		523D462891BE0122846B8953 /* FormationThumbnailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDC14A0F86683C0B66ABE21C /* FormationThumbnailView.swift */; };
 		5A25437D9A0BBC0AC8856EE5 /* FormationFlowApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21E94990B494F1D3D617A4E7 /* FormationFlowApp.swift */; };
-		90B74689871E4B1E89B08F9A /* FormationListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15DE4D62846A4AD0F424534B /* FormationListView.swift */; };
 		93064509B038206204B9459D /* FloorGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFC34761911C80E5631C8341 /* FloorGridView.swift */; };
+		A1B2C3D4E5F6A7B8C9D0E1F2 /* FormationHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F6A7B8C9D0E1F2A3 /* FormationHomeView.swift */; };
 		DCC44D02B9685B8277F4D198 /* FloorCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 303A4352BC4FD6FB758B338C /* FloorCanvasView.swift */; };
 		F2404D8798687C821CBF4F7C /* TransitionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22EB4E82B510B78E55C92084 /* TransitionViews.swift */; };
 		F4094C4FBEC63EB6C48960EB /* AthleteDetailPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FD34039AE5F73A96066C39B /* AthleteDetailPanel.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		15DE4D62846A4AD0F424534B /* FormationListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FormationListView.swift; path = FormationFlow/FormationListView.swift; sourceTree = SOURCE_ROOT; };
 		1F08C9AC2F57AAC400425930 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = FormationFlow/Assets.xcassets; sourceTree = SOURCE_ROOT; };
 		1F08C9AD2F57AAED00425930 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = FormationFlow/Info.plist; sourceTree = SOURCE_ROOT; };
 		1FEE788C2F3E5E9900012373 /* FormationFlow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FormationFlow.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -30,7 +28,7 @@
 		4D0844CFBD4E1BACC19E81AC /* TimingControlsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TimingControlsView.swift; path = FormationFlow/TimingControlsView.swift; sourceTree = SOURCE_ROOT; };
 		4F4F48ABA5AD5A9438964E6B /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Models.swift; path = FormationFlow/Models.swift; sourceTree = SOURCE_ROOT; };
 		4FD34039AE5F73A96066C39B /* AthleteDetailPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AthleteDetailPanel.swift; path = FormationFlow/AthleteDetailPanel.swift; sourceTree = SOURCE_ROOT; };
-		EDC14A0F86683C0B66ABE21C /* FormationThumbnailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FormationThumbnailView.swift; path = FormationFlow/FormationThumbnailView.swift; sourceTree = SOURCE_ROOT; };
+		B2C3D4E5F6A7B8C9D0E1F2A3 /* FormationHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FormationHomeView.swift; path = FormationFlow/FormationHomeView.swift; sourceTree = SOURCE_ROOT; };
 		EFC34761911C80E5631C8341 /* FloorGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FloorGridView.swift; path = FormationFlow/FloorGridView.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
@@ -58,8 +56,7 @@
 				1F08C9AC2F57AAC400425930 /* Assets.xcassets */,
 				1F08C9AD2F57AAED00425930 /* Info.plist */,
 				1FEE78922F3E5EB100012373 /* LaunchScreen.storyboard */,
-				EDC14A0F86683C0B66ABE21C /* FormationThumbnailView.swift */,
-				15DE4D62846A4AD0F424534B /* FormationListView.swift */,
+				B2C3D4E5F6A7B8C9D0E1F2A3 /* FormationHomeView.swift */,
 				303A4352BC4FD6FB758B338C /* FloorCanvasView.swift */,
 				EFC34761911C80E5631C8341 /* FloorGridView.swift */,
 				22EB4E82B510B78E55C92084 /* TransitionViews.swift */,
@@ -121,10 +118,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				523D462891BE0122846B8953 /* FormationThumbnailView.swift in Sources */,
-				90B74689871E4B1E89B08F9A /* FormationListView.swift in Sources */,
 				DCC44D02B9685B8277F4D198 /* FloorCanvasView.swift in Sources */,
 				93064509B038206204B9459D /* FloorGridView.swift in Sources */,
+				A1B2C3D4E5F6A7B8C9D0E1F2 /* FormationHomeView.swift in Sources */,
 				F2404D8798687C821CBF4F7C /* TransitionViews.swift in Sources */,
 				36514899A24799F98ADE913C /* TimingControlsView.swift in Sources */,
 				F4094C4FBEC63EB6C48960EB /* AthleteDetailPanel.swift in Sources */,

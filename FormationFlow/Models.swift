@@ -37,70 +37,6 @@ enum AthleteRole: String, Codable, CaseIterable {
     }
 }
 
-// MARK: - Persistence Manager
-
-class PersistenceManager: ObservableObject {
-    static let shared = PersistenceManager()
-
-    private let formationsKey = "formations"
-    private var saveWorkItem: DispatchWorkItem?
-    private let saveQueue = DispatchQueue(label: "FormationFlow.PersistenceSave", qos: .utility)
-
-    @Published var formations: [Formation] = [] {
-        didSet { scheduleSave() }
-    }
-
-    init() {
-        loadFormations()
-    }
-
-    private func scheduleSave() {
-        saveWorkItem?.cancel()
-        let key = formationsKey
-        let item = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            let snapshot = self.formations
-            self.saveQueue.async {
-                guard let encoded = try? JSONEncoder().encode(snapshot) else { return }
-                UserDefaults.standard.set(encoded, forKey: key)
-            }
-        }
-        saveWorkItem = item
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: item)
-    }
-
-    private func loadFormations() {
-        if let data = UserDefaults.standard.data(forKey: formationsKey) {
-            do {
-                formations = try JSONDecoder().decode([Formation].self, from: data)
-            } catch {
-                print("Error loading formations: \(error)")
-                formations = []
-            }
-        } else {
-            formations = []
-        }
-    }
-
-    func addFormation(_ formation: Formation) {
-        formations.append(formation)
-    }
-
-    func deleteFormation(id: UUID) {
-        formations.removeAll { $0.id == id }
-    }
-
-    func updateFormation(_ formation: Formation) {
-        if let index = formations.firstIndex(where: { $0.id == formation.id }) {
-            formations[index] = formation
-        }
-    }
-
-    func moveFormation(from source: IndexSet, to destination: Int) {
-        formations.move(fromOffsets: source, toOffset: destination)
-    }
-}
-
 // MARK: - Path Waypoint
 
 struct PathWaypoint: Codable, Identifiable, Equatable, Hashable {
@@ -288,20 +224,31 @@ struct Formation: Codable, Identifiable, Equatable, Hashable {
         athletes[index2].position = tempPosition
     }
 
-    // Sample formations for POC
-    static func sample() -> Formation {
+    /// 10-athlete bowling pin layout centered on the court
+    static func bowlingPin(name: String = "Formation") -> Formation {
         var formation = Formation()
-        formation.name = "Opening Formation"
-        formation.athletes = [
-            Athlete(label: "A1", position: CGPoint(x: 10, y: 10), role: .flyer),
-            Athlete(label: "A2", position: CGPoint(x: 10, y: 15), role: .base),
-            Athlete(label: "A3", position: CGPoint(x: 10, y: 20), role: .base),
-            Athlete(label: "B1", position: CGPoint(x: 26, y: 10), role: .flyer),
-            Athlete(label: "B2", position: CGPoint(x: 26, y: 15), role: .base),
-            Athlete(label: "B3", position: CGPoint(x: 26, y: 20), role: .base),
-            Athlete(label: "C1", position: CGPoint(x: 42, y: 10), role: .flyer),
-            Athlete(label: "C2", position: CGPoint(x: 42, y: 15), role: .base),
-        ]
+        formation.name = name
+        // Centered on 72x56 court. 4ft row spacing, 4ft column spacing.
+        // Row 0: 1 pin, Row 1: 2 pins, Row 2: 3 pins, Row 3: 4 pins
+        let centerX: CGFloat = CourtConstants.width / 2   // 36
+        let startY: CGFloat = CourtConstants.height / 2 - 6  // 22
+        let rowSpacing: CGFloat = 4
+        let colSpacing: CGFloat = 4
+
+        var label = 1
+        for row in 0...3 {
+            let count = row + 1
+            let y = startY + CGFloat(row) * rowSpacing
+            let rowWidth = CGFloat(count - 1) * colSpacing
+            let startX = centerX - rowWidth / 2
+            for col in 0..<count {
+                let x = startX + CGFloat(col) * colSpacing
+                formation.athletes.append(
+                    Athlete(label: "P\(label)", position: CGPoint(x: x, y: y))
+                )
+                label += 1
+            }
+        }
         return formation
     }
 }

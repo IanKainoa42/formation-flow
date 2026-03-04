@@ -1,17 +1,5 @@
 import SwiftUI
 
-// MARK: - Navigation Destination
-
-private enum FloorGridDestination: Identifiable, Hashable {
-    case transition(Formation)
-
-    var id: String {
-        switch self {
-        case .transition(let f): return "transition-\(f.id)"
-        }
-    }
-}
-
 // MARK: - Floor Grid View
 
 struct FloorGridView: View {
@@ -20,16 +8,10 @@ struct FloorGridView: View {
         let position: CGPoint
     }
 
-    @StateObject private var persistenceManager = PersistenceManager.shared
-    @Environment(\.dismiss) private var dismiss
-    @State var formation: Formation
+    @Binding var formation: Formation
     @State var selectedAthleteIds: Set<UUID> = []
-    @State private var showingRenameAlert = false
-    @State private var renameText = ""
     @State private var showingManageAthletes = false
     @State private var showingNotes = false
-    @State private var showingDeleteFormation = false
-    @State private var activeDestination: FloorGridDestination?
 
     @State private var cachedCollisionIds: Set<UUID> = []
     @State private var cachedCollisionCount: Int = 0
@@ -56,7 +38,6 @@ struct FloorGridView: View {
         GeometryReader { geometry in
             canvasStack(geometry: geometry)
         }
-        .navigationTitle(formation.name)
         .toolbar {
             #if os(iOS)
                 ToolbarItemGroup(placement: .navigationBarLeading) {
@@ -71,7 +52,9 @@ struct FloorGridView: View {
                         }
                         .accessibilityLabel(
                             "Cycle through \(cachedCollisionCount) colliding athletes")
-                        .help("\(cachedCollisionCount) athletes are within 2ft of each other. Tap to cycle through them.")
+                        .help(
+                            "\(cachedCollisionCount) athletes are within 2ft of each other. Tap to cycle through them."
+                        )
                     }
                     Button(action: undoLastMove) {
                         Image(systemName: "arrow.uturn.backward")
@@ -95,7 +78,9 @@ struct FloorGridView: View {
                         }
                         .accessibilityLabel(
                             "Cycle through \(cachedCollisionCount) colliding athletes")
-                        .help("\(cachedCollisionCount) athletes are within 2ft of each other. Tap to cycle through them.")
+                        .help(
+                            "\(cachedCollisionCount) athletes are within 2ft of each other. Tap to cycle through them."
+                        )
                     }
                     Button(action: undoLastMove) {
                         Image(systemName: "arrow.uturn.backward")
@@ -111,46 +96,13 @@ struct FloorGridView: View {
             updateCollisionCache(for: formation, force: true)
         }
         .onChange(of: formation) { _, newFormation in
-            if !isDraggingAthlete && !isPanning {
-                persistenceManager.updateFormation(newFormation)
-            }
             updateCollisionCache(for: newFormation)
-        }
-        .navigationDestination(item: $activeDestination) { dest in
-            destinationView(dest)
-        }
-        .alert("Rename Formation", isPresented: $showingRenameAlert) {
-            TextField("Name", text: $renameText)
-            Button("Save") {
-                let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty {
-                    formation.name = trimmed
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Enter a new name for this formation")
         }
         .sheet(isPresented: $showingManageAthletes) {
             manageAthletesSheet
         }
         .sheet(isPresented: $showingNotes) {
             notesSheet
-        }
-        .confirmationDialog(
-            "Delete \"\(formation.name)\"?",
-            isPresented: $showingDeleteFormation,
-            titleVisibility: .visible
-        ) {
-            Button("Delete", role: .destructive) {
-                persistenceManager.deleteFormation(id: formation.id)
-                dismiss()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(
-                "This will permanently delete this formation and its \(formation.athletes.count) athletes."
-            )
         }
     }
 
@@ -284,7 +236,7 @@ struct FloorGridView: View {
                             draggingAthleteIndex = index
                             dragStartAthletePosition = athlete.position
                             #if os(iOS)
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                             #endif
                             // Record start positions for all selected athletes (group move)
                             dragStartPositions = [:]
@@ -370,7 +322,6 @@ struct FloorGridView: View {
                             undoEntries.append((id: athlete.id, position: athlete.position))
                             undoStack.append(undoEntries)
                             formation.swapAthletePositions(id1: sourceId, id2: athlete.id)
-                            persistenceManager.updateFormation(formation)
                             tappedTarget = true
                             break
                         }
@@ -392,7 +343,6 @@ struct FloorGridView: View {
                     if !undoEntries.isEmpty {
                         undoStack.append(undoEntries)
                     }
-                    persistenceManager.updateFormation(formation)
                 }
 
                 if isDrawingSelectionBox, let rect = selectionRect {
@@ -558,47 +508,17 @@ struct FloorGridView: View {
     // MARK: - Toolbar
 
     private var trailingToolbar: some View {
-        HStack(spacing: 12) {
-            Button(action: { activeDestination = .transition(formation) }) {
-                Label("Transitions", systemImage: "play.circle")
-                    .labelStyle(.titleAndIcon)
+        Menu {
+            Button(action: { showingNotes = true }) {
+                Label("Notes", systemImage: "note.text")
             }
-
-            Menu {
-                Button(action: {
-                    renameText = formation.name
-                    showingRenameAlert = true
-                }) {
-                    Label("Rename", systemImage: "pencil")
-                }
-                Button(action: duplicateFormation) {
-                    Label("Duplicate", systemImage: "doc.on.doc")
-                }
-                Button(action: { showingNotes = true }) {
-                    Label("Notes", systemImage: "note.text")
-                }
-                Button(action: { showingManageAthletes = true }) {
-                    Label("Manage Athletes", systemImage: "list.bullet")
-                }
-                Divider()
-                Button(role: .destructive, action: { showingDeleteFormation = true }) {
-                    Label("Delete Formation", systemImage: "trash")
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
+            Button(action: { showingManageAthletes = true }) {
+                Label("Manage Athletes", systemImage: "list.bullet")
             }
-            .accessibilityLabel("More options")
+        } label: {
+            Image(systemName: "ellipsis.circle")
         }
-    }
-
-    // MARK: - Navigation
-
-    @ViewBuilder
-    private func destinationView(_ dest: FloorGridDestination) -> some View {
-        switch dest {
-        case .transition(let f):
-            TransitionPickerView(startFormation: f)
-        }
+        .accessibilityLabel("More options")
     }
 
     // MARK: - Actions
@@ -639,18 +559,13 @@ struct FloorGridView: View {
         }
 
         // "Windows" layout: 8 athletes per row, 1 panel (8 ft) apart on x.
-        // Rows alternate: row 0 on a panel line (y=8), row 1 on center (y=12),
-        // row 2 on next line (y=16), row 3 on center (y=20), etc.
         let athletesPerRow = 8
         let col = formation.athletes.count % athletesPerRow
         let row = formation.athletes.count / athletesPerRow
 
-        // X: start at first panel line (x=8), each column 1 panel (8 ft) apart
         let spawnX = min(CourtConstants.width - 2, 8.0 + CGFloat(col) * 8.0)
 
-        // Y: odd rows on panel centers, even rows on panel lines
-        // Row 0 → y=8 (first line), Row 1 → y=12 (center), Row 2 → y=16 (line), ...
-        let panelIndex = row / 2  // which pair of line/center we're in
+        let panelIndex = row / 2
         let isCenter = row % 2 == 1
         let spawnY: CGFloat
         if isCenter {
@@ -679,19 +594,12 @@ struct FloorGridView: View {
         undoStack.removeAll { group in group.contains(where: { $0.id == id }) }
         selectedAthleteIds = []
     }
-
-    private func duplicateFormation() {
-        var duplicate = formation
-        duplicate.id = UUID()
-        duplicate.name = "\(formation.name) (Copy)"
-        persistenceManager.addFormation(duplicate)
-    }
 }
 
 // MARK: - Previews
 
 #Preview {
     NavigationStack {
-        FloorGridView(formation: Formation.sample())
+        FloorGridView(formation: .constant(Formation.bowlingPin()))
     }
 }

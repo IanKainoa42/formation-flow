@@ -1,124 +1,5 @@
 import SwiftUI
 
-// MARK: - Transition Picker View (launched from editor toolbar)
-
-struct TransitionPickerView: View {
-    let startFormation: Formation
-    @StateObject private var persistenceManager = PersistenceManager.shared
-    @State private var newFormationDestination: Formation?
-
-    private var otherFormations: [Formation] {
-        persistenceManager.formations.filter { $0.id != startFormation.id }
-    }
-
-    var body: some View {
-        List {
-            // Start formation (current)
-            Section {
-                HStack(spacing: 12) {
-                    FormationThumbnailView(formation: startFormation)
-                        .frame(width: 80, height: 60)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(Color.blue, lineWidth: 2))
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(startFormation.name)
-                            .font(.headline)
-                        Text("\(startFormation.athletes.count) athletes")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    Spacer()
-                    Text("START")
-                        .font(.caption2.bold())
-                        .foregroundColor(.blue)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.blue.opacity(0.1))
-                        .cornerRadius(4)
-                }
-                .listRowBackground(Color.blue.opacity(0.05))
-            } header: {
-                Text("Transitioning From")
-            }
-
-            // Other formations to transition to
-            Section {
-                if otherFormations.isEmpty {
-                    Text(
-                        "Create another formation to animate transitions between them. Athletes will move from their positions here to their positions in the other formation."
-                    )
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .padding(.vertical, 8)
-                } else {
-                    ForEach(otherFormations) { formation in
-                        NavigationLink(
-                            destination: TransitionPlayerView(
-                                startFormation: startFormation,
-                                endFormation: formation
-                            )
-                        ) {
-                            HStack(spacing: 12) {
-                                FormationThumbnailView(formation: formation)
-                                    .frame(width: 80, height: 60)
-                                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 6)
-                                            .stroke(Color.gray.opacity(0.3)))
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(formation.name)
-                                        .font(.headline)
-                                    Text("\(formation.athletes.count) athletes")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                            .padding(.vertical, 4)
-                        }
-                    }
-                }
-            } header: {
-                Text("Transition To")
-            } footer: {
-                Text(
-                    "Athletes are matched by their position in the roster. Use Manage Athletes to reorder."
-                )
-            }
-
-            // Add new formation
-            Section {
-                Button(action: addFormation) {
-                    Label("New Formation", systemImage: "plus.circle.fill")
-                        .font(.body.bold())
-                }
-            }
-        }
-        .navigationTitle("Transitions")
-        .navigationDestination(item: $newFormationDestination) { formation in
-            TransitionPlayerView(
-                startFormation: startFormation,
-                endFormation: formation
-            )
-        }
-    }
-
-    private func addFormation() {
-        let n = persistenceManager.formations.count + 1
-        var formation = Formation()
-        formation.name = "Formation \(n)"
-        // Copy the same athletes so there's a 1-to-1 mapping for transition paths
-        formation.athletes = startFormation.athletes.map { athlete in
-            Athlete(
-                id: athlete.id, label: athlete.label, position: athlete.position, role: athlete.role
-            )
-        }
-        persistenceManager.addFormation(formation)
-        newFormationDestination = formation
-    }
-}
-
 // MARK: - Transition Player View
 
 struct TransitionPlayerView: View {
@@ -131,7 +12,6 @@ struct TransitionPlayerView: View {
     }
 
     @StateObject private var player: TransitionPlayer
-    @StateObject private var persistenceManager = PersistenceManager.shared
     @State private var selectedAthleteId: UUID?
     @State private var countMode: Bool = false
     @State private var countsPerTransition: Int = 8
@@ -142,7 +22,6 @@ struct TransitionPlayerView: View {
     @State private var isSwapMode = false
     @State private var swapSourceAthleteId: UUID?
     @State private var swapTargetIsEnd = false
-    @State private var editingEndFormation: Formation? = nil
 
     init(startFormation: Formation, endFormation: Formation) {
         _player = StateObject(
@@ -435,45 +314,30 @@ struct TransitionPlayerView: View {
             }
             .padding()
         }
-        .navigationTitle("\(player.startFormation.name) → \(player.endFormation.name)")
         .toolbar {
             #if os(iOS)
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    HStack(spacing: 12) {
-                        Button(action: {
-                            editingEndFormation = player.endFormation
-                        }) {
-                            Label("Edit End", systemImage: "pencil.circle")
+                    Button(action: {
+                        if let selectedId = selectedAthleteId {
+                            swapSourceAthleteId = selectedId
+                            isSwapMode = true
                         }
-                        Button(action: {
-                            if let selectedId = selectedAthleteId {
-                                swapSourceAthleteId = selectedId
-                                isSwapMode = true
-                            }
-                        }) {
-                            Image(systemName: "arrow.triangle.swap")
-                        }
-                        .disabled(selectedAthleteId == nil || isSwapMode)
+                    }) {
+                        Image(systemName: "arrow.triangle.swap")
                     }
+                    .disabled(selectedAthleteId == nil || isSwapMode)
                 }
             #else
                 ToolbarItem {
-                    HStack(spacing: 12) {
-                        Button(action: {
-                            editingEndFormation = player.endFormation
-                        }) {
-                            Label("Edit End", systemImage: "pencil.circle")
+                    Button(action: {
+                        if let selectedId = selectedAthleteId {
+                            swapSourceAthleteId = selectedId
+                            isSwapMode = true
                         }
-                        Button(action: {
-                            if let selectedId = selectedAthleteId {
-                                swapSourceAthleteId = selectedId
-                                isSwapMode = true
-                            }
-                        }) {
-                            Image(systemName: "arrow.triangle.swap")
-                        }
-                        .disabled(selectedAthleteId == nil || isSwapMode)
+                    }) {
+                        Image(systemName: "arrow.triangle.swap")
                     }
+                    .disabled(selectedAthleteId == nil || isSwapMode)
                 }
             #endif
         }
@@ -481,24 +345,7 @@ struct TransitionPlayerView: View {
             updatePathCollisionCache(start: player.startFormation, force: true)
         }
         .onChange(of: player.startFormation) { _, newFormation in
-            if !isDraggingHandle {
-                persistenceManager.updateFormation(newFormation)
-            }
             updatePathCollisionCache(start: newFormation)
-        }
-        .navigationDestination(item: $editingEndFormation) { formation in
-            FloorGridView(formation: formation)
-        }
-        .onAppear {
-            // Sync end formation from persistence in case it was edited via "Edit End"
-            if let updated = persistenceManager.formations.first(where: {
-                $0.id == player.endFormation.id
-            }) {
-                if updated != player.endFormation {
-                    player.endFormation = updated
-                    player.seek(to: player.progress)
-                }
-            }
         }
     }
 
@@ -568,7 +415,6 @@ struct TransitionPlayerView: View {
                             {
                                 // Insert a new waypoint at this segment midpoint
                                 let newWp = PathWaypoint(position: mid, isSmooth: true)
-                                // segIdx maps to insertion position in the waypoints array
                                 let insertIdx = min(
                                     segIdx,
                                     player.startFormation.athletes[index].pathWaypoints.count)
@@ -651,11 +497,9 @@ struct TransitionPlayerView: View {
                             if swapTargetIsEnd {
                                 player.endFormation.swapAthletePositions(
                                     id1: sourceId, id2: athlete.id)
-                                persistenceManager.updateFormation(player.endFormation)
                             } else {
                                 player.startFormation.swapAthletePositions(
                                     id1: sourceId, id2: athlete.id)
-                                persistenceManager.updateFormation(player.startFormation)
                             }
                             player.seek(to: player.progress)
                             isSwapMode = false
@@ -671,9 +515,6 @@ struct TransitionPlayerView: View {
                     return
                 }
 
-                if isDraggingHandle {
-                    persistenceManager.updateFormation(player.startFormation)
-                }
                 isDraggingHandle = false
                 draggingWaypointId = nil
             }
@@ -714,11 +555,10 @@ struct TransitionPlayerView: View {
 #Preview("Transition Player") {
     NavigationStack {
         TransitionPlayerView(
-            startFormation: Formation.sample(),
+            startFormation: Formation.bowlingPin(name: "Start"),
             endFormation: {
-                var end = Formation.sample()
+                var end = Formation.bowlingPin(name: "End")
                 end.id = UUID()
-                end.name = "End"
                 for i in 0..<end.athletes.count {
                     end.athletes[i].position.x += 10
                 }
