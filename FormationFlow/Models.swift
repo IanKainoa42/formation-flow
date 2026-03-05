@@ -43,15 +43,17 @@ struct PathWaypoint: Codable, Identifiable, Equatable, Hashable {
     let id: UUID
     var position: CGPoint  // waypoint position in floor feet
     var isSmooth: Bool  // true = bezier curve through point, false = sharp cut
+    var holdDuration: CGFloat = 0.0  // seconds to pause at this waypoint
 
-    init(id: UUID = UUID(), position: CGPoint, isSmooth: Bool = true) {
+    init(id: UUID = UUID(), position: CGPoint, isSmooth: Bool = true, holdDuration: CGFloat = 0.0) {
         self.id = id
         self.position = position
         self.isSmooth = isSmooth
+        self.holdDuration = holdDuration
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, isSmooth
+        case id, isSmooth, holdDuration
         case positionX, positionY
     }
 
@@ -59,6 +61,7 @@ struct PathWaypoint: Codable, Identifiable, Equatable, Hashable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
         try container.encode(isSmooth, forKey: .isSmooth)
+        try container.encode(holdDuration, forKey: .holdDuration)
         try container.encode(position.x, forKey: .positionX)
         try container.encode(position.y, forKey: .positionY)
     }
@@ -67,6 +70,7 @@ struct PathWaypoint: Codable, Identifiable, Equatable, Hashable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
         isSmooth = (try? container.decode(Bool.self, forKey: .isSmooth)) ?? true
+        holdDuration = (try? container.decode(CGFloat.self, forKey: .holdDuration)) ?? 0.0
         let x = try container.decode(CGFloat.self, forKey: .positionX)
         let y = try container.decode(CGFloat.self, forKey: .positionY)
         position = CGPoint(x: x, y: y)
@@ -429,6 +433,101 @@ struct PathCalculations {
         return end
     }
 
+    /// Returns the path-progress (0→1) at which each waypoint is reached, based on segment lengths.
+    /// The returned array has one entry per waypoint, in order.
+    static func waypointProgressThresholds(
+        from start: CGPoint, to end: CGPoint, waypoints: [PathWaypoint]
+    ) -> [CGFloat] {
+        let nodes = waypointNodes(from: start, to: end, waypoints: waypoints)
+        let lengths = segmentLengths(nodes)
+        let totalLength = lengths.reduce(0, +)
+        guard totalLength > 0 else { return waypoints.map { _ in 0 } }
+
+        var thresholds: [CGFloat] = []
+        var accumulated: CGFloat = 0
+        // Each waypoint sits at the end of segment [i], i.e. between nodes[i] and nodes[i+1].
+        for i in 0..<waypoints.count {
+            accumulated += lengths[i]
+            thresholds.append(accumulated / totalLength)
+        }
+        return thresholds
+    }
+
+    /// Map wall-clock progress (0→1) to path-progress (0→1) accounting for waypoint hold durations.
+    /// `totalHoldTime` is in seconds; `moveDuration` is the moving-only portion in seconds.
+    /// Returns the effective path progress (position along the spatial path).
+    static func holdAdjustedPathProgress(
+        wallProgress: CGFloat, waypoints: [PathWaypoint],
+        thresholds: [CGFloat], moveDuration: CGFloat, totalHoldTime: CGFloat
+    ) -> CGFloat {
+        guard !waypoints.isEmpty, totalHoldTime > 0, moveDuration > 0 else {
+            return wallProgress
+        }
+        let effectiveDuration = moveDuration + totalHoldTime
+        let elapsed = wallProgress * effectiveDuration  // seconds into this athlete's motion
+
+        // Walk through the timeline: alternating move-segments and holds
+        var timeUsed: CGFloat = 0
+        var prevThreshold: CGFloat = 0
+
+        for i in 0..<waypoints.count {
+            let threshold = thresholds[i]
+            let segmentPathFraction = threshold - prevThreshold
+            let segmentMoveTime = segmentPathFraction * moveDuration
+
+            // Moving phase for this segment
+            if elapsed <= timeUsed + segmentMoveTime {
+                let segElapsed = elapsed - timeUsed
+                let segProgress = segmentMoveTime > 0 ? segElapsed / segmentMoveTime : 1
+                return prevThreshold + segmentPathFraction * segProgress
+            }
+            timeUsed += segmentMoveTime
+
+            // Hold phase at this waypoint
+            let hold = waypoints[i].holdDuration
+            if hold > 0 && elapsed <= timeUsed + hold {
+                return threshold  // clamped at waypoint position
+            }
+            timeUsed += hold
+            prevThreshold = threshold
+        }
+
+        // Final segment: from last waypoint to end
+        let lastSegFraction = 1.0 - prevThreshold
+        let lastSegMoveTime = lastSegFraction * moveDuration
+        if elapsed <= timeUsed + lastSegMoveTime {
+            let segElapsed = elapsed - timeUsed
+            let segProgress = lastSegMoveTime > 0 ? segElapsed / lastSegMoveTime : 1
+            return prevThreshold + lastSegFraction * segProgress
+        }
+
+        return 1.0
+    }
+
+    /// Calculate the total travel distance (in feet) for an athlete's transition path.
+    static func travelDistance(
+        from start: CGPoint, to end: CGPoint, athlete: Athlete
+    ) -> CGFloat {
+        if !athlete.pathWaypoints.isEmpty {
+            let nodes = waypointNodes(from: start, to: end, waypoints: athlete.pathWaypoints)
+            return segmentLengths(nodes).reduce(0, +)
+        } else if let c = athlete.pathControlPoint {
+            // Approximate quadratic Bezier length by sampling
+            let steps = 20
+            var length: CGFloat = 0
+            var prev = start
+            for i in 1...steps {
+                let t = CGFloat(i) / CGFloat(steps)
+                let pt = quadraticBezierPoint(from: start, control: c, to: end, t: t)
+                length += distance(from: prev, to: pt)
+                prev = pt
+            }
+            return length
+        } else {
+            return distance(from: start, to: end)
+        }
+    }
+
     /// Find the nearest athlete to a given position
     static func nearestAthlete(to position: CGPoint, in formation: Formation) -> Athlete? {
         guard !formation.athletes.isEmpty else { return nil }
@@ -653,17 +752,54 @@ class TransitionPlayer: ObservableObject {
         var newFormation = startFormation
         newFormation.athletes = []
 
+        // Compute the longest effective duration (travel + holds) so timing stays proportional
+        let maxEffectiveTime: CGFloat = startFormation.athletes.compactMap { startAthlete -> CGFloat? in
+            guard let endAthlete = endFormation.athletes.first(where: { $0.id == startAthlete.id })
+            else { return nil }
+            let dist = PathCalculations.travelDistance(
+                from: startAthlete.position, to: endAthlete.position, athlete: startAthlete)
+            let holdTime = startAthlete.pathWaypoints.reduce(CGFloat(0)) { $0 + $1.holdDuration }
+            return dist + holdTime  // treat hold seconds as equivalent "distance" for proportioning
+        }.max() ?? 1.0
+
         for startAthlete in startFormation.athletes {
             if let endAthlete = endFormation.athletes.first(where: { $0.id == startAthlete.id }) {
+                let dist = PathCalculations.travelDistance(
+                    from: startAthlete.position, to: endAthlete.position, athlete: startAthlete)
+                let totalHold = startAthlete.pathWaypoints.reduce(CGFloat(0)) { $0 + $1.holdDuration }
+                let effectiveTime = dist + totalHold
+                // Each athlete's fraction of the total duration is proportional to their effective time
+                let durationFraction = maxEffectiveTime > 0 ? effectiveTime / maxEffectiveTime : 1.0
                 let timingOffset = min(0.99, startAthlete.moveTiming / CGFloat(duration))
-                let athleteProgress = min(
-                    1.0, max(0, progress - timingOffset) / (1.0 - timingOffset))
+                // Scale progress so this athlete finishes when their duration portion is done
+                let adjustedProgress = max(0, progress - timingOffset) / (1.0 - timingOffset)
+                let athleteProgress: CGFloat
+                if durationFraction > 0 {
+                    athleteProgress = min(1.0, adjustedProgress / durationFraction)
+                } else {
+                    athleteProgress = 1.0  // stationary athlete, jump to end
+                }
+
+                // Apply hold-duration adjustment for waypoint paths
+                let effectiveProgress: CGFloat
+                if !startAthlete.pathWaypoints.isEmpty && totalHold > 0 {
+                    let thresholds = PathCalculations.waypointProgressThresholds(
+                        from: startAthlete.position, to: endAthlete.position,
+                        waypoints: startAthlete.pathWaypoints)
+                    let moveDuration = durationFraction * CGFloat(duration) * (dist / effectiveTime)
+                    effectiveProgress = PathCalculations.holdAdjustedPathProgress(
+                        wallProgress: athleteProgress, waypoints: startAthlete.pathWaypoints,
+                        thresholds: thresholds, moveDuration: moveDuration,
+                        totalHoldTime: totalHold)
+                } else {
+                    effectiveProgress = athleteProgress
+                }
 
                 let newPosition: CGPoint
                 if !startAthlete.pathWaypoints.isEmpty {
                     newPosition = PathCalculations.interpolateWaypointPath(
                         from: startAthlete.position, to: endAthlete.position,
-                        waypoints: startAthlete.pathWaypoints, progress: athleteProgress)
+                        waypoints: startAthlete.pathWaypoints, progress: effectiveProgress)
                 } else if let c = startAthlete.pathControlPoint {
                     newPosition = PathCalculations.quadraticBezierPoint(
                         from: startAthlete.position, control: c, to: endAthlete.position,

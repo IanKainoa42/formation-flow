@@ -150,6 +150,30 @@ struct FloorCanvasView: View {
                         }
                         context.fill(handlePath, with: .color(.white))
                         context.stroke(handlePath, with: .color(pathColor), lineWidth: 2)
+
+                        // Double ring + pause icon for waypoints with hold duration
+                        if wp.holdDuration > 0 {
+                            let outerSize = handleSize + 6
+                            var outerRing = Path()
+                            outerRing.addEllipse(
+                                in: CGRect(
+                                    x: wpScreen.x - outerSize / 2, y: wpScreen.y - outerSize / 2,
+                                    width: outerSize, height: outerSize))
+                            context.stroke(outerRing, with: .color(.orange), lineWidth: 2)
+
+                            // Small pause bars
+                            let barW: CGFloat = 2
+                            let barH: CGFloat = 6
+                            let gap: CGFloat = 1.5
+                            var pauseIcon = Path()
+                            pauseIcon.addRect(CGRect(
+                                x: wpScreen.x - gap - barW, y: wpScreen.y + outerSize / 2 + 2,
+                                width: barW, height: barH))
+                            pauseIcon.addRect(CGRect(
+                                x: wpScreen.x + gap, y: wpScreen.y + outerSize / 2 + 2,
+                                width: barW, height: barH))
+                            context.fill(pauseIcon, with: .color(.orange))
+                        }
                     }
                 }
             } else {

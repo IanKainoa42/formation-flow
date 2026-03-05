@@ -315,40 +315,82 @@ struct TransitionPlayerView: View {
 
             if !athlete.pathWaypoints.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         ForEach(
                             Array(athlete.pathWaypoints.enumerated()),
                             id: \.element.id
                         ) { wpIdx, waypoint in
-                            HStack(spacing: 3) {
-                                Text("WP\(wpIdx + 1)")
-                                    .font(.system(size: 9, weight: .bold))
-                                Button(action: {
-                                    player.startFormation.athletes[i]
-                                        .pathWaypoints[wpIdx].isSmooth.toggle()
-                                    player.seek(to: player.progress)
-                                }) {
-                                    Image(systemName: waypoint.isSmooth ? "line.diagonal" : "chevron.right")
-                                        .font(.system(size: 9))
+                            VStack(spacing: 4) {
+                                // Top row: label, smooth/sharp toggle, delete
+                                HStack(spacing: 4) {
+                                    Text("WP\(wpIdx + 1)")
+                                        .font(.system(size: 11, weight: .bold))
+                                    Button(action: {
+                                        player.startFormation.athletes[i]
+                                            .pathWaypoints[wpIdx].isSmooth.toggle()
+                                        player.seek(to: player.progress)
+                                    }) {
+                                        Image(systemName: waypoint.isSmooth ? "line.diagonal" : "chevron.right")
+                                            .font(.system(size: 11))
+                                    }
+                                    Spacer()
+                                    Button(action: {
+                                        player.startFormation.athletes[i]
+                                            .pathWaypoints.remove(at: wpIdx)
+                                        player.seek(to: player.progress)
+                                    }) {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.red)
+                                    }
                                 }
-                                Button(action: {
-                                    player.startFormation.athletes[i]
-                                        .pathWaypoints.remove(at: wpIdx)
-                                    player.seek(to: player.progress)
-                                }) {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .font(.system(size: 9))
-                                        .foregroundColor(.red)
+
+                                Divider()
+
+                                // Bottom row: hold duration with +/- buttons
+                                HStack(spacing: 6) {
+                                    Image(systemName: "pause.fill")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(waypoint.holdDuration > 0 ? .orange : .secondary)
+                                    Button(action: {
+                                        let current = player.startFormation.athletes[i].pathWaypoints[wpIdx].holdDuration
+                                        player.startFormation.athletes[i].pathWaypoints[wpIdx].holdDuration = max(0, current - 0.5)
+                                        player.seek(to: player.progress)
+                                    }) {
+                                        Image(systemName: "minus.circle.fill")
+                                            .font(.system(size: 16))
+                                            .foregroundColor(waypoint.holdDuration > 0 ? .primary : .gray.opacity(0.3))
+                                    }
+                                    .disabled(waypoint.holdDuration <= 0)
+                                    Text(String(format: "%.1fs", waypoint.holdDuration))
+                                        .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                                        .foregroundColor(waypoint.holdDuration > 0 ? .orange : .secondary)
+                                        .frame(minWidth: 32)
+                                    Button(action: {
+                                        let current = player.startFormation.athletes[i].pathWaypoints[wpIdx].holdDuration
+                                        player.startFormation.athletes[i].pathWaypoints[wpIdx].holdDuration = min(10, current + 0.5)
+                                        player.seek(to: player.progress)
+                                    }) {
+                                        Image(systemName: "plus.circle.fill")
+                                            .font(.system(size: 16))
+                                            .foregroundColor(.primary)
+                                    }
                                 }
                             }
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(Color.gray.opacity(0.1))
-                            .cornerRadius(4)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                            .frame(minWidth: 100)
+                            .background(waypoint.holdDuration > 0 ? Color.orange.opacity(0.1) : Color.gray.opacity(0.08))
+                            .cornerRadius(8)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(waypoint.holdDuration > 0 ? Color.orange.opacity(0.4) : Color.gray.opacity(0.2), lineWidth: 1)
+                            )
                         }
                     }
                 }
                 .padding(.horizontal)
+                .padding(.top, 2)
             }
         }
     }
