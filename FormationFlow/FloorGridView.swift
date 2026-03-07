@@ -3,603 +3,557 @@ import SwiftUI
 // MARK: - Floor Grid View
 
 struct FloorGridView: View {
-    private struct CollisionPositionKey: Equatable {
-        let id: UUID
-        let position: CGPoint
-    }
+    @ObservedObject var store: RoutineStore
+    let formationID: UUID
+    var onDuplicateAsNext: () -> Void
 
-    @Binding var formation: Formation
-    @State var selectedAthleteIds: Set<UUID> = []
-    @State private var showingManageAthletes = false
-    @State private var showingNotes = false
-
-    @State private var cachedCollisionIds: Set<UUID> = []
-    @State private var cachedCollisionCount: Int = 0
-
-    @State private var isDraggingAthlete = false
-    @State private var draggingAthleteIndex: Int?
-    @State private var isSwapMode = false
-    @State private var swapSourceAthleteId: UUID?
-    @State private var dragStartAthletePosition: CGPoint = .zero
-    @State private var dragStartPositions: [UUID: CGPoint] = [:]  // For group move
-    @State private var isPanning = false
+    @State private var selectedAthleteIDs: Set<UUID> = []
+    @State private var showingRosterSheet = false
+    @State private var showingNotesSheet = false
+    @State private var isDraggingAthletes = false
     @State private var isDrawingSelectionBox = false
     @State private var selectionRect: CGRect? = nil
     @State private var selectionStartPoint: CGPoint = .zero
-    @State private var undoStack: [[(id: UUID, position: CGPoint)]] = []  // Group undo
-    @State private var collisionPositionKey: [CollisionPositionKey] = []
-
+    @State private var dragStartPositions: [UUID: CGPoint] = [:]
+    @State private var undoStack: [[(id: UUID, position: CGPoint)]] = []
     @State private var zoomScale: CGFloat = 1.0
-    @State private var panOffset: CGSize = .zero
-    @State private var lastPanOffset: CGSize = .zero
     @State private var lastZoomScale: CGFloat = 1.0
+    @State private var isSwapMode = false
+    @State private var swapSourceAthleteID: UUID?
+    @State private var collisionMessage: String?
+    @State private var hasMadeFirstSelection = false
+
+    private var formationIndex: Int? {
+        store.formationIndex(id: formationID)
+    }
+
+    private var formation: Formation? {
+        guard let formationIndex else { return nil }
+        return store.routine.formations[formationIndex]
+    }
+
+    private var renderedAthletes: [RenderedAthlete] {
+        store.renderedAthletes(for: formationID)
+    }
+
+    private var collisionSummary: (count: Int, ids: Set<UUID>) {
+        PathCalculations.collisionSummary(in: renderedAthletes)
+    }
+
+    private var selectedAthleteID: UUID? {
+        selectedAthleteIDs.count == 1 ? selectedAthleteIDs.first : nil
+    }
+
+    private var selectedRosterAthlete: RosterAthlete? {
+        guard let selectedAthleteID else { return nil }
+        return store.routine.roster.first(where: { $0.id == selectedAthleteID })
+    }
+
+    private var selectedPlacement: FormationPlacement? {
+        guard let selectedAthleteID, let formation else { return nil }
+        return formation.placements.first(where: { $0.athleteID == selectedAthleteID })
+    }
 
     var body: some View {
-        GeometryReader { geometry in
-            canvasStack(geometry: geometry)
+        Group {
+            if formation != nil {
+                editorBody
+            } else {
+                ContentUnavailableView("Select a formation", systemImage: "square.grid.2x2")
+            }
         }
-        .toolbar {
-            #if os(iOS)
-                ToolbarItemGroup(placement: .navigationBarLeading) {
-                    if cachedCollisionCount > 0 {
-                        Button(action: selectNextCollidingAthlete) {
-                            Label(
-                                "\(cachedCollisionCount)",
-                                systemImage: "exclamationmark.triangle.fill"
-                            )
-                            .foregroundColor(.red)
-                            .font(.caption.bold())
-                        }
-                        .accessibilityLabel(
-                            "Cycle through \(cachedCollisionCount) colliding athletes")
-                        .help(
-                            "\(cachedCollisionCount) athletes are within 2ft of each other. Tap to cycle through them."
-                        )
-                    }
-                    Button(action: undoLastMove) {
-                        Image(systemName: "arrow.uturn.backward")
-                    }
-                    .disabled(undoStack.isEmpty)
-                    .accessibilityLabel("Undo last move")
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    trailingToolbar
-                }
-            #else
-                ToolbarItemGroup {
-                    if cachedCollisionCount > 0 {
-                        Button(action: selectNextCollidingAthlete) {
-                            Label(
-                                "\(cachedCollisionCount)",
-                                systemImage: "exclamationmark.triangle.fill"
-                            )
-                            .foregroundColor(.red)
-                            .font(.caption.bold())
-                        }
-                        .accessibilityLabel(
-                            "Cycle through \(cachedCollisionCount) colliding athletes")
-                        .help(
-                            "\(cachedCollisionCount) athletes are within 2ft of each other. Tap to cycle through them."
-                        )
-                    }
-                    Button(action: undoLastMove) {
-                        Image(systemName: "arrow.uturn.backward")
-                    }
-                    .disabled(undoStack.isEmpty)
-                }
-                ToolbarItem {
-                    trailingToolbar
-                }
-            #endif
+        .sheet(isPresented: $showingRosterSheet) {
+            rosterSheet
         }
-        .onAppear {
-            updateCollisionCache(for: formation, force: true)
-        }
-        .onChange(of: formation) { _, newFormation in
-            updateCollisionCache(for: newFormation)
-        }
-        .sheet(isPresented: $showingManageAthletes) {
-            manageAthletesSheet
-        }
-        .sheet(isPresented: $showingNotes) {
+        .sheet(isPresented: $showingNotesSheet) {
             notesSheet
+        }
+        .onChange(of: formationID) { _, _ in
+            selectedAthleteIDs = []
+            isSwapMode = false
+            swapSourceAthleteID = nil
+            collisionMessage = nil
+        }
+        .onChange(of: selectedAthleteIDs) { _, newSelection in
+            if !newSelection.isEmpty {
+                hasMadeFirstSelection = true
+            }
+            if newSelection.isEmpty {
+                isSwapMode = false
+                swapSourceAthleteID = nil
+            }
         }
     }
 
-    // MARK: - Manage Athletes Sheet
+    private var editorBody: some View {
+        VStack(spacing: 0) {
+            controlStrip
+            Divider()
 
-    private var manageAthletesSheet: some View {
+            if renderedAthletes.isEmpty {
+                emptyState
+            } else {
+                HStack(spacing: 0) {
+                    canvasArea
+                    Divider()
+                    inspectorPanel
+                        .frame(width: 320)
+                }
+            }
+        }
+    }
+
+    private var controlStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                if collisionSummary.count > 0 {
+                    Button(action: cycleCollidingSelection) {
+                        Label(
+                            "\(collisionSummary.count) collisions",
+                            systemImage: "exclamationmark.triangle.fill"
+                        )
+                        .foregroundColor(.red)
+                    }
+                    .buttonStyle(.bordered)
+                }
+
+                Button(action: addAthlete) {
+                    Label("Add Athlete", systemImage: "plus.circle.fill")
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button(action: { showingRosterSheet = true }) {
+                    Label("Manage Roster", systemImage: "list.bullet.rectangle")
+                }
+                .buttonStyle(.bordered)
+
+                Button(action: beginSwapMode) {
+                    Label("Swap", systemImage: "arrow.triangle.swap")
+                }
+                .buttonStyle(.bordered)
+                .disabled(selectedAthleteID == nil)
+
+                Button(action: resetView) {
+                    Label("Reset View", systemImage: "arrow.counterclockwise")
+                }
+                .buttonStyle(.bordered)
+
+                Button(action: { showingNotesSheet = true }) {
+                    Label("Notes", systemImage: "note.text")
+                }
+                .buttonStyle(.bordered)
+
+                Button(action: undoLastMove) {
+                    Label("Undo Move", systemImage: "arrow.uturn.backward")
+                }
+                .buttonStyle(.bordered)
+                .disabled(undoStack.isEmpty)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+        }
+        .background(.bar)
+    }
+
+    private var emptyState: some View {
+        VStack {
+            Spacer()
+            VStack(spacing: 18) {
+                Image(systemName: "figure.stand.line.dotted.figure.stand")
+                    .font(.system(size: 52))
+                    .foregroundColor(.accentColor)
+                Text("Start your first picture")
+                    .font(.title2.weight(.semibold))
+                Text("Add one athlete, drop in a 10-athlete template, or duplicate after you have a picture to build from.")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 460)
+
+                HStack(spacing: 12) {
+                    Button(action: addAthlete) {
+                        Label("Add Athlete", systemImage: "plus.circle.fill")
+                            .frame(minWidth: 180)
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    Button(action: applyTemplate) {
+                        Label("Apply 10-Athlete Template", systemImage: "square.grid.3x3.fill")
+                            .frame(minWidth: 220)
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button(action: onDuplicateAsNext) {
+                        Label("Duplicate as Next Formation", systemImage: "plus.square.on.square")
+                            .frame(minWidth: 220)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(renderedAthletes.isEmpty)
+                }
+            }
+            .padding(32)
+            .background(.thinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 24))
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(uiColor: .secondarySystemBackground))
+    }
+
+    private var canvasArea: some View {
+        GeometryReader { geometry in
+            let baseCellSize = min(
+                geometry.size.width / CourtConstants.width,
+                geometry.size.height / CourtConstants.height
+            )
+            let cellSize = baseCellSize * zoomScale
+            let canvasWidth = CourtConstants.width * cellSize
+            let canvasHeight = CourtConstants.height * cellSize
+            let offset = CGPoint(
+                x: (geometry.size.width - canvasWidth) / 2,
+                y: (geometry.size.height - canvasHeight) / 2
+            )
+
+            ZStack(alignment: .top) {
+                FloorCanvasView(
+                    athletes: renderedAthletes,
+                    selectedAthleteIDs: selectedAthleteIDs,
+                    collisionIDs: collisionSummary.ids,
+                    cellSize: cellSize,
+                    offset: offset,
+                    swapSourceID: swapSourceAthleteID,
+                    selectionRect: selectionRect
+                )
+                .gesture(dragGesture(cellSize: cellSize, offset: offset))
+                .gesture(
+                    MagnifyGesture()
+                        .onChanged { value in
+                            zoomScale = max(0.65, min(3.0, lastZoomScale * value.magnification))
+                        }
+                        .onEnded { _ in
+                            lastZoomScale = zoomScale
+                        }
+                )
+
+                VStack(spacing: 10) {
+                    if let collisionMessage {
+                        banner(text: collisionMessage, color: .red)
+                    }
+
+                    if isSwapMode, let swapSourceAthleteID,
+                        let rosterAthlete = store.routine.roster.first(where: { $0.id == swapSourceAthleteID })
+                    {
+                        banner(
+                            text: "Tap another athlete to swap with \(rosterAthlete.label).",
+                            color: .blue
+                        )
+                    } else if !hasMadeFirstSelection {
+                        banner(
+                            text: "Tap an athlete to edit it. Drag on empty space to box-select.",
+                            color: .accentColor
+                        )
+                    }
+                }
+                .padding(.top, 14)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var inspectorPanel: some View {
+        Group {
+            if let selectedRosterAthlete, let selectedPlacement {
+                AthleteInspectorView(
+                    athlete: selectedRosterAthlete,
+                    position: selectedPlacement.position,
+                    isSwapMode: isSwapMode,
+                    onUpdateLabel: { newLabel in
+                        store.mutateRosterAthlete(id: selectedRosterAthlete.id) { athlete in
+                            athlete.label = newLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                ? athlete.label
+                                : newLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+                        }
+                    },
+                    onUpdateRole: { newRole in
+                        store.mutateRosterAthlete(id: selectedRosterAthlete.id) { athlete in
+                            athlete.role = newRole
+                        }
+                    },
+                    onSwap: beginSwapMode,
+                    onDelete: {
+                        deleteSelectedAthlete()
+                    },
+                    onClearSelection: {
+                        selectedAthleteIDs = []
+                    }
+                )
+            } else if selectedAthleteIDs.count > 1 {
+                MultiSelectionInspectorView(
+                    count: selectedAthleteIDs.count,
+                    onClearSelection: { selectedAthleteIDs = [] }
+                )
+            } else {
+                EmptyInspectorView(
+                    title: "Inspector",
+                    message: "Select one athlete to edit its label, role, and actions. Multi-select to move groups together."
+                )
+            }
+        }
+        .frame(maxHeight: .infinity)
+    }
+
+    private var rosterSheet: some View {
         NavigationStack {
             List {
-                ForEach(formation.athletes) { athlete in
-                    HStack(spacing: 10) {
+                ForEach(store.routine.roster) { athlete in
+                    HStack(spacing: 12) {
                         Circle()
                             .fill(athlete.role.color)
-                            .frame(width: 10, height: 10)
-                        Text(athlete.label).font(.body)
-                        Text(athlete.role.rawValue)
+                            .frame(width: 12, height: 12)
+                        Text(athlete.label)
+                        Spacer()
+                        Text(athlete.role.rawValue.capitalized)
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
                 }
                 .onMove { from, to in
-                    formation.athletes.move(fromOffsets: from, toOffset: to)
+                    store.moveRoster(fromOffsets: from, toOffset: to)
+                }
+                .onDelete { offsets in
+                    let ids = offsets.map { store.routine.roster[$0].id }
+                    for id in ids {
+                        store.deleteAthlete(id: id)
+                    }
+                    selectedAthleteIDs.subtract(ids)
                 }
             }
-            .navigationTitle("Manage Athletes")
+            .navigationTitle("Manage Roster")
             .toolbar {
-                #if os(iOS)
-                    ToolbarItem(placement: .navigationBarLeading) { EditButton() }
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Done") { showingManageAthletes = false }
-                    }
-                #else
-                    ToolbarItem {
-                        Button("Done") { showingManageAthletes = false }
-                    }
-                #endif
+                ToolbarItem(placement: .navigationBarLeading) {
+                    EditButton()
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { showingRosterSheet = false }
+                }
             }
         }
     }
-
-    // MARK: - Notes Sheet
 
     private var notesSheet: some View {
         NavigationStack {
-            TextEditor(text: $formation.notes)
-                .padding()
-                .navigationTitle("Formation Notes")
-                .toolbar {
-                    #if os(iOS)
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            Button("Done") { showingNotes = false }
+            TextEditor(
+                text: Binding(
+                    get: { formation?.notes ?? "" },
+                    set: { newValue in
+                        store.mutateFormation(id: formationID) { formation in
+                            formation.notes = newValue
                         }
-                    #else
-                        ToolbarItem {
-                            Button("Done") { showingNotes = false }
-                        }
-                    #endif
+                    }
+                )
+            )
+            .padding()
+            .navigationTitle("Formation Notes")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { showingNotesSheet = false }
                 }
-        }
-    }
-
-    // MARK: - Canvas
-
-    private func canvasStack(geometry: GeometryProxy) -> some View {
-        let baseCellSize = min(
-            geometry.size.width / CourtConstants.width, geometry.size.height / CourtConstants.height
-        )
-        let cellSize = baseCellSize * zoomScale
-        let canvasWidth = CourtConstants.width * cellSize
-        let canvasHeight = CourtConstants.height * cellSize
-        let offsetX = (geometry.size.width - canvasWidth) / 2 + panOffset.width
-        let offsetY = (geometry.size.height - canvasHeight) / 2 + panOffset.height
-        let canvasOffset = CGPoint(x: offsetX, y: offsetY)
-
-        return ZStack {
-            canvasWithGestures(cellSize: cellSize, canvasOffset: canvasOffset)
-            overlays(cellSize: cellSize, canvasOffset: canvasOffset)
-        }
-    }
-
-    private func canvasWithGestures(cellSize: CGFloat, canvasOffset: CGPoint) -> some View {
-        FloorCanvasView(
-            formation: formation,
-            selectedAthleteIds: selectedAthleteIds,
-            collisionIds: cachedCollisionIds,
-            cellSize: cellSize,
-            offset: canvasOffset,
-            swapSourceId: swapSourceAthleteId,
-            selectionRect: selectionRect
-        )
-        .gesture(dragGesture(cellSize: cellSize, canvasOffset: canvasOffset))
-        .gesture(
-            MagnifyGesture()
-                .onChanged { value in
-                    zoomScale = max(0.5, min(4.0, lastZoomScale * value.magnification))
-                }
-                .onEnded { _ in lastZoomScale = zoomScale }
-        )
-        .onTapGesture(count: 2) {
-            withAnimation(.spring()) {
-                zoomScale = 1.0
-                lastZoomScale = 1.0
-                panOffset = .zero
-                lastPanOffset = .zero
             }
         }
     }
 
-    private func dragGesture(cellSize: CGFloat, canvasOffset: CGPoint) -> some Gesture {
+    private func banner(text: String, color: Color) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "info.circle.fill")
+            Text(text)
+                .font(.subheadline.weight(.medium))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(color.opacity(0.15))
+        .foregroundColor(color)
+        .clipShape(Capsule())
+    }
+
+    private func dragGesture(cellSize: CGFloat, offset: CGPoint) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
-                // Swap mode: tap to swap, no dragging
                 if isSwapMode { return }
 
-                if !isDraggingAthlete && !isPanning && !isDrawingSelectionBox {
-                    let startScaled = CGPoint(
-                        x: (value.startLocation.x - canvasOffset.x) / cellSize,
-                        y: (value.startLocation.y - canvasOffset.y) / cellSize
+                if !isDraggingAthletes && !isDrawingSelectionBox {
+                    let startPoint = CGPoint(
+                        x: (value.startLocation.x - offset.x) / cellSize,
+                        y: (value.startLocation.y - offset.y) / cellSize
                     )
 
-                    // Check if touch started on an athlete
-                    var hitAthlete = false
-                    for (index, athlete) in formation.athletes.enumerated() {
-                        if PathCalculations.squaredDistance(from: startScaled, to: athlete.position)
-                            < CourtConstants.hitRadiusSquared
-                        {
-                            // If tapping a non-selected athlete, make it the sole selection
-                            if !selectedAthleteIds.contains(athlete.id) {
-                                selectedAthleteIds = [athlete.id]
-                            }
-                            isDraggingAthlete = true
-                            draggingAthleteIndex = index
-                            dragStartAthletePosition = athlete.position
-                            #if os(iOS)
-                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            #endif
-                            // Record start positions for all selected athletes (group move)
-                            dragStartPositions = [:]
-                            for id in selectedAthleteIds {
-                                if let a = formation.athletes.first(where: { $0.id == id }) {
-                                    dragStartPositions[id] = a.position
-                                }
-                            }
-                            hitAthlete = true
-                            break
+                    if let hitAthlete = renderedAthletes.first(where: {
+                        PathCalculations.squaredDistance(from: startPoint, to: $0.position) < CourtConstants.hitRadiusSquared
+                    }) {
+                        if !selectedAthleteIDs.contains(hitAthlete.id) {
+                            selectedAthleteIDs = [hitAthlete.id]
                         }
-                    }
-                    if !hitAthlete {
-                        // Start drawing selection box
-                        isDrawingSelectionBox = true
-                        selectionStartPoint = value.startLocation
-                        selectionRect = CGRect(
-                            origin: value.startLocation,
-                            size: .zero
+                        dragStartPositions = Dictionary(
+                            uniqueKeysWithValues: renderedAthletes
+                                .filter { selectedAthleteIDs.contains($0.id) }
+                                .map { ($0.id, $0.position) }
                         )
+                        isDraggingAthletes = true
+                    } else {
+                        selectionStartPoint = value.startLocation
+                        selectionRect = CGRect(origin: value.startLocation, size: .zero)
+                        isDrawingSelectionBox = true
                     }
                 }
 
-                if isDraggingAthlete {
-                    // Move all selected athletes together
-                    let translationX = value.translation.width / cellSize
-                    let translationY = value.translation.height / cellSize
+                if isDraggingAthletes {
+                    let translation = CGPoint(
+                        x: value.translation.width / cellSize,
+                        y: value.translation.height / cellSize
+                    )
+                    store.mutateFormation(id: formationID) { formation in
+                        for athleteID in selectedAthleteIDs {
+                            guard
+                                let startPosition = dragStartPositions[athleteID],
+                                let placementIndex = formation.placementIndex(for: athleteID)
+                            else { continue }
 
-                    for id in selectedAthleteIds {
-                        guard let startPos = dragStartPositions[id],
-                            let idx = formation.athletes.firstIndex(where: { $0.id == id })
-                        else { continue }
-
-                        let newX = startPos.x + translationX
-                        let newY = startPos.y + translationY
-                        let newPosition = CGPoint(
-                            x: max(0, min(CourtConstants.width, round(newX))),
-                            y: max(0, min(CourtConstants.height, round(newY)))
-                        )
-                        if formation.athletes[idx].position != newPosition {
-                            formation.athletes[idx].position = newPosition
+                            let nextPosition = CGPoint(
+                                x: max(0, min(CourtConstants.width, round(startPosition.x + translation.x))),
+                                y: max(0, min(CourtConstants.height, round(startPosition.y + translation.y)))
+                            )
+                            formation.placements[placementIndex].position = nextPosition
                         }
                     }
                 } else if isDrawingSelectionBox {
-                    // Update selection rectangle
-                    let origin = CGPoint(
+                    selectionRect = CGRect(
                         x: min(selectionStartPoint.x, value.location.x),
-                        y: min(selectionStartPoint.y, value.location.y)
-                    )
-                    let size = CGSize(
+                        y: min(selectionStartPoint.y, value.location.y),
                         width: abs(value.location.x - selectionStartPoint.x),
                         height: abs(value.location.y - selectionStartPoint.y)
-                    )
-                    selectionRect = CGRect(origin: origin, size: size)
-                } else if isPanning {
-                    panOffset = CGSize(
-                        width: lastPanOffset.width + value.translation.width,
-                        height: lastPanOffset.height + value.translation.height
                     )
                 }
             }
             .onEnded { value in
-                // Swap mode: handle tap on end
-                if isSwapMode, let sourceId = swapSourceAthleteId {
-                    let tapScaled = CGPoint(
-                        x: (value.location.x - canvasOffset.x) / cellSize,
-                        y: (value.location.y - canvasOffset.y) / cellSize
+                defer {
+                    isDraggingAthletes = false
+                    isDrawingSelectionBox = false
+                    selectionRect = nil
+                    dragStartPositions = [:]
+                }
+
+                if isSwapMode, let swapSourceAthleteID {
+                    let tapPoint = CGPoint(
+                        x: (value.location.x - offset.x) / cellSize,
+                        y: (value.location.y - offset.y) / cellSize
                     )
-                    var tappedTarget = false
-                    for athlete in formation.athletes {
-                        if athlete.id != sourceId,
-                            PathCalculations.squaredDistance(from: tapScaled, to: athlete.position)
-                                < CourtConstants.hitRadiusSquared
-                        {
-                            // Record undo for both athletes
-                            var undoEntries: [(id: UUID, position: CGPoint)] = []
-                            if let srcIdx = formation.athletes.firstIndex(where: {
-                                $0.id == sourceId
-                            }) {
-                                undoEntries.append(
-                                    (id: sourceId, position: formation.athletes[srcIdx].position))
-                            }
-                            undoEntries.append((id: athlete.id, position: athlete.position))
-                            undoStack.append(undoEntries)
-                            formation.swapAthletePositions(id1: sourceId, id2: athlete.id)
-                            tappedTarget = true
-                            break
-                        }
+                    if let targetAthlete = renderedAthletes.first(where: {
+                        $0.id != swapSourceAthleteID
+                            && PathCalculations.squaredDistance(from: tapPoint, to: $0.position) < CourtConstants.hitRadiusSquared
+                    }) {
+                        store.swapPositions(in: formationID, id1: swapSourceAthleteID, id2: targetAthlete.id)
+                        selectedAthleteIDs = [targetAthlete.id]
                     }
                     isSwapMode = false
-                    swapSourceAthleteId = nil
-                    if !tappedTarget { selectedAthleteIds = [] }
+                    self.swapSourceAthleteID = nil
                     return
                 }
 
-                if isPanning { lastPanOffset = panOffset }
-
-                if isDraggingAthlete {
-                    // Record group undo
-                    var undoEntries: [(id: UUID, position: CGPoint)] = []
-                    for (id, startPos) in dragStartPositions {
-                        undoEntries.append((id: id, position: startPos))
-                    }
-                    if !undoEntries.isEmpty {
-                        undoStack.append(undoEntries)
-                    }
+                if isDraggingAthletes, !dragStartPositions.isEmpty {
+                    undoStack.append(dragStartPositions.map { ($0.key, $0.value) })
                 }
 
-                if isDrawingSelectionBox, let rect = selectionRect {
-                    // Select all athletes within the selection rectangle
-                    var newSelection: Set<UUID> = []
-                    for athlete in formation.athletes {
-                        let screenPos = CGPoint(
-                            x: athlete.position.x * cellSize + canvasOffset.x,
-                            y: athlete.position.y * cellSize + canvasOffset.y
-                        )
-                        if rect.contains(screenPos) {
-                            newSelection.insert(athlete.id)
+                if isDrawingSelectionBox, let selectionRect {
+                    let newSelection = Set(
+                        renderedAthletes.compactMap { athlete in
+                            let screenPoint = CGPoint(
+                                x: athlete.position.x * cellSize + offset.x,
+                                y: athlete.position.y * cellSize + offset.y
+                            )
+                            return selectionRect.contains(screenPoint) ? athlete.id : nil
                         }
-                    }
-                    // If box was tiny (just a tap on empty space), deselect all
-                    if rect.width < 5 && rect.height < 5 {
-                        selectedAthleteIds = []
+                    )
+
+                    if selectionRect.width < 5 && selectionRect.height < 5 {
+                        selectedAthleteIDs = []
                     } else {
-                        selectedAthleteIds = newSelection
+                        selectedAthleteIDs = newSelection
                     }
-                    selectionRect = nil
                 }
-
-                isDraggingAthlete = false
-                draggingAthleteIndex = nil
-                isPanning = false
-                isDrawingSelectionBox = false
-                dragStartPositions = [:]
             }
-    }
-
-    @ViewBuilder
-    private func overlays(cellSize: CGFloat, canvasOffset: CGPoint) -> some View {
-        if formation.athletes.isEmpty {
-            VStack(spacing: 12) {
-                Image(systemName: "figure.stand")
-                    .font(.system(size: 60))
-                    .foregroundColor(.gray.opacity(0.4))
-                Text("Tap + to add athletes")
-                    .font(.title3)
-                    .foregroundColor(.gray)
-            }
-            .allowsHitTesting(false)
-        }
-
-        // Swap mode banner
-        if isSwapMode, let sourceId = swapSourceAthleteId,
-            let sourceAthlete = formation.athletes.first(where: { $0.id == sourceId })
-        {
-            VStack(spacing: 8) {
-                HStack {
-                    Image(systemName: "arrow.triangle.swap")
-                    Text("Tap an athlete to swap with \(sourceAthlete.label)")
-                        .font(.subheadline.bold())
-                    Spacer()
-                    Button("Cancel") {
-                        isSwapMode = false
-                        swapSourceAthleteId = nil
-                    }
-                    .font(.subheadline)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(Color.blue.opacity(0.15))
-                .cornerRadius(10)
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        }
-
-        if let selectedId = selectedAthleteIds.first, selectedAthleteIds.count == 1, !isSwapMode,
-            let index = formation.athletes.firstIndex(where: { $0.id == selectedId })
-        {
-            AthleteDetailPanel(
-                athlete: $formation.athletes[index],
-                selectedAthleteId: Binding(
-                    get: { selectedAthleteIds.first },
-                    set: { newId in
-                        if let id = newId {
-                            selectedAthleteIds = [id]
-                        } else {
-                            selectedAthleteIds = []
-                        }
-                    }
-                ),
-                onDelete: deleteSelectedAthlete,
-                onSwap: {
-                    swapSourceAthleteId = selectedId
-                    isSwapMode = true
-                }
-            )
-            .frame(width: 280)
-            .padding(16)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-        } else if selectedAthleteIds.count > 1, !isSwapMode {
-            HStack(spacing: 12) {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(.blue)
-                Text("\(selectedAthleteIds.count) athletes selected")
-                    .font(.subheadline.bold())
-                Spacer()
-                Button("Deselect") {
-                    selectedAthleteIds = []
-                }
-                .font(.subheadline)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(.ultraThinMaterial)
-            .cornerRadius(10)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 16)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        }
-
-        if zoomScale != 1.0 || panOffset != .zero {
-            VStack {
-                HStack {
-                    Spacer()
-                    Button {
-                        withAnimation(.spring()) {
-                            zoomScale = 1.0
-                            lastZoomScale = 1.0
-                            panOffset = .zero
-                            lastPanOffset = .zero
-                        }
-                    } label: {
-                        Label("Reset View", systemImage: "arrow.counterclockwise")
-                            .font(.caption)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(.ultraThinMaterial)
-                            .cornerRadius(8)
-                    }
-                    .padding(.trailing, 16)
-                    .padding(.top, 8)
-                }
-                Spacer()
-            }
-        }
-
-        VStack {
-            Spacer()
-            HStack {
-                Spacer()
-                Button(action: addAthlete) {
-                    Image(systemName: "plus")
-                        .font(.title2.bold())
-                        .frame(width: 48, height: 48)
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .clipShape(Circle())
-                        .shadow(radius: 4)
-                }
-                .accessibilityLabel("Add athlete")
-                .padding(.trailing, 24)
-                .padding(.bottom, 24)
-            }
-        }
-    }
-
-    // MARK: - Toolbar
-
-    private var trailingToolbar: some View {
-        Menu {
-            Button(action: { showingNotes = true }) {
-                Label("Notes", systemImage: "note.text")
-            }
-            Button(action: { showingManageAthletes = true }) {
-                Label("Manage Athletes", systemImage: "list.bullet")
-            }
-        } label: {
-            Image(systemName: "ellipsis.circle")
-        }
-        .accessibilityLabel("More options")
-    }
-
-    // MARK: - Actions
-
-    private func updateCollisionCache(for formation: Formation, force: Bool = false) {
-        let newKey = formation.athletes.map { athlete in
-            CollisionPositionKey(id: athlete.id, position: athlete.position)
-        }
-        guard force || newKey != collisionPositionKey else { return }
-        collisionPositionKey = newKey
-
-        let summary = PathCalculations.collisionSummary(in: formation, minDistance: 2.0)
-        cachedCollisionCount = summary.count
-        cachedCollisionIds = summary.ids
-    }
-
-    private func selectNextCollidingAthlete() {
-        let collidingAthletes = formation.athletes.filter { cachedCollisionIds.contains($0.id) }
-        guard !collidingAthletes.isEmpty else { return }
-
-        if let currentId = selectedAthleteIds.first, selectedAthleteIds.count == 1,
-            let currentIndex = collidingAthletes.firstIndex(where: { $0.id == currentId })
-        {
-            let nextIndex = (currentIndex + 1) % collidingAthletes.count
-            selectedAthleteIds = [collidingAthletes[nextIndex].id]
-        } else {
-            selectedAthleteIds = [collidingAthletes.first!.id]
-        }
     }
 
     private func addAthlete() {
-        let existingLabels = Set(formation.athletes.map { $0.label })
-        var count = formation.athletes.count + 1
-        var label = "P\(count)"
-        while existingLabels.contains(label) {
-            count += 1
-            label = "P\(count)"
-        }
+        let newID = store.addAthlete()
+        selectedAthleteIDs = [newID]
+    }
 
-        // "Windows" layout: 8 athletes per row, 1 panel (8 ft) apart on x.
-        let athletesPerRow = 8
-        let col = formation.athletes.count % athletesPerRow
-        let row = formation.athletes.count / athletesPerRow
+    private func applyTemplate() {
+        store.applyBowlingPinTemplate(to: formationID)
+        selectedAthleteIDs = []
+    }
 
-        let spawnX = min(CourtConstants.width - 2, 8.0 + CGFloat(col) * 8.0)
+    private func beginSwapMode() {
+        guard let selectedAthleteID else { return }
+        swapSourceAthleteID = selectedAthleteID
+        isSwapMode = true
+    }
 
-        let panelIndex = row / 2
-        let isCenter = row % 2 == 1
-        let spawnY: CGFloat
-        if isCenter {
-            spawnY = min(CourtConstants.height - 2, 8.0 + CGFloat(panelIndex) * 8.0 + 4.0)
-        } else {
-            spawnY = min(CourtConstants.height - 2, 8.0 + CGFloat(panelIndex) * 8.0)
-        }
-
-        let newAthlete = Athlete(label: label, position: CGPoint(x: spawnX, y: spawnY))
-        formation.addAthlete(newAthlete)
-        selectedAthleteIds = [newAthlete.id]
+    private func deleteSelectedAthlete() {
+        guard let selectedAthleteID else { return }
+        store.deleteAthlete(id: selectedAthleteID)
+        selectedAthleteIDs = []
     }
 
     private func undoLastMove() {
-        guard let lastGroup = undoStack.popLast() else { return }
-        for entry in lastGroup {
-            if let index = formation.athletes.firstIndex(where: { $0.id == entry.id }) {
-                formation.athletes[index].position = entry.position
+        guard let previousPositions = undoStack.popLast() else { return }
+        store.mutateFormation(id: formationID) { formation in
+            for entry in previousPositions {
+                if let placementIndex = formation.placementIndex(for: entry.id) {
+                    formation.placements[placementIndex].position = entry.position
+                }
             }
         }
     }
 
-    private func deleteSelectedAthlete() {
-        guard let id = selectedAthleteIds.first, selectedAthleteIds.count == 1 else { return }
-        formation.removeAthlete(id: id)
-        undoStack.removeAll { group in group.contains(where: { $0.id == id }) }
-        selectedAthleteIds = []
+    private func cycleCollidingSelection() {
+        let collidingAthletes = renderedAthletes.filter { collisionSummary.ids.contains($0.id) }
+        guard !collidingAthletes.isEmpty else { return }
+
+        if let current = selectedAthleteID,
+            let currentIndex = collidingAthletes.firstIndex(where: { $0.id == current })
+        {
+            let nextIndex = (currentIndex + 1) % collidingAthletes.count
+            selectedAthleteIDs = [collidingAthletes[nextIndex].id]
+        } else {
+            selectedAthleteIDs = [collidingAthletes[0].id]
+        }
+
+        collisionMessage = "\(collisionSummary.count) athletes are within 2ft. Tap again to cycle the selection."
+    }
+
+    private func resetView() {
+        withAnimation(.spring()) {
+            zoomScale = 1.0
+            lastZoomScale = 1.0
+        }
     }
 }
 
 // MARK: - Previews
 
 #Preview {
-    NavigationStack {
-        FloorGridView(formation: .constant(Formation.bowlingPin()))
+    struct PreviewWrapper: View {
+        @StateObject private var store = RoutineStore()
+
+        var body: some View {
+            NavigationStack {
+                FloorGridView(
+                    store: store,
+                    formationID: store.routine.formations.first?.id ?? UUID()
+                ) {}
+            }
+        }
     }
+
+    return PreviewWrapper()
 }

@@ -1,25 +1,56 @@
 import Foundation
 import SwiftUI
 
-#if os(iOS)
-    import UIKit
-#else
-    import AppKit
-#endif
-
 // MARK: - Constants
 
 enum CourtConstants {
-    static let width: CGFloat = 72  // 72ft wide — 9 panels × 8 units
-    static let height: CGFloat = 56  // 56ft tall — 7 panels × 8 units
-    static let cellSize: CGFloat = 12  // pixels per foot
-    static let collisionDistance: CGFloat = 2.0  // feet
-    static let hitRadiusSquared: CGFloat = 9.0  // 3-foot tap radius, squared
+    static let width: CGFloat = 72
+    static let height: CGFloat = 56
+    static let collisionDistance: CGFloat = 2.0
+    static let hitRadiusSquared: CGFloat = 9.0
+}
+
+// MARK: - Templates
+
+enum FormationTemplates {
+    static func defaultSpawnPosition(for index: Int) -> CGPoint {
+        let athletesPerRow = 8
+        let col = index % athletesPerRow
+        let row = index / athletesPerRow
+
+        let x = min(CourtConstants.width - 2, 8.0 + CGFloat(col) * 8.0)
+        let panelIndex = row / 2
+        let isCenter = row % 2 == 1
+        let y = min(
+            CourtConstants.height - 2,
+            8.0 + CGFloat(panelIndex) * 8.0 + (isCenter ? 4.0 : 0.0)
+        )
+        return CGPoint(x: x, y: y)
+    }
+
+    static func bowlingPinPositions() -> [CGPoint] {
+        let centerX: CGFloat = CourtConstants.width / 2
+        let startY: CGFloat = CourtConstants.height / 2 - 6
+        let rowSpacing: CGFloat = 4
+        let colSpacing: CGFloat = 4
+
+        var positions: [CGPoint] = []
+        for row in 0...3 {
+            let count = row + 1
+            let y = startY + CGFloat(row) * rowSpacing
+            let rowWidth = CGFloat(count - 1) * colSpacing
+            let startX = centerX - rowWidth / 2
+            for col in 0..<count {
+                positions.append(CGPoint(x: startX + CGFloat(col) * colSpacing, y: y))
+            }
+        }
+        return positions
+    }
 }
 
 // MARK: - Athlete Role
 
-enum AthleteRole: String, Codable, CaseIterable {
+enum AthleteRole: String, Codable, CaseIterable, Hashable {
     case base
     case flyer
     case spotter
@@ -35,17 +66,32 @@ enum AthleteRole: String, Codable, CaseIterable {
         case .tumbler: return .orange
         }
     }
+
+    var shortLabel: String {
+        switch self {
+        case .base: return "B"
+        case .flyer: return "F"
+        case .spotter: return "S"
+        case .backspot: return "BS"
+        case .tumbler: return "T"
+        }
+    }
 }
 
 // MARK: - Path Waypoint
 
 struct PathWaypoint: Codable, Identifiable, Equatable, Hashable {
     let id: UUID
-    var position: CGPoint  // waypoint position in floor feet
-    var isSmooth: Bool  // true = bezier curve through point, false = sharp cut
-    var holdDuration: CGFloat = 0.0  // seconds to pause at this waypoint
+    var position: CGPoint
+    var isSmooth: Bool
+    var holdDuration: CGFloat
 
-    init(id: UUID = UUID(), position: CGPoint, isSmooth: Bool = true, holdDuration: CGFloat = 0.0) {
+    init(
+        id: UUID = UUID(),
+        position: CGPoint,
+        isSmooth: Bool = true,
+        holdDuration: CGFloat = 0
+    ) {
         self.id = id
         self.position = position
         self.isSmooth = isSmooth
@@ -70,211 +116,592 @@ struct PathWaypoint: Codable, Identifiable, Equatable, Hashable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
         isSmooth = (try? container.decode(Bool.self, forKey: .isSmooth)) ?? true
-        holdDuration = (try? container.decode(CGFloat.self, forKey: .holdDuration)) ?? 0.0
+        holdDuration = (try? container.decode(CGFloat.self, forKey: .holdDuration)) ?? 0
         let x = try container.decode(CGFloat.self, forKey: .positionX)
         let y = try container.decode(CGFloat.self, forKey: .positionY)
         position = CGPoint(x: x, y: y)
     }
 }
 
-// MARK: - Data Models
+// MARK: - Routine Models
 
-struct Athlete: Codable, Identifiable, Equatable, Hashable {
-    let id: UUID
-    var label: String  // "A1", "B2", etc.
-    var position: CGPoint  // x, y on floor (in feet)
-    var role: AthleteRole = .base
-    var moveTiming: CGFloat = 0.0  // seconds delay before this athlete starts moving
-    var pathControlPoint: CGPoint?  // Legacy single bezier control point (kept for backward compat)
-    var pathWaypoints: [PathWaypoint] = []  // Ordered intermediate waypoints for multi-segment paths
+struct RosterAthlete: Codable, Identifiable, Equatable, Hashable {
+    var id: UUID
+    var label: String
+    var role: AthleteRole
 
-    static func == (lhs: Athlete, rhs: Athlete) -> Bool {
-        lhs.id == rhs.id && lhs.label == rhs.label && lhs.position.x == rhs.position.x
-            && lhs.position.y == rhs.position.y && lhs.role == rhs.role
-            && lhs.moveTiming == rhs.moveTiming && lhs.pathControlPoint == rhs.pathControlPoint
-            && lhs.pathWaypoints == rhs.pathWaypoints
+    init(id: UUID = UUID(), label: String, role: AthleteRole = .base) {
+        self.id = id
+        self.label = label
+        self.role = role
     }
+}
 
-    func hash(into hasher: inout Hasher) {
-        hasher.combine(id)
-        hasher.combine(label)
-        hasher.combine(position.x)
-        hasher.combine(position.y)
-        hasher.combine(role)
-        hasher.combine(moveTiming)
-        hasher.combine(pathControlPoint?.x)
-        hasher.combine(pathControlPoint?.y)
-        hasher.combine(pathWaypoints)
-    }
+struct FormationPlacement: Codable, Identifiable, Equatable, Hashable {
+    var athleteID: UUID
+    var position: CGPoint
+
+    var id: UUID { athleteID }
 
     enum CodingKeys: String, CodingKey {
-        case id, label, role, moveTiming, pathWaypoints
-        case positionX = "positionX"
-        case positionY = "positionY"
-        case pathControlX = "pathControlX"
-        case pathControlY = "pathControlY"
+        case athleteID
+        case positionX, positionY
+    }
+
+    init(athleteID: UUID, position: CGPoint) {
+        self.athleteID = athleteID
+        self.position = position
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id, forKey: .id)
-        try container.encode(label, forKey: .label)
-        try container.encode(role, forKey: .role)
-        try container.encode(moveTiming, forKey: .moveTiming)
+        try container.encode(athleteID, forKey: .athleteID)
         try container.encode(position.x, forKey: .positionX)
         try container.encode(position.y, forKey: .positionY)
-        if let control = pathControlPoint {
-            try container.encode(control.x, forKey: .pathControlX)
-            try container.encode(control.y, forKey: .pathControlY)
-        }
-        if !pathWaypoints.isEmpty {
-            try container.encode(pathWaypoints, forKey: .pathWaypoints)
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        athleteID = try container.decode(UUID.self, forKey: .athleteID)
+        let x = try container.decode(CGFloat.self, forKey: .positionX)
+        let y = try container.decode(CGFloat.self, forKey: .positionY)
+        position = CGPoint(x: x, y: y)
+    }
+}
+
+struct Formation: Codable, Identifiable, Equatable, Hashable {
+    var id: UUID
+    var name: String
+    var notes: String
+    var placements: [FormationPlacement]
+
+    init(
+        id: UUID = UUID(),
+        name: String = "Untitled Formation",
+        notes: String = "",
+        placements: [FormationPlacement] = []
+    ) {
+        self.id = id
+        self.name = name
+        self.notes = notes
+        self.placements = placements
+    }
+
+    func placementIndex(for athleteID: UUID) -> Int? {
+        placements.firstIndex(where: { $0.athleteID == athleteID })
+    }
+}
+
+struct AthleteTransition: Codable, Identifiable, Equatable, Hashable {
+    var athleteID: UUID
+    var moveDelay: CGFloat
+    var pathControlPoint: CGPoint?
+    var pathWaypoints: [PathWaypoint]
+
+    var id: UUID { athleteID }
+
+    enum CodingKeys: String, CodingKey {
+        case athleteID, moveDelay, pathWaypoints
+        case controlX, controlY
+    }
+
+    init(
+        athleteID: UUID,
+        moveDelay: CGFloat = 0,
+        pathControlPoint: CGPoint? = nil,
+        pathWaypoints: [PathWaypoint] = []
+    ) {
+        self.athleteID = athleteID
+        self.moveDelay = moveDelay
+        self.pathControlPoint = pathControlPoint
+        self.pathWaypoints = pathWaypoints
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(athleteID, forKey: .athleteID)
+        try container.encode(moveDelay, forKey: .moveDelay)
+        try container.encode(pathWaypoints, forKey: .pathWaypoints)
+        if let controlPoint = pathControlPoint {
+            try container.encode(controlPoint.x, forKey: .controlX)
+            try container.encode(controlPoint.y, forKey: .controlY)
         }
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(UUID.self, forKey: .id)
-        label = try container.decode(String.self, forKey: .label)
-        // Backwards-compatible: decode role as AthleteRole, fallback to .base for old String values
-        if let decodedRole = try? container.decode(AthleteRole.self, forKey: .role) {
-            role = decodedRole
-        } else {
-            let roleString = try container.decode(String.self, forKey: .role)
-            role = AthleteRole(rawValue: roleString) ?? .base
-        }
-        moveTiming = (try? container.decode(CGFloat.self, forKey: .moveTiming)) ?? 0.0
-        let x = try container.decode(CGFloat.self, forKey: .positionX)
-        let y = try container.decode(CGFloat.self, forKey: .positionY)
-        position = CGPoint(x: x, y: y)
-
-        if let cx = try? container.decode(CGFloat.self, forKey: .pathControlX),
-            let cy = try? container.decode(CGFloat.self, forKey: .pathControlY)
+        athleteID = try container.decode(UUID.self, forKey: .athleteID)
+        moveDelay = (try? container.decode(CGFloat.self, forKey: .moveDelay)) ?? 0
+        pathWaypoints = (try? container.decode([PathWaypoint].self, forKey: .pathWaypoints)) ?? []
+        if let x = try? container.decode(CGFloat.self, forKey: .controlX),
+            let y = try? container.decode(CGFloat.self, forKey: .controlY)
         {
-            pathControlPoint = CGPoint(x: cx, y: cy)
+            pathControlPoint = CGPoint(x: x, y: y)
+        } else {
+            pathControlPoint = nil
         }
-
-        // Decode waypoints, or migrate legacy pathControlPoint to a single waypoint
-        if let waypoints = try? container.decode([PathWaypoint].self, forKey: .pathWaypoints) {
-            pathWaypoints = waypoints
-        } else if let cp = pathControlPoint {
-            // Migration: convert legacy single control point to a waypoint
-            pathWaypoints = [PathWaypoint(position: cp, isSmooth: true)]
-        }
-    }
-
-    init(id: UUID = UUID(), label: String, position: CGPoint, role: AthleteRole = .base) {
-        self.id = id
-        self.label = label
-        self.position = position
-        self.role = role
     }
 }
 
-struct Formation: Codable, Identifiable, Equatable, Hashable {
-    var id: UUID = UUID()
-    var name: String = "Untitled Formation"
-    var athletes: [Athlete] = []
-    var notes: String = ""
-    var gridSizeWidth: CGFloat = CourtConstants.width
-    var gridSizeHeight: CGFloat = CourtConstants.height
+struct TransitionSpec: Codable, Identifiable, Equatable, Hashable {
+    var id: UUID
+    var fromFormationID: UUID
+    var toFormationID: UUID
+    var duration: Double
+    var athleteTransitions: [AthleteTransition]
 
-    var gridSize: CGSize {
-        get {
-            CGSize(width: gridSizeWidth, height: gridSizeHeight)
-        }
-        set {
-            gridSizeWidth = newValue.width
-            gridSizeHeight = newValue.height
-        }
+    init(
+        id: UUID = UUID(),
+        fromFormationID: UUID,
+        toFormationID: UUID,
+        duration: Double = 2.0,
+        athleteTransitions: [AthleteTransition] = []
+    ) {
+        self.id = id
+        self.fromFormationID = fromFormationID
+        self.toFormationID = toFormationID
+        self.duration = duration
+        self.athleteTransitions = athleteTransitions
     }
 
-    static func == (lhs: Formation, rhs: Formation) -> Bool {
-        lhs.id == rhs.id && lhs.name == rhs.name && lhs.athletes == rhs.athletes
-            && lhs.notes == rhs.notes && lhs.gridSizeWidth == rhs.gridSizeWidth
-            && lhs.gridSizeHeight == rhs.gridSizeHeight
+    func athleteTransition(for athleteID: UUID) -> AthleteTransition {
+        athleteTransitions.first(where: { $0.athleteID == athleteID })
+            ?? AthleteTransition(athleteID: athleteID)
     }
 
-    func hash(into hasher: inout Hasher) {
-        hasher.combine(id)
-        hasher.combine(name)
-        hasher.combine(athletes)
-        hasher.combine(notes)
-        hasher.combine(gridSizeWidth)
-        hasher.combine(gridSizeHeight)
-    }
-
-    mutating func addAthlete(_ athlete: Athlete) {
-        athletes.append(athlete)
-    }
-
-    mutating func removeAthlete(id: UUID) {
-        athletes.removeAll { $0.id == id }
-    }
-
-    mutating func updateAthlete(_ athlete: Athlete) {
-        if let index = athletes.firstIndex(where: { $0.id == athlete.id }) {
-            athletes[index] = athlete
+    mutating func synchronize(athleteIDs: [UUID]) {
+        athleteTransitions = athleteIDs.map { athleteID in
+            athleteTransitions.first(where: { $0.athleteID == athleteID })
+                ?? AthleteTransition(athleteID: athleteID)
         }
     }
+}
 
-    mutating func swapAthletePositions(id1: UUID, id2: UUID) {
-        guard let index1 = athletes.firstIndex(where: { $0.id == id1 }),
-            let index2 = athletes.firstIndex(where: { $0.id == id2 }),
-            index1 != index2
-        else { return }
-        let tempPosition = athletes[index1].position
-        athletes[index1].position = athletes[index2].position
-        athletes[index2].position = tempPosition
+struct Routine: Codable, Identifiable, Equatable, Hashable {
+    var id: UUID
+    var name: String
+    var roster: [RosterAthlete]
+    var formations: [Formation]
+    var transitionSpecs: [TransitionSpec]
+
+    static func initial() -> Routine {
+        Routine(
+            id: UUID(),
+            name: "Routine 1",
+            roster: [],
+            formations: [Formation(name: "Formation 1")],
+            transitionSpecs: []
+        )
+    }
+}
+
+// MARK: - Render Models
+
+struct RenderedAthlete: Identifiable, Equatable, Hashable {
+    let id: UUID
+    let label: String
+    let role: AthleteRole
+    let position: CGPoint
+}
+
+struct TransitionPathRenderItem: Identifiable, Equatable, Hashable {
+    let athleteID: UUID
+    let startPosition: CGPoint
+    let endPosition: CGPoint
+    let controlPoint: CGPoint?
+    let waypoints: [PathWaypoint]
+
+    var id: UUID { athleteID }
+}
+
+// MARK: - Persistence
+
+@MainActor
+final class RoutineStore: ObservableObject {
+    private struct TransitionEdge: Hashable {
+        let fromID: UUID
+        let toID: UUID
     }
 
-    /// 10-athlete bowling pin layout centered on the court
-    static func bowlingPin(name: String = "Formation") -> Formation {
-        var formation = Formation()
-        formation.name = name
-        // Centered on 72x56 court. 4ft row spacing, 4ft column spacing.
-        // Row 0: 1 pin, Row 1: 2 pins, Row 2: 3 pins, Row 3: 4 pins
-        let centerX: CGFloat = CourtConstants.width / 2   // 36
-        let startY: CGFloat = CourtConstants.height / 2 - 6  // 22
-        let rowSpacing: CGFloat = 4
-        let colSpacing: CGFloat = 4
+    @Published var routine: Routine {
+        didSet {
+            guard !isLoading else { return }
+            save()
+        }
+    }
 
-        var label = 1
-        for row in 0...3 {
-            let count = row + 1
-            let y = startY + CGFloat(row) * rowSpacing
-            let rowWidth = CGFloat(count - 1) * colSpacing
-            let startX = centerX - rowWidth / 2
-            for col in 0..<count {
-                let x = startX + CGFloat(col) * colSpacing
-                formation.athletes.append(
-                    Athlete(label: "P\(label)", position: CGPoint(x: x, y: y))
+    private let storageKey = "routine.v1"
+    private var isLoading = false
+
+    init() {
+        self.routine = Routine.initial()
+        load()
+    }
+
+    func load() {
+        isLoading = true
+        defer { isLoading = false }
+
+        guard
+            let data = UserDefaults.standard.data(forKey: storageKey),
+            let decoded = try? JSONDecoder().decode(Routine.self, from: data)
+        else {
+            routine = Routine.initial()
+            reconcileRoutineShape()
+            save()
+            return
+        }
+
+        routine = decoded
+        reconcileRoutineShape()
+    }
+
+    func save() {
+        guard let data = try? JSONEncoder().encode(routine) else { return }
+        UserDefaults.standard.set(data, forKey: storageKey)
+    }
+
+    func resetRoutine() {
+        routine = Routine.initial()
+        reconcileRoutineShape()
+    }
+
+    func formationIndex(id: UUID?) -> Int? {
+        guard let id else { return nil }
+        return routine.formations.firstIndex(where: { $0.id == id })
+    }
+
+    func rosterIndex(id: UUID) -> Int? {
+        routine.roster.firstIndex(where: { $0.id == id })
+    }
+
+    func transitionSpecIndex(from fromID: UUID, to toID: UUID) -> Int? {
+        routine.transitionSpecs.firstIndex {
+            $0.fromFormationID == fromID && $0.toFormationID == toID
+        }
+    }
+
+    func transitionSpec(for fromID: UUID, to toID: UUID) -> TransitionSpec {
+        if let index = transitionSpecIndex(from: fromID, to: toID) {
+            return routine.transitionSpecs[index]
+        }
+
+        let athleteIDs = routine.formations[formationIndex(id: fromID) ?? 0].placements.map(\.athleteID)
+        return TransitionSpec(
+            fromFormationID: fromID,
+            toFormationID: toID,
+            athleteTransitions: athleteIDs.map { AthleteTransition(athleteID: $0) }
+        )
+    }
+
+    func renderedAthletes(for formationID: UUID) -> [RenderedAthlete] {
+        guard let index = formationIndex(id: formationID) else { return [] }
+        return renderedAthletes(for: routine.formations[index])
+    }
+
+    func renderedAthletes(for formation: Formation) -> [RenderedAthlete] {
+        let rosterLookup = Dictionary(uniqueKeysWithValues: routine.roster.map { ($0.id, $0) })
+        return formation.placements.compactMap { placement in
+            guard let rosterAthlete = rosterLookup[placement.athleteID] else { return nil }
+            return RenderedAthlete(
+                id: rosterAthlete.id,
+                label: rosterAthlete.label,
+                role: rosterAthlete.role,
+                position: placement.position
+            )
+        }
+    }
+
+    func transitionPaths(from fromID: UUID, to toID: UUID) -> [TransitionPathRenderItem] {
+        guard
+            let fromIndex = formationIndex(id: fromID),
+            let toIndex = formationIndex(id: toID)
+        else { return [] }
+
+        let spec = transitionSpec(for: fromID, to: toID)
+        let endLookup = Dictionary(
+            uniqueKeysWithValues: routine.formations[toIndex].placements.map { ($0.athleteID, $0.position) }
+        )
+
+        return routine.formations[fromIndex].placements.compactMap { placement in
+            guard let endPosition = endLookup[placement.athleteID] else { return nil }
+            let athleteTransition = spec.athleteTransition(for: placement.athleteID)
+            return TransitionPathRenderItem(
+                athleteID: placement.athleteID,
+                startPosition: placement.position,
+                endPosition: endPosition,
+                controlPoint: athleteTransition.pathControlPoint,
+                waypoints: athleteTransition.pathWaypoints
+            )
+        }
+    }
+
+    func addFormation(after formationID: UUID?) -> UUID {
+        let newFormation = Formation(
+            name: nextFormationName(),
+            placements: routine.roster.enumerated().map { index, athlete in
+                FormationPlacement(athleteID: athlete.id, position: FormationTemplates.defaultSpawnPosition(for: index))
+            }
+        )
+
+        if let currentIndex = formationIndex(id: formationID) {
+            routine.formations.insert(newFormation, at: currentIndex + 1)
+        } else {
+            routine.formations.append(newFormation)
+        }
+        reconcileTransitionSpecs()
+        return newFormation.id
+    }
+
+    func duplicateFormation(after formationID: UUID) -> UUID {
+        guard let index = formationIndex(id: formationID) else {
+            return addFormation(after: nil)
+        }
+
+        let source = routine.formations[index]
+        let duplicated = Formation(
+            name: nextFormationName(),
+            notes: source.notes,
+            placements: source.placements
+        )
+        routine.formations.insert(duplicated, at: index + 1)
+        reconcileTransitionSpecs()
+        return duplicated.id
+    }
+
+    func deleteFormation(id: UUID) {
+        guard routine.formations.count > 1 else {
+            routine.formations = [Formation(name: "Formation 1")]
+            routine.transitionSpecs = []
+            return
+        }
+
+        routine.formations.removeAll { $0.id == id }
+        reconcileTransitionSpecs()
+    }
+
+    func moveFormations(fromOffsets: IndexSet, toOffset: Int) {
+        routine.formations.move(fromOffsets: fromOffsets, toOffset: toOffset)
+        reconcileTransitionSpecs()
+    }
+
+    @discardableResult
+    func addAthlete() -> UUID {
+        let newAthlete = RosterAthlete(label: nextRosterLabel())
+        let athleteIndex = routine.roster.count
+        routine.roster.append(newAthlete)
+
+        for formationIndex in routine.formations.indices {
+            routine.formations[formationIndex].placements.append(
+                FormationPlacement(
+                    athleteID: newAthlete.id,
+                    position: FormationTemplates.defaultSpawnPosition(for: athleteIndex)
                 )
-                label += 1
+            )
+        }
+
+        reconcileTransitionSpecs()
+        return newAthlete.id
+    }
+
+    func applyBowlingPinTemplate(to formationID: UUID) {
+        while routine.roster.count < 10 {
+            _ = addAthlete()
+        }
+
+        guard let formationIndex = formationIndex(id: formationID) else { return }
+        let positions = FormationTemplates.bowlingPinPositions()
+
+        for (index, athlete) in routine.roster.enumerated() {
+            if index >= routine.formations[formationIndex].placements.count {
+                routine.formations[formationIndex].placements.append(
+                    FormationPlacement(
+                        athleteID: athlete.id,
+                        position: FormationTemplates.defaultSpawnPosition(for: index)
+                    )
+                )
             }
         }
-        return formation
+
+        for index in 0..<routine.formations[formationIndex].placements.count {
+            let position = index < positions.count
+                ? positions[index]
+                : FormationTemplates.defaultSpawnPosition(for: index)
+            routine.formations[formationIndex].placements[index].position = position
+        }
+
+        if routine.roster.count >= 10 {
+            for index in 0..<10 {
+                routine.roster[index].label = "A\(index + 1)"
+            }
+        }
+
+        reconcileTransitionSpecs()
+    }
+
+    func moveRoster(fromOffsets: IndexSet, toOffset: Int) {
+        routine.roster.move(fromOffsets: fromOffsets, toOffset: toOffset)
+        let orderedIDs = routine.roster.map(\.id)
+
+        for formationIndex in routine.formations.indices {
+            var placementLookup = Dictionary(
+                uniqueKeysWithValues: routine.formations[formationIndex].placements.map { ($0.athleteID, $0) }
+            )
+            routine.formations[formationIndex].placements = orderedIDs.compactMap { placementLookup.removeValue(forKey: $0) }
+        }
+
+        reconcileTransitionSpecs()
+    }
+
+    func deleteAthlete(id: UUID) {
+        routine.roster.removeAll { $0.id == id }
+        for formationIndex in routine.formations.indices {
+            routine.formations[formationIndex].placements.removeAll { $0.athleteID == id }
+        }
+        for transitionIndex in routine.transitionSpecs.indices {
+            routine.transitionSpecs[transitionIndex].athleteTransitions.removeAll { $0.athleteID == id }
+        }
+        reconcileTransitionSpecs()
+    }
+
+    func swapPositions(in formationID: UUID, id1: UUID, id2: UUID) {
+        guard let formationIndex = formationIndex(id: formationID) else { return }
+        guard
+            let firstIndex = routine.formations[formationIndex].placementIndex(for: id1),
+            let secondIndex = routine.formations[formationIndex].placementIndex(for: id2),
+            firstIndex != secondIndex
+        else { return }
+
+        let firstPosition = routine.formations[formationIndex].placements[firstIndex].position
+        routine.formations[formationIndex].placements[firstIndex].position =
+            routine.formations[formationIndex].placements[secondIndex].position
+        routine.formations[formationIndex].placements[secondIndex].position = firstPosition
+    }
+
+    func mutateFormation(id: UUID, _ update: (inout Formation) -> Void) {
+        guard let index = formationIndex(id: id) else { return }
+        update(&routine.formations[index])
+    }
+
+    func mutateRosterAthlete(id: UUID, _ update: (inout RosterAthlete) -> Void) {
+        guard let index = rosterIndex(id: id) else { return }
+        update(&routine.roster[index])
+    }
+
+    func mutateTransitionSpec(from fromID: UUID, to toID: UUID, _ update: (inout TransitionSpec) -> Void) {
+        guard let index = transitionSpecIndex(from: fromID, to: toID) else { return }
+        update(&routine.transitionSpecs[index])
+        let athleteIDs = routine.formations[formationIndex(id: fromID) ?? 0].placements.map(\.athleteID)
+        routine.transitionSpecs[index].synchronize(athleteIDs: athleteIDs)
+    }
+
+    func mutateAthleteTransition(
+        from fromID: UUID,
+        to toID: UUID,
+        athleteID: UUID,
+        _ update: (inout AthleteTransition) -> Void
+    ) {
+        guard let specIndex = transitionSpecIndex(from: fromID, to: toID) else { return }
+        let athleteIndex =
+            routine.transitionSpecs[specIndex].athleteTransitions.firstIndex(where: { $0.athleteID == athleteID })
+            ?? {
+                routine.transitionSpecs[specIndex].athleteTransitions.append(AthleteTransition(athleteID: athleteID))
+                return routine.transitionSpecs[specIndex].athleteTransitions.count - 1
+            }()
+
+        update(&routine.transitionSpecs[specIndex].athleteTransitions[athleteIndex])
+        let athleteIDs = routine.formations[formationIndex(id: fromID) ?? 0].placements.map(\.athleteID)
+        routine.transitionSpecs[specIndex].synchronize(athleteIDs: athleteIDs)
+    }
+
+    private func nextRosterLabel() -> String {
+        let existing = Set(routine.roster.map(\.label))
+        var index = routine.roster.count + 1
+        var candidate = "A\(index)"
+        while existing.contains(candidate) {
+            index += 1
+            candidate = "A\(index)"
+        }
+        return candidate
+    }
+
+    private func nextFormationName() -> String {
+        let existing = Set(routine.formations.map(\.name))
+        var index = routine.formations.count + 1
+        var candidate = "Formation \(index)"
+        while existing.contains(candidate) {
+            index += 1
+            candidate = "Formation \(index)"
+        }
+        return candidate
+    }
+
+    private func reconcileRoutineShape() {
+        if routine.formations.isEmpty {
+            routine.formations = [Formation(name: "Formation 1")]
+        }
+
+        let rosterIDs = routine.roster.map(\.id)
+        for index in routine.formations.indices {
+            var placementLookup = Dictionary(
+                uniqueKeysWithValues: routine.formations[index].placements.map { ($0.athleteID, $0) }
+            )
+            routine.formations[index].placements = rosterIDs.enumerated().map { offset, athleteID in
+                placementLookup.removeValue(forKey: athleteID)
+                    ?? FormationPlacement(
+                        athleteID: athleteID,
+                        position: FormationTemplates.defaultSpawnPosition(for: offset)
+                    )
+            }
+        }
+
+        reconcileTransitionSpecs()
+    }
+
+    private func reconcileTransitionSpecs() {
+        let existing = Dictionary(
+            uniqueKeysWithValues: routine.transitionSpecs.map {
+                (TransitionEdge(fromID: $0.fromFormationID, toID: $0.toFormationID), $0)
+            }
+        )
+
+        routine.transitionSpecs = routine.formations.indices.dropLast().map { index in
+            let fromFormation = routine.formations[index]
+            let toFormation = routine.formations[index + 1]
+            var spec = existing[TransitionEdge(fromID: fromFormation.id, toID: toFormation.id)]
+                ?? TransitionSpec(
+                    fromFormationID: fromFormation.id,
+                    toFormationID: toFormation.id,
+                    athleteTransitions: fromFormation.placements.map {
+                        AthleteTransition(athleteID: $0.athleteID)
+                    }
+                )
+            spec.fromFormationID = fromFormation.id
+            spec.toFormationID = toFormation.id
+            spec.synchronize(athleteIDs: fromFormation.placements.map(\.athleteID))
+            return spec
+        }
     }
 }
 
 // MARK: - Path Calculation Utilities
 
 struct PathCalculations {
-    /// Calculate standard distance between two points in floor feet
     static func distance(from: CGPoint, to: CGPoint) -> CGFloat {
         hypot(to.x - from.x, to.y - from.y)
     }
 
-    /// Calculate mathematically cheaper squared distance between two points in floor feet
     static func squaredDistance(from: CGPoint, to: CGPoint) -> CGFloat {
         let dx = to.x - from.x
         let dy = to.y - from.y
         return dx * dx + dy * dy
     }
 
-    /// Evaluate a quadratic Bezier curve at parameter t (0...1).
     static func quadraticBezierPoint(
-        from p0: CGPoint, control c: CGPoint, to p2: CGPoint, t: CGFloat
+        from p0: CGPoint,
+        control c: CGPoint,
+        to p2: CGPoint,
+        t: CGFloat
     ) -> CGPoint {
         let u = 1.0 - t
         let uu = u * u
@@ -286,9 +713,12 @@ struct PathCalculations {
         )
     }
 
-    /// Evaluate a cubic Bezier curve at parameter t (0...1).
     static func cubicBezierPoint(
-        p0: CGPoint, c1: CGPoint, c2: CGPoint, p3: CGPoint, t: CGFloat
+        p0: CGPoint,
+        c1: CGPoint,
+        c2: CGPoint,
+        p3: CGPoint,
+        t: CGFloat
     ) -> CGPoint {
         let u = 1.0 - t
         let uu = u * u
@@ -301,30 +731,46 @@ struct PathCalculations {
         )
     }
 
-    /// Build a complete point-sequence (nodes) for a multi-waypoint path: [start, wp1, wp2, ..., end]
-    static func waypointNodes(from start: CGPoint, to end: CGPoint, waypoints: [PathWaypoint])
-        -> [CGPoint]
-    {
-        var nodes = [start]
-        nodes.append(contentsOf: waypoints.map { $0.position })
-        nodes.append(end)
-        return nodes
+    static func waypointNodes(from start: CGPoint, to end: CGPoint, waypoints: [PathWaypoint]) -> [CGPoint] {
+        [start] + waypoints.map(\.position) + [end]
     }
 
-    /// Calculate segment lengths for a multi-node path. Returns array of distances.
     static func segmentLengths(_ nodes: [CGPoint]) -> [CGFloat] {
         guard nodes.count > 1 else { return [] }
-        var lengths: [CGFloat] = []
-        for i in 0..<(nodes.count - 1) {
-            lengths.append(distance(from: nodes[i], to: nodes[i + 1]))
-        }
-        return lengths
+        return (0..<(nodes.count - 1)).map { distance(from: nodes[$0], to: nodes[$0 + 1]) }
     }
 
-    /// Sample a multi-waypoint path into discrete points for collision detection.
-    /// Smooth waypoints use Catmull-Rom-style cubic bezier; sharp waypoints use straight line segments.
+    static func athletePath(
+        from: CGPoint,
+        to: CGPoint,
+        control: CGPoint? = nil,
+        steps: Int = 10
+    ) -> [CGPoint] {
+        guard steps > 1 else { return [from, to] }
+
+        var path: [CGPoint] = [from]
+        for index in 1..<steps {
+            let t = CGFloat(index) / CGFloat(steps - 1)
+            if let control {
+                path.append(quadraticBezierPoint(from: from, control: control, to: to, t: t))
+            } else {
+                path.append(
+                    CGPoint(
+                        x: from.x + (to.x - from.x) * t,
+                        y: from.y + (to.y - from.y) * t
+                    )
+                )
+            }
+        }
+        path.append(to)
+        return path
+    }
+
     static func waypointPath(
-        from start: CGPoint, to end: CGPoint, waypoints: [PathWaypoint], steps: Int = 20
+        from start: CGPoint,
+        to end: CGPoint,
+        waypoints: [PathWaypoint],
+        steps: Int = 20
     ) -> [CGPoint] {
         guard !waypoints.isEmpty else {
             return athletePath(from: start, to: end, steps: steps)
@@ -335,23 +781,16 @@ struct PathCalculations {
         let totalLength = lengths.reduce(0, +)
         guard totalLength > 0 else { return [start, end] }
 
-        // Distribute steps proportionally across segments
         var path: [CGPoint] = [start]
-        for segIdx in 0..<(nodes.count - 1) {
-            let segSteps = max(2, Int(round(CGFloat(steps) * lengths[segIdx] / totalLength)))
-            let p0 = nodes[segIdx]
-            let p1 = nodes[segIdx + 1]
+        for segmentIndex in 0..<(nodes.count - 1) {
+            let segmentSteps = max(2, Int(round(CGFloat(steps) * lengths[segmentIndex] / totalLength)))
+            let p0 = nodes[segmentIndex]
+            let p1 = nodes[segmentIndex + 1]
+            let waypointAtEnd = segmentIndex < waypoints.count ? waypoints[segmentIndex] : nil
 
-            // Check if the endpoint waypoint is smooth (Catmull-Rom) or sharp (straight line).
-            // The first node is start (no waypoint), last is end (no waypoint).
-            let waypointAtEnd: PathWaypoint? =
-                (segIdx + 1 > 0 && segIdx + 1 <= waypoints.count) ? waypoints[segIdx] : nil
-            let isSmooth = waypointAtEnd?.isSmooth ?? false
-
-            if isSmooth {
-                // Catmull-Rom control points for the segment
-                let prev = segIdx > 0 ? nodes[segIdx - 1] : p0
-                let next = segIdx + 2 < nodes.count ? nodes[segIdx + 2] : p1
+            if waypointAtEnd?.isSmooth == true {
+                let prev = segmentIndex > 0 ? nodes[segmentIndex - 1] : p0
+                let next = segmentIndex + 2 < nodes.count ? nodes[segmentIndex + 2] : p1
                 let c1 = CGPoint(
                     x: p0.x + (p1.x - prev.x) / 6.0,
                     y: p0.y + (p1.y - prev.y) / 6.0
@@ -360,25 +799,30 @@ struct PathCalculations {
                     x: p1.x - (next.x - p0.x) / 6.0,
                     y: p1.y - (next.y - p0.y) / 6.0
                 )
-                for i in 1...segSteps {
-                    let t = CGFloat(i) / CGFloat(segSteps)
+                for step in 1...segmentSteps {
+                    let t = CGFloat(step) / CGFloat(segmentSteps)
                     path.append(cubicBezierPoint(p0: p0, c1: c1, c2: c2, p3: p1, t: t))
                 }
             } else {
-                // Sharp / straight line segment
-                for i in 1...segSteps {
-                    let t = CGFloat(i) / CGFloat(segSteps)
-                    path.append(CGPoint(x: p0.x + (p1.x - p0.x) * t, y: p0.y + (p1.y - p0.y) * t))
+                for step in 1...segmentSteps {
+                    let t = CGFloat(step) / CGFloat(segmentSteps)
+                    path.append(
+                        CGPoint(
+                            x: p0.x + (p1.x - p0.x) * t,
+                            y: p0.y + (p1.y - p0.y) * t
+                        )
+                    )
                 }
             }
         }
         return path
     }
 
-    /// Interpolate position along a multi-waypoint path at a given progress (0...1).
-    /// This distributes progress proportionally across segment lengths for natural speed.
     static func interpolateWaypointPath(
-        from start: CGPoint, to end: CGPoint, waypoints: [PathWaypoint], progress: CGFloat
+        from start: CGPoint,
+        to end: CGPoint,
+        waypoints: [PathWaypoint],
+        progress: CGFloat
     ) -> CGPoint {
         guard !waypoints.isEmpty else {
             return CGPoint(
@@ -392,26 +836,20 @@ struct PathCalculations {
         let totalLength = lengths.reduce(0, +)
         guard totalLength > 0 else { return start }
 
-        // Find which segment the progress falls into
-        let targetDist = progress * totalLength
+        let targetDistance = progress * totalLength
         var accumulated: CGFloat = 0
-        for segIdx in 0..<lengths.count {
-            let segLen = lengths[segIdx]
-            if accumulated + segLen >= targetDist || segIdx == lengths.count - 1 {
-                let segProgress = segLen > 0 ? (targetDist - accumulated) / segLen : 0
-                let clampedT = max(0, min(1, segProgress))
+        for segmentIndex in 0..<lengths.count {
+            let segmentLength = lengths[segmentIndex]
+            if accumulated + segmentLength >= targetDistance || segmentIndex == lengths.count - 1 {
+                let localProgress = segmentLength > 0 ? (targetDistance - accumulated) / segmentLength : 0
+                let t = max(0, min(1, localProgress))
+                let p0 = nodes[segmentIndex]
+                let p1 = nodes[segmentIndex + 1]
+                let waypointAtEnd = segmentIndex < waypoints.count ? waypoints[segmentIndex] : nil
 
-                let p0 = nodes[segIdx]
-                let p1 = nodes[segIdx + 1]
-
-                // Check if we should use smooth or sharp interpolation
-                let waypointAtEnd: PathWaypoint? =
-                    (segIdx < waypoints.count) ? waypoints[segIdx] : nil
-                let isSmooth = waypointAtEnd?.isSmooth ?? false
-
-                if isSmooth {
-                    let prev = segIdx > 0 ? nodes[segIdx - 1] : p0
-                    let next = segIdx + 2 < nodes.count ? nodes[segIdx + 2] : p1
+                if waypointAtEnd?.isSmooth == true {
+                    let prev = segmentIndex > 0 ? nodes[segmentIndex - 1] : p0
+                    let next = segmentIndex + 2 < nodes.count ? nodes[segmentIndex + 2] : p1
                     let c1 = CGPoint(
                         x: p0.x + (p1.x - prev.x) / 6.0,
                         y: p0.y + (p1.y - prev.y) / 6.0
@@ -420,23 +858,24 @@ struct PathCalculations {
                         x: p1.x - (next.x - p0.x) / 6.0,
                         y: p1.y - (next.y - p0.y) / 6.0
                     )
-                    return cubicBezierPoint(p0: p0, c1: c1, c2: c2, p3: p1, t: clampedT)
-                } else {
-                    return CGPoint(
-                        x: p0.x + (p1.x - p0.x) * clampedT,
-                        y: p0.y + (p1.y - p0.y) * clampedT
-                    )
+                    return cubicBezierPoint(p0: p0, c1: c1, c2: c2, p3: p1, t: t)
                 }
+
+                return CGPoint(
+                    x: p0.x + (p1.x - p0.x) * t,
+                    y: p0.y + (p1.y - p0.y) * t
+                )
             }
-            accumulated += segLen
+            accumulated += segmentLength
         }
+
         return end
     }
 
-    /// Returns the path-progress (0→1) at which each waypoint is reached, based on segment lengths.
-    /// The returned array has one entry per waypoint, in order.
     static func waypointProgressThresholds(
-        from start: CGPoint, to end: CGPoint, waypoints: [PathWaypoint]
+        from start: CGPoint,
+        to end: CGPoint,
+        waypoints: [PathWaypoint]
     ) -> [CGFloat] {
         let nodes = waypointNodes(from: start, to: end, waypoints: waypoints)
         let lengths = segmentLengths(nodes)
@@ -445,276 +884,206 @@ struct PathCalculations {
 
         var thresholds: [CGFloat] = []
         var accumulated: CGFloat = 0
-        // Each waypoint sits at the end of segment [i], i.e. between nodes[i] and nodes[i+1].
-        for i in 0..<waypoints.count {
-            accumulated += lengths[i]
+        for index in 0..<waypoints.count {
+            accumulated += lengths[index]
             thresholds.append(accumulated / totalLength)
         }
         return thresholds
     }
 
-    /// Map wall-clock progress (0→1) to path-progress (0→1) accounting for waypoint hold durations.
-    /// `totalHoldTime` is in seconds; `moveDuration` is the moving-only portion in seconds.
-    /// Returns the effective path progress (position along the spatial path).
     static func holdAdjustedPathProgress(
-        wallProgress: CGFloat, waypoints: [PathWaypoint],
-        thresholds: [CGFloat], moveDuration: CGFloat, totalHoldTime: CGFloat
+        wallProgress: CGFloat,
+        waypoints: [PathWaypoint],
+        thresholds: [CGFloat],
+        moveDuration: CGFloat,
+        totalHoldTime: CGFloat
     ) -> CGFloat {
         guard !waypoints.isEmpty, totalHoldTime > 0, moveDuration > 0 else {
             return wallProgress
         }
+
         let effectiveDuration = moveDuration + totalHoldTime
-        let elapsed = wallProgress * effectiveDuration  // seconds into this athlete's motion
-
-        // Walk through the timeline: alternating move-segments and holds
+        let elapsed = wallProgress * effectiveDuration
         var timeUsed: CGFloat = 0
-        var prevThreshold: CGFloat = 0
+        var previousThreshold: CGFloat = 0
 
-        for i in 0..<waypoints.count {
-            let threshold = thresholds[i]
-            let segmentPathFraction = threshold - prevThreshold
-            let segmentMoveTime = segmentPathFraction * moveDuration
+        for index in 0..<waypoints.count {
+            let threshold = thresholds[index]
+            let segmentFraction = threshold - previousThreshold
+            let segmentMoveTime = segmentFraction * moveDuration
 
-            // Moving phase for this segment
             if elapsed <= timeUsed + segmentMoveTime {
-                let segElapsed = elapsed - timeUsed
-                let segProgress = segmentMoveTime > 0 ? segElapsed / segmentMoveTime : 1
-                return prevThreshold + segmentPathFraction * segProgress
+                let segmentElapsed = elapsed - timeUsed
+                let segmentProgress = segmentMoveTime > 0 ? segmentElapsed / segmentMoveTime : 1
+                return previousThreshold + segmentFraction * segmentProgress
             }
             timeUsed += segmentMoveTime
 
-            // Hold phase at this waypoint
-            let hold = waypoints[i].holdDuration
+            let hold = waypoints[index].holdDuration
             if hold > 0 && elapsed <= timeUsed + hold {
-                return threshold  // clamped at waypoint position
+                return threshold
             }
             timeUsed += hold
-            prevThreshold = threshold
+            previousThreshold = threshold
         }
 
-        // Final segment: from last waypoint to end
-        let lastSegFraction = 1.0 - prevThreshold
-        let lastSegMoveTime = lastSegFraction * moveDuration
-        if elapsed <= timeUsed + lastSegMoveTime {
-            let segElapsed = elapsed - timeUsed
-            let segProgress = lastSegMoveTime > 0 ? segElapsed / lastSegMoveTime : 1
-            return prevThreshold + lastSegFraction * segProgress
+        let lastFraction = 1.0 - previousThreshold
+        let lastMoveTime = lastFraction * moveDuration
+        if elapsed <= timeUsed + lastMoveTime {
+            let segmentElapsed = elapsed - timeUsed
+            let segmentProgress = lastMoveTime > 0 ? segmentElapsed / lastMoveTime : 1
+            return previousThreshold + lastFraction * segmentProgress
         }
 
         return 1.0
     }
 
-    /// Calculate the total travel distance (in feet) for an athlete's transition path.
     static func travelDistance(
-        from start: CGPoint, to end: CGPoint, athlete: Athlete
+        from start: CGPoint,
+        to end: CGPoint,
+        transition: AthleteTransition
     ) -> CGFloat {
-        if !athlete.pathWaypoints.isEmpty {
-            let nodes = waypointNodes(from: start, to: end, waypoints: athlete.pathWaypoints)
+        if !transition.pathWaypoints.isEmpty {
+            let nodes = waypointNodes(from: start, to: end, waypoints: transition.pathWaypoints)
             return segmentLengths(nodes).reduce(0, +)
-        } else if let c = athlete.pathControlPoint {
-            // Approximate quadratic Bezier length by sampling
-            let steps = 20
+        }
+
+        if let controlPoint = transition.pathControlPoint {
+            let samples = 20
             var length: CGFloat = 0
-            var prev = start
-            for i in 1...steps {
-                let t = CGFloat(i) / CGFloat(steps)
-                let pt = quadraticBezierPoint(from: start, control: c, to: end, t: t)
-                length += distance(from: prev, to: pt)
-                prev = pt
+            var previous = start
+            for index in 1...samples {
+                let t = CGFloat(index) / CGFloat(samples)
+                let point = quadraticBezierPoint(from: start, control: controlPoint, to: end, t: t)
+                length += distance(from: previous, to: point)
+                previous = point
             }
             return length
-        } else {
-            return distance(from: start, to: end)
-        }
-    }
-
-    /// Find the nearest athlete to a given position
-    static func nearestAthlete(to position: CGPoint, in formation: Formation) -> Athlete? {
-        guard !formation.athletes.isEmpty else { return nil }
-        return formation.athletes.min { a, b in
-            squaredDistance(from: position, to: a.position)
-                < squaredDistance(from: position, to: b.position)
-        }
-    }
-
-    /// Calculate the bounding box of all athletes in formation (returns in floor feet)
-    static func formationBounds(of formation: Formation) -> CGRect {
-        guard !formation.athletes.isEmpty else {
-            return CGRect(
-                origin: .zero,
-                size: CGSize(width: CourtConstants.width, height: CourtConstants.height))
         }
 
-        let xs = formation.athletes.map { $0.position.x }
-        let ys = formation.athletes.map { $0.position.y }
-
-        let minX = xs.min() ?? 0
-        let maxX = xs.max() ?? 52
-        let minY = ys.min() ?? 0
-        let maxY = ys.max() ?? 30
-
-        return CGRect(
-            origin: CGPoint(x: minX, y: minY),
-            size: CGSize(width: maxX - minX, height: maxY - minY)
-        )
+        return distance(from: start, to: end)
     }
 
-    /// Calculate the path (as array of points) an athlete takes from start to end position
-    static func athletePath(from: CGPoint, to: CGPoint, control: CGPoint? = nil, steps: Int = 10)
-        -> [CGPoint]
-    {
-        guard steps > 1 else { return [from, to] }
+    static func collisionSummary(
+        in athletes: [RenderedAthlete],
+        minDistance: CGFloat = CourtConstants.collisionDistance
+    ) -> (count: Int, ids: Set<UUID>) {
+        guard athletes.count > 1 else { return (0, []) }
 
-        var path: [CGPoint] = [from]
-        for i in 1..<steps {
-            let t = CGFloat(i) / CGFloat(steps - 1)
-            let point: CGPoint
-            if let c = control {
-                point = quadraticBezierPoint(from: from, control: c, to: to, t: t)
-            } else {
-                point = CGPoint(
-                    x: from.x + (to.x - from.x) * t,
-                    y: from.y + (to.y - from.y) * t
+        let minDistanceSquared = minDistance * minDistance
+        var count = 0
+        var ids = Set<UUID>()
+
+        for firstIndex in 0..<athletes.count {
+            for secondIndex in (firstIndex + 1)..<athletes.count {
+                if squaredDistance(from: athletes[firstIndex].position, to: athletes[secondIndex].position)
+                    < minDistanceSquared
+                {
+                    count += 1
+                    ids.insert(athletes[firstIndex].id)
+                    ids.insert(athletes[secondIndex].id)
+                }
+            }
+        }
+
+        return (count, ids)
+    }
+
+    static func findPathCollisionIDs(
+        paths: [TransitionPathRenderItem],
+        steps: Int = 20,
+        minDistance: CGFloat = CourtConstants.collisionDistance
+    ) -> Set<UUID> {
+        guard paths.count > 1 else { return [] }
+
+        let sampledPaths: [[CGPoint]] = paths.map { item in
+            if !item.waypoints.isEmpty {
+                return waypointPath(
+                    from: item.startPosition,
+                    to: item.endPosition,
+                    waypoints: item.waypoints,
+                    steps: steps
                 )
             }
-            path.append(point)
-        }
-        path.append(to)
-        return path
-    }
-
-    /// Check if two athletes collide based on minimum separation distance
-    /// Returns true if distance between athletes is less than minDistance (in floor feet)
-    static func checkCollision(athleteA: Athlete, athleteB: Athlete, minDistance: CGFloat = 2.0)
-        -> Bool
-    {
-        let distSq = squaredDistance(from: athleteA.position, to: athleteB.position)
-        return distSq < (minDistance * minDistance)
-    }
-
-    /// Find all collision pairs in a formation
-    static func findCollisions(in formation: Formation, minDistance: CGFloat = 2.0) -> [(
-        Athlete, Athlete
-    )] {
-        var collisions: [(Athlete, Athlete)] = []
-        for i in 0..<formation.athletes.count {
-            for j in (i + 1)..<formation.athletes.count {
-                if checkCollision(
-                    athleteA: formation.athletes[i], athleteB: formation.athletes[j],
-                    minDistance: minDistance)
-                {
-                    collisions.append((formation.athletes[i], formation.athletes[j]))
-                }
-            }
-        }
-        return collisions
-    }
-
-    /// Return collision count and participant ids without allocating all collision pairs.
-    static func collisionSummary(in formation: Formation, minDistance: CGFloat = 2.0) -> (
-        count: Int, ids: Set<UUID>
-    ) {
-        let athletes = formation.athletes
-        guard athletes.count > 1 else { return (0, Set<UUID>()) }
-
-        let minDistanceSq = minDistance * minDistance
-        var collisionCount = 0
-        var collisionIds = Set<UUID>()
-        collisionIds.reserveCapacity(athletes.count)
-
-        for i in 0..<athletes.count {
-            for j in (i + 1)..<athletes.count {
-                if squaredDistance(from: athletes[i].position, to: athletes[j].position)
-                    < minDistanceSq
-                {
-                    collisionCount += 1
-                    collisionIds.insert(athletes[i].id)
-                    collisionIds.insert(athletes[j].id)
-                }
-            }
+            return athletePath(
+                from: item.startPosition,
+                to: item.endPosition,
+                control: item.controlPoint,
+                steps: steps
+            )
         }
 
-        return (collisionCount, collisionIds)
-    }
+        let minDistanceSquared = minDistance * minDistance
+        var collisionIDs = Set<UUID>()
 
-    /// Find the indices of athletes whose transition paths cross within minDistance.
-    /// Athletes are matched by ID between start and end formations.
-    static func findPathCollisionIndices(
-        start: Formation, end: Formation, steps: Int = 20, minDistance: CGFloat = 2.0
-    ) -> Set<Int> {
-        // Build matched pairs: (startIndex, startAthlete, endAthlete)
-        var matchedPairs: [(index: Int, start: Athlete, end: Athlete)] = []
-        for (i, startAthlete) in start.athletes.enumerated() {
-            if let endAthlete = end.athletes.first(where: { $0.id == startAthlete.id }) {
-                matchedPairs.append((index: i, start: startAthlete, end: endAthlete))
-            }
-        }
-
-        var collidingIndices = Set<Int>()
-        var paths: [[CGPoint]] = []
-        for pair in matchedPairs {
-            if !pair.start.pathWaypoints.isEmpty {
-                paths.append(
-                    waypointPath(
-                        from: pair.start.position,
-                        to: pair.end.position,
-                        waypoints: pair.start.pathWaypoints,
-                        steps: steps
-                    ))
-            } else {
-                paths.append(
-                    athletePath(
-                        from: pair.start.position,
-                        to: pair.end.position,
-                        control: pair.start.pathControlPoint,
-                        steps: steps
-                    ))
-            }
-        }
-        let minDistanceSq = minDistance * minDistance
-        for i in 0..<matchedPairs.count {
-            for j in (i + 1)..<matchedPairs.count {
-                for step in 0..<min(paths[i].count, paths[j].count) {
-                    if squaredDistance(from: paths[i][step], to: paths[j][step]) < minDistanceSq {
-                        collidingIndices.insert(matchedPairs[i].index)
-                        collidingIndices.insert(matchedPairs[j].index)
+        for firstIndex in 0..<paths.count {
+            for secondIndex in (firstIndex + 1)..<paths.count {
+                for step in 0..<min(sampledPaths[firstIndex].count, sampledPaths[secondIndex].count) {
+                    if squaredDistance(from: sampledPaths[firstIndex][step], to: sampledPaths[secondIndex][step])
+                        < minDistanceSquared
+                    {
+                        collisionIDs.insert(paths[firstIndex].athleteID)
+                        collisionIDs.insert(paths[secondIndex].athleteID)
                         break
                     }
                 }
             }
         }
-        return collidingIndices
+
+        return collisionIDs
     }
 }
 
 // MARK: - Transition Player
 
-class TransitionPlayer: ObservableObject {
+@MainActor
+final class TransitionPlayer: ObservableObject {
     @Published var isPlaying = false
     @Published var isLooping = false
-    @Published var progress: CGFloat = 0.0  // 0.0 to 1.0
-    @Published var currentFormation: Formation
-    @Published var speed: CGFloat = 1.0  // playback speed multiplier
-    @Published var startFormation: Formation  // mutable for timing edits
+    @Published var progress: CGFloat = 0
+    @Published var currentAthletes: [RenderedAthlete]
+    @Published var speed: CGFloat = 1.0
+    @Published var startAthletes: [RenderedAthlete]
+    @Published var endAthletes: [RenderedAthlete]
+    @Published var transitionSpec: TransitionSpec
 
-    @Published var endFormation: Formation
-    var duration: TimeInterval
+    var duration: TimeInterval {
+        didSet { transitionSpec.duration = duration }
+    }
+
     private var animationTimer: AnimationTimer?
 
-    init(from start: Formation, to end: Formation, duration: TimeInterval = 2.0) {
-        self.startFormation = start
-        self.endFormation = end
-        self.duration = duration
-        self.currentFormation = start
+    init(
+        startAthletes: [RenderedAthlete],
+        endAthletes: [RenderedAthlete],
+        transitionSpec: TransitionSpec
+    ) {
+        self.startAthletes = startAthletes
+        self.endAthletes = endAthletes
+        self.transitionSpec = transitionSpec
+        self.duration = transitionSpec.duration
+        self.currentAthletes = startAthletes
     }
 
     deinit {
         animationTimer?.invalidate()
     }
 
+    func refresh(
+        startAthletes: [RenderedAthlete],
+        endAthletes: [RenderedAthlete],
+        transitionSpec: TransitionSpec
+    ) {
+        self.startAthletes = startAthletes
+        self.endAthletes = endAthletes
+        self.transitionSpec = transitionSpec
+        duration = transitionSpec.duration
+        updateAthletesForProgress()
+    }
+
     func play() {
         guard !isPlaying else { return }
-        if progress >= 1.0 { progress = 0.0 }
+        if progress >= 1.0 { progress = 0 }
         isPlaying = true
         animationTimer = AnimationTimer { [weak self] in
             self?.update()
@@ -729,106 +1098,116 @@ class TransitionPlayer: ObservableObject {
 
     func reset() {
         pause()
-        progress = 0.0
-        updateFormationForProgress()
+        progress = 0
+        updateAthletesForProgress()
     }
 
     func seek(to newProgress: CGFloat) {
         progress = max(0, min(1, newProgress))
-        updateFormationForProgress()
+        updateAthletesForProgress()
     }
 
     private func update() {
         guard isPlaying else { return }
-        let deltaProgress = CGFloat(1.0 / 60.0) * speed / CGFloat(duration)
-        progress = min(1.0, progress + deltaProgress)
-        updateFormationForProgress()
+        let delta = CGFloat(1.0 / 60.0) * speed / max(CGFloat(duration), 0.5)
+        progress = min(1.0, progress + delta)
+        updateAthletesForProgress()
         if progress >= 1.0 {
-            if isLooping { progress = 0.0 } else { pause() }
+            if isLooping {
+                progress = 0
+            } else {
+                pause()
+            }
         }
     }
 
-    private func updateFormationForProgress() {
-        var newFormation = startFormation
-        newFormation.athletes = []
+    private func updateAthletesForProgress() {
+        let endLookup = Dictionary(uniqueKeysWithValues: endAthletes.map { ($0.id, $0) })
+        let transitionLookup = Dictionary(
+            uniqueKeysWithValues: transitionSpec.athleteTransitions.map { ($0.athleteID, $0) }
+        )
 
-        // Compute the longest effective duration (travel + holds) so timing stays proportional
-        let maxEffectiveTime: CGFloat = startFormation.athletes.compactMap { startAthlete -> CGFloat? in
-            guard let endAthlete = endFormation.athletes.first(where: { $0.id == startAthlete.id })
-            else { return nil }
-            let dist = PathCalculations.travelDistance(
-                from: startAthlete.position, to: endAthlete.position, athlete: startAthlete)
-            let holdTime = startAthlete.pathWaypoints.reduce(CGFloat(0)) { $0 + $1.holdDuration }
-            return dist + holdTime  // treat hold seconds as equivalent "distance" for proportioning
-        }.max() ?? 1.0
+        let maxEffectiveTime = startAthletes.compactMap { athlete -> CGFloat? in
+            guard let endAthlete = endLookup[athlete.id] else { return nil }
+            let transition = transitionLookup[athlete.id] ?? AthleteTransition(athleteID: athlete.id)
+            let travel = PathCalculations.travelDistance(
+                from: athlete.position,
+                to: endAthlete.position,
+                transition: transition
+            )
+            let hold = transition.pathWaypoints.reduce(CGFloat(0)) { $0 + $1.holdDuration }
+            return travel + hold
+        }.max() ?? 1
 
-        for startAthlete in startFormation.athletes {
-            if let endAthlete = endFormation.athletes.first(where: { $0.id == startAthlete.id }) {
-                let dist = PathCalculations.travelDistance(
-                    from: startAthlete.position, to: endAthlete.position, athlete: startAthlete)
-                let totalHold = startAthlete.pathWaypoints.reduce(CGFloat(0)) { $0 + $1.holdDuration }
-                let effectiveTime = dist + totalHold
-                // Each athlete's fraction of the total duration is proportional to their effective time
-                let durationFraction = maxEffectiveTime > 0 ? effectiveTime / maxEffectiveTime : 1.0
-                let timingOffset = min(0.99, startAthlete.moveTiming / CGFloat(duration))
-                // Scale progress so this athlete finishes when their duration portion is done
-                let adjustedProgress = max(0, progress - timingOffset) / (1.0 - timingOffset)
-                let athleteProgress: CGFloat
-                if durationFraction > 0 {
-                    athleteProgress = min(1.0, adjustedProgress / durationFraction)
-                } else {
-                    athleteProgress = 1.0  // stationary athlete, jump to end
-                }
+        currentAthletes = startAthletes.map { athlete in
+            guard let endAthlete = endLookup[athlete.id] else { return athlete }
+            let transition = transitionLookup[athlete.id] ?? AthleteTransition(athleteID: athlete.id)
+            let travel = PathCalculations.travelDistance(
+                from: athlete.position,
+                to: endAthlete.position,
+                transition: transition
+            )
+            let hold = transition.pathWaypoints.reduce(CGFloat(0)) { $0 + $1.holdDuration }
+            let effectiveTime = travel + hold
+            let durationFraction = maxEffectiveTime > 0 ? effectiveTime / maxEffectiveTime : 1
+            let timingOffset = min(0.99, transition.moveDelay / max(CGFloat(duration), 0.5))
+            let adjustedProgress = max(0, progress - timingOffset) / (1.0 - timingOffset)
+            let athleteProgress = durationFraction > 0 ? min(1.0, adjustedProgress / durationFraction) : 1.0
 
-                // Apply hold-duration adjustment for waypoint paths
-                let effectiveProgress: CGFloat
-                if !startAthlete.pathWaypoints.isEmpty && totalHold > 0 {
-                    let thresholds = PathCalculations.waypointProgressThresholds(
-                        from: startAthlete.position, to: endAthlete.position,
-                        waypoints: startAthlete.pathWaypoints)
-                    let moveDuration = durationFraction * CGFloat(duration) * (dist / effectiveTime)
-                    effectiveProgress = PathCalculations.holdAdjustedPathProgress(
-                        wallProgress: athleteProgress, waypoints: startAthlete.pathWaypoints,
-                        thresholds: thresholds, moveDuration: moveDuration,
-                        totalHoldTime: totalHold)
-                } else {
-                    effectiveProgress = athleteProgress
-                }
-
-                let newPosition: CGPoint
-                if !startAthlete.pathWaypoints.isEmpty {
-                    newPosition = PathCalculations.interpolateWaypointPath(
-                        from: startAthlete.position, to: endAthlete.position,
-                        waypoints: startAthlete.pathWaypoints, progress: effectiveProgress)
-                } else if let c = startAthlete.pathControlPoint {
-                    newPosition = PathCalculations.quadraticBezierPoint(
-                        from: startAthlete.position, control: c, to: endAthlete.position,
-                        t: athleteProgress)
-                } else {
-                    newPosition = CGPoint(
-                        x: startAthlete.position.x
-                            + (endAthlete.position.x - startAthlete.position.x) * athleteProgress,
-                        y: startAthlete.position.y
-                            + (endAthlete.position.y - startAthlete.position.y) * athleteProgress
-                    )
-                }
-
-                var athlete = startAthlete
-                athlete.position = newPosition
-                newFormation.athletes.append(athlete)
+            let effectiveProgress: CGFloat
+            if !transition.pathWaypoints.isEmpty && hold > 0 {
+                let thresholds = PathCalculations.waypointProgressThresholds(
+                    from: athlete.position,
+                    to: endAthlete.position,
+                    waypoints: transition.pathWaypoints
+                )
+                let moveDuration = durationFraction * max(CGFloat(duration), 0.5) * (travel / max(effectiveTime, 0.001))
+                effectiveProgress = PathCalculations.holdAdjustedPathProgress(
+                    wallProgress: athleteProgress,
+                    waypoints: transition.pathWaypoints,
+                    thresholds: thresholds,
+                    moveDuration: moveDuration,
+                    totalHoldTime: hold
+                )
             } else {
-                // No matching end athlete — keep start position
-                newFormation.athletes.append(startAthlete)
+                effectiveProgress = athleteProgress
             }
-        }
 
-        currentFormation = newFormation
+            let nextPosition: CGPoint
+            if !transition.pathWaypoints.isEmpty {
+                nextPosition = PathCalculations.interpolateWaypointPath(
+                    from: athlete.position,
+                    to: endAthlete.position,
+                    waypoints: transition.pathWaypoints,
+                    progress: effectiveProgress
+                )
+            } else if let controlPoint = transition.pathControlPoint {
+                nextPosition = PathCalculations.quadraticBezierPoint(
+                    from: athlete.position,
+                    control: controlPoint,
+                    to: endAthlete.position,
+                    t: athleteProgress
+                )
+            } else {
+                nextPosition = CGPoint(
+                    x: athlete.position.x + (endAthlete.position.x - athlete.position.x) * athleteProgress,
+                    y: athlete.position.y + (endAthlete.position.y - athlete.position.y) * athleteProgress
+                )
+            }
+
+            return RenderedAthlete(
+                id: athlete.id,
+                label: athlete.label,
+                role: athlete.role,
+                position: nextPosition
+            )
+        }
     }
 }
 
 // MARK: - Animation Timer Helper
 
-class AnimationTimer {
+final class AnimationTimer {
     private var timer: Timer?
 
     init(closure: @escaping () -> Void) {

@@ -4,7 +4,7 @@ import SwiftUI
 struct FormationFlowApp: App {
     var body: some Scene {
         WindowGroup {
-            FormationHomeView()
+            RoutineWorkspaceView()
         }
     }
 }

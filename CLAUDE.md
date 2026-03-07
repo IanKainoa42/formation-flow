@@ -1,8 +1,10 @@
-# CLAUDE.md — FormationFlow
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
-FormationFlow is a native iOS/iPad app for digital choreography planning. It lets coaches place athletes on a virtual court grid, save formations, and animate transitions between them — without needing the full team physically present. Built for Cheer Force San Diego (CFSD).
+FormationFlow is a native iOS/iPad app for digital choreography planning. Coaches place athletes on a virtual court grid, save formations, and animate transitions between them. Built for Cheer Force San Diego (CFSD).
 
 ## Tech Stack
 
@@ -11,113 +13,135 @@ FormationFlow is a native iOS/iPad app for digital choreography planning. It let
 - **Target:** iOS 17+, iPad only (`TARGETED_DEVICE_FAMILY = 2`)
 - **IDE:** Xcode 15+ (project uses `FormationFlow.xcodeproj`, no SPM/CocoaPods)
 - **Dependencies:** None — zero external dependencies
-- **Persistence:** `UserDefaults` with JSON encoding (no Core Data, no CloudKit)
-- **Bundle ID:** `com.cheerforcesandiego.formationflow`
+- **Persistence:** `UserDefaults` with JSON encoding (key: `routine.v1`)
+- **Bundle ID:** `com.ianrichardson.formationflow`
 
 ## Build & Run
 
 ```bash
-# Open in Xcode
-open FormationFlow.xcodeproj
+# Build for simulator
+xcodebuild -project FormationFlow.xcodeproj -scheme FormationFlow \
+  -destination 'platform=iOS Simulator,id=4676C328-77F6-47FA-85E1-B6E327B0E17C' build
 
-# Build from command line (requires macOS with Xcode)
-xcodebuild -project FormationFlow.xcodeproj -scheme FormationFlow -destination 'platform=iOS Simulator,name=iPad Pro' build
+# Build for physical device (ianPad)
+xcodebuild -project FormationFlow.xcodeproj -scheme FormationFlow \
+  -destination 'platform=iOS,id=00008122-0008291A3691801C' build
 ```
 
 There are no tests, linters, or CI pipelines configured yet.
 
-## Project Structure
+### TestFlight Deployment
+
+The macOS system `rsync` (openrsync) breaks `xcodebuild -exportArchive`. Use the manual IPA workflow:
+
+```bash
+# 1. Bump CURRENT_PROJECT_VERSION in project.pbxproj
+# 2. Archive
+xcodebuild -project FormationFlow.xcodeproj -scheme FormationFlow \
+  -destination 'generic/platform=iOS' -archivePath /tmp/FormationFlow.xcarchive archive
+
+# 3. Create IPA manually (re-sign with distribution cert)
+mkdir -p /tmp/FormationFlowIPA/Payload
+cp -R /tmp/FormationFlow.xcarchive/Products/Applications/FormationFlow.app /tmp/FormationFlowIPA/Payload/
+cp ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles/243de1e3-9f26-452c-9972-18349537b9b4.mobileprovision \
+   /tmp/FormationFlowIPA/Payload/FormationFlow.app/embedded.mobileprovision
+codesign --force --sign "Apple Distribution: IAN KAINOA RICHARDSON (WC46K49VFA)" \
+  --entitlements <entitlements.plist> --generate-entitlement-der \
+  /tmp/FormationFlowIPA/Payload/FormationFlow.app
+cd /tmp/FormationFlowIPA && zip -r /tmp/FormationFlow.ipa Payload
+
+# 4. Upload (API key stored in 1Password as "App Store Connect API Key")
+xcrun altool --upload-app --type ios --file /tmp/FormationFlow.ipa \
+  --apiKey 6H24WZ2RQ5 --apiIssuer 7642a25e-aca7-402d-8b7d-de18dfef1756
+```
+
+## Architecture
+
+### Data Model (Routine-centric)
+
+The app uses a single `Routine` as its top-level data container, managed by `RoutineStore` (an `@MainActor ObservableObject`). The routine contains:
+
+- **`roster: [RosterAthlete]`** — Global list of athletes (label, role). Shared across all formations.
+- **`formations: [Formation]`** — Ordered list of formations. Each contains `[FormationPlacement]` mapping athlete IDs to positions.
+- **`transitionSpecs: [TransitionSpec]`** — Transition data between consecutive formations. Each contains `[AthleteTransition]` with per-athlete path curves, waypoints, and timing.
+
+Key separation: athlete identity (roster) is decoupled from position (placement). An athlete's label/role is defined once in the roster; each formation only stores where that athlete stands.
+
+### RoutineStore
+
+Central state manager. All mutations go through `RoutineStore` methods (`mutateFormation`, `mutateAthleteTransition`, etc.). It auto-saves to `UserDefaults` on every change via a `didSet` on `routine`. It also reconciles shape — ensuring every formation has placements for all roster athletes and transition specs exist between consecutive formations.
+
+### View Hierarchy
 
 ```
-FormationFlow/
-├── FormationFlowApp.swift        # @main app entry point, sets up NavigationStack + PersistenceManager
-├── Models.swift                  # All data models, persistence, path math, collision detection, animation
-├── FloorGridView.swift           # Main formation editor — drag athletes, zoom/pan, collision display
-├── FloorCanvasView.swift         # Shared Canvas renderer — draws grid, athletes, paths (used by editor + player)
-├── FormationListView.swift       # Home screen — list of saved formations with thumbnails
-├── FormationThumbnailView.swift  # Mini Canvas preview of a formation for list rows
-├── TransitionViews.swift         # Transition picker + animated transition player with scrubbing
-├── TimingControlsView.swift      # Per-athlete move-timing slider (delay before movement starts)
-├── AthleteDetailPanel.swift      # Floating panel for editing selected athlete (label, role, position)
-├── Assets.xcassets/              # Asset catalog (currently minimal)
-├── Info.plist                    # App configuration
-└── Base.lproj/LaunchScreen.storyboard
+FormationFlowApp
+  └── RoutineWorkspaceView (NavigationSplitView — sidebar + detail)
+        ├── Sidebar: formation list with reorder/context menus
+        └── Detail (toggled by Edit/Preview mode):
+              ├── FloorGridView (formation editor)
+              │     ├── FloorCanvasView (Canvas-based renderer)
+              │     └── Inspector sidebar:
+              │           ├── AthleteInspectorView (selected athlete)
+              │           ├── RosterManagementView (sheet)
+              │           └── EmptyInspectorView (no selection)
+              └── TransitionPlayerView (animated playback)
+                    ├── FloorCanvasView (Canvas-based renderer)
+                    └── Inspector sidebar:
+                          ├── Playback controls, timeline, speed
+                          ├── Per-athlete delay slider
+                          └── Waypoint management (add/delete/smooth/sharp/hold)
 ```
 
-Supporting files at repo root:
-- `FormationFlow.xcodeproj/` — Xcode project (single target, Release config only)
-- `build.log`, `build_log.txt` — historical build output
+### Render Models
 
-## Architecture & Key Patterns
-
-### Data Flow
-
-- **PersistenceManager** is a singleton `ObservableObject` (`PersistenceManager.shared`) injected via `.environmentObject()` from the app root. It owns the `[Formation]` array and debounces saves to UserDefaults (0.5s delay via `DispatchWorkItem`).
-- Views also access `PersistenceManager.shared` directly via `@StateObject` — this is the established pattern in this codebase.
-- Formations are value types (`struct`) passed into views as `@State`. Views mutate their local copy, then sync back to `PersistenceManager` via `.onChange`.
+Views don't consume data models directly. `RoutineStore.renderedAthletes(for:)` converts roster + placements into `[RenderedAthlete]` — flat structs with id, label, role, position. Similarly, `TransitionPathRenderItem` bundles start/end positions with path data for the canvas.
 
 ### Coordinate System
 
-All positions use **floor feet** (not pixels). The standard court is **52ft wide × 30ft tall** (defined in `CourtConstants`). Conversion to screen pixels happens at render time by multiplying by `cellSize` (pixels per foot, computed from available screen space).
+All positions use **floor feet** (not pixels). The standard court is **72ft wide x 56ft tall** (defined in `CourtConstants`). The grid is divided into 8ft panels (9 columns x 7 rows). Conversion to screen pixels happens at render time by multiplying by `cellSize` (pixels per foot, computed from available screen space).
 
 ### Rendering
 
 - **Canvas API** is used for all court rendering (grid lines, athlete circles, transition paths). This is a SwiftUI `Canvas` — an immediate-mode drawing surface, not a view hierarchy.
-- `FloorCanvasView` is the shared renderer used by both the formation editor (`FloorGridView`) and the transition player (`TransitionPlayerView`).
+- `FloorCanvasView` is the shared renderer used by both the formation editor and the transition player. It takes `[RenderedAthlete]` and optional `[TransitionPathRenderItem]`.
 - Athletes render as colored circles with monospaced labels. Colors are role-based (blue=base, yellow=flyer, green=spotter, purple=backspot, orange=tumbler).
 
 ### Collision Detection
 
-- **Static collisions:** Pairs of athletes closer than 2ft (`CourtConstants.collisionDistance`). Detected via `PathCalculations.collisionSummary()` using squared-distance comparisons for performance.
-- **Path collisions:** Athletes whose transition paths cross within 2ft at any time step. Detected via `PathCalculations.findPathCollisionIndices()`.
-- Both use **caching** — results recompute only when athlete positions/paths actually change (tracked via `Equatable` key structs).
+- **Static collisions:** `PathCalculations.collisionSummary(in:)` — pairs of athletes closer than 2ft, using squared-distance comparisons.
+- **Path collisions:** `PathCalculations.findPathCollisionIDs(paths:)` — athletes whose transition paths cross within 2ft at any time step.
 
 ### Transition Animation
 
-- `TransitionPlayer` is an `ObservableObject` that drives playback with a 60fps `Timer`.
-- Supports linear interpolation and **quadratic Bezier curves** (via optional `pathControlPoint` on each athlete).
-- Per-athlete **move timing** offsets allow staggered movement (who moves first/last).
+- `TransitionPlayer` is an `@MainActor ObservableObject` that drives playback with a 60fps `Timer`.
+- Supports linear interpolation, **quadratic Bezier curves** (legacy `pathControlPoint`), and **multi-waypoint paths** with Catmull-Rom cubic splines or sharp segments.
+- **Waypoint hold durations** allow athletes to pause at waypoints for a configurable time.
+- Per-athlete **move delay** offsets allow staggered movement.
+- The player receives data via `refresh(startAthletes:endAthletes:transitionSpec:)` to stay in sync with the store.
 
 ## Code Conventions
 
 ### Style
 
-- Use `// MARK: -` section headers to organize files (Navigation, Canvas, Toolbar, Actions, etc.)
-- `#if os(iOS)` / `#else` guards for platform-specific toolbar placement
+- Use `// MARK: -` section headers to organize files
 - `#Preview` macros at the bottom of view files
 - Positions are rounded to whole feet during drag (`round(newX)`)
 - Athlete labels are max 3 characters
 
-### Naming
-
-- Views are named descriptively: `FloorGridView`, `TransitionPlayerView`, `AthleteDetailPanel`
-- Models use domain language: `Athlete`, `Formation`, `AthleteRole`
-- Utilities are static methods on `PathCalculations`
-- Constants live in the `CourtConstants` enum
-
-### State Management
-
-- `@State` for view-local mutable state
-- `@StateObject` for owned `ObservableObject` references
-- `@Binding` for child-to-parent two-way data flow
-- `@Environment(\.dismiss)` for navigation dismissal
-- No Combine pipelines — state updates are synchronous or timer-driven
-
 ### Patterns to Follow
 
-- Keep all data models and computation in `Models.swift`
-- Keep views focused — one primary view per file
+- All data models and computation live in `Models.swift`
+- All mutations go through `RoutineStore` methods — views never write to `routine` directly
+- One primary view per file
 - Use `Canvas` for performance-critical rendering, SwiftUI views for controls/UI
 - Use squared-distance comparisons (`squaredDistance`) over `distance` for collision checks
-- Cache expensive computations (collisions) and only recompute when inputs change
-- Debounce persistence writes to avoid excessive UserDefaults I/O
-- Support both iOS and macOS via `#if os(iOS)` where needed (toolbar placement)
+- Use `RenderedAthlete` / `TransitionPathRenderItem` as the interface between store and canvas
 
 ### Things to Avoid
 
 - Do not add external dependencies — this project is intentionally dependency-free
 - Do not use Core Data or SwiftData — persistence is UserDefaults-based by design
-- Do not break the `Canvas`-based rendering into individual SwiftUI views for athletes — `Canvas` is used for performance
+- Do not break the `Canvas`-based rendering into individual SwiftUI views for athletes
 - Do not modify the `.xcodeproj` file manually — use Xcode to add/remove files
 - Do not put business logic in views — path calculations, collision detection, and animation math belong in `Models.swift`
 
@@ -125,24 +149,14 @@ All positions use **floor feet** (not pixels). The standard court is **52ft wide
 
 | Term | Meaning |
 |------|---------|
-| **Formation** | A named arrangement of athletes on the court |
-| **Athlete** | A person with a label (e.g. "A1"), position (in feet), and role |
-| **Role** | base, flyer, spotter, backspot, or tumbler — determines color |
-| **Transition** | Animated movement of athletes from one formation to another |
-| **Path Control Point** | Optional Bezier control point for curved transition paths |
-| **Move Timing** | Per-athlete delay (seconds) before they begin moving in a transition |
+| **Routine** | Top-level container: roster + ordered formations + transition specs |
+| **Roster** | Global list of athletes shared across all formations |
+| **Formation** | A named arrangement — maps athlete IDs to court positions via placements |
+| **Placement** | An athlete's position within a specific formation |
+| **Transition Spec** | Per-pair-of-formations config: duration + per-athlete path/timing data |
+| **Athlete Transition** | Per-athlete transition data: move delay, control point, waypoints |
+| **Path Waypoint** | Intermediate point on a transition path; can be smooth (curve) or sharp (angle) |
+| **Hold Duration** | Seconds an athlete pauses at a waypoint before continuing |
+| **Role** | base, flyer, spotter, backspot, or tumbler — determines circle color |
 | **Collision** | Two athletes within 2ft of each other (static or during path traversal) |
 | **8-count** | Choreography timing unit — transitions can display in counts (4, 8, 16) |
-
-## Navigation Flow
-
-```
-FormationListView (home)
-  └── FloorGridView (formation editor)
-        ├── AthleteDetailPanel (floating, on athlete selection)
-        ├── Manage Athletes (sheet)
-        ├── Formation Notes (sheet)
-        └── TransitionPickerView
-              └── TransitionPlayerView (animated playback)
-                    └── TimingControlsView (per-athlete timing)
-```

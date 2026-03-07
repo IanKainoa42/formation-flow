@@ -3,36 +3,30 @@ import SwiftUI
 // MARK: - Timing Controls View
 
 struct TimingControlsView: View {
-    @Binding var athlete: Athlete
-    var duration: Double = 2.0
+    let label: String
+    let delay: Double
+    let duration: Double
+    var onChange: (Double) -> Void
 
     var body: some View {
-        VStack(spacing: 12) {
-            HStack {
-                Text("\(athlete.label) - Delay: \(String(format: "%.1f", athlete.moveTiming))s")
-                    .font(.caption)
-                Spacer()
-            }
-
+        VStack(alignment: .leading, spacing: 10) {
+            Text("\(label) starts after \(String(format: "%.1f", delay))s")
+                .font(.subheadline)
             Slider(
-                value: $athlete.moveTiming,
+                value: Binding(get: { delay }, set: onChange),
                 in: 0...max(duration, 0.1),
                 step: 0.1
             )
-            .frame(maxWidth: .infinity)
-
-            HStack(spacing: 8) {
+            HStack {
                 Text("Moves first")
-                    .font(.caption2)
-                    .foregroundColor(.gray)
                 Spacer()
                 Text("Moves last")
-                    .font(.caption2)
-                    .foregroundColor(.gray)
             }
+            .font(.caption)
+            .foregroundColor(.secondary)
         }
         .padding()
-        .background(Color.gray.opacity(0.1))
-        .cornerRadius(8)
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }

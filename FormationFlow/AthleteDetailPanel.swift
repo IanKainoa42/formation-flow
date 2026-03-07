@@ -1,97 +1,167 @@
 import SwiftUI
 
-// MARK: - Athlete Detail Panel
+// MARK: - Inspector Components
 
-struct AthleteDetailPanel: View {
-    @Binding var athlete: Athlete
-    @Binding var selectedAthleteId: UUID?
+struct AthleteInspectorView: View {
+    let athlete: RosterAthlete
+    let position: CGPoint
+    let isSwapMode: Bool
+    var onUpdateLabel: (String) -> Void
+    var onUpdateRole: (AthleteRole) -> Void
+    var onSwap: () -> Void
     var onDelete: () -> Void
-    var onSwap: (() -> Void)? = nil
+    var onClearSelection: () -> Void
+
     @State private var showDeleteConfirmation = false
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: 18) {
             HStack {
-                TextField("Name", text: $athlete.label)
-                    .font(.headline)
-                    .textFieldStyle(.plain)
-                    .accessibilityLabel("Athlete label")
-                    .onChange(of: athlete.label) { _, newValue in
-                        if newValue.count > 3 {
-                            athlete.label = String(newValue.prefix(3))
-                        }
-                    }
-                Spacer()
-                if let onSwap {
-                    Button(action: onSwap) {
-                        Image(systemName: "arrow.triangle.swap")
-                            .font(.caption)
-                            .foregroundColor(.blue)
-                    }
-                    .accessibilityLabel("Swap position with another athlete")
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Athlete")
+                        .font(.headline)
+                    Text("Shared across every formation")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
+                Spacer()
+                Button(action: onClearSelection) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Identity")
+                    .font(.subheadline.weight(.semibold))
+                TextField(
+                    "Label",
+                    text: Binding(
+                        get: { athlete.label },
+                        set: { onUpdateLabel(String($0.prefix(4))) }
+                    )
+                )
+                .textFieldStyle(.roundedBorder)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Role")
+                    .font(.subheadline.weight(.semibold))
+                AthleteRolePicker(selectedRole: athlete.role, onSelect: onUpdateRole)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Position")
+                    .font(.subheadline.weight(.semibold))
+                Text(String(format: "x %.1fft   y %.1fft", position.x, position.y))
+                    .font(.system(.body, design: .monospaced))
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Actions")
+                    .font(.subheadline.weight(.semibold))
+                Button(action: onSwap) {
+                    Label(isSwapMode ? "Tap another athlete on the court" : "Swap Position", systemImage: "arrow.triangle.swap")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+
                 Button(role: .destructive) {
                     showDeleteConfirmation = true
                 } label: {
-                    Image(systemName: "trash")
-                        .font(.caption)
-                        .foregroundColor(.red)
+                    Label("Delete Athlete", systemImage: "trash")
+                        .frame(maxWidth: .infinity)
                 }
-                .accessibilityLabel("Delete athlete")
-                .confirmationDialog(
-                    "Delete \(athlete.label)?",
-                    isPresented: $showDeleteConfirmation,
-                    titleVisibility: .visible
-                ) {
-                    Button("Delete", role: .destructive, action: onDelete)
-                    Button("Cancel", role: .cancel) {}
-                }
-                Button(action: { selectedAthleteId = nil }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.secondary)
-                }
-                .accessibilityLabel("Deselect athlete")
+                .buttonStyle(.bordered)
             }
 
-            HStack(spacing: 8) {
-                ForEach(AthleteRole.allCases, id: \.self) { role in
-                    Button {
-                        athlete.role = role
-                    } label: {
-                        VStack(spacing: 2) {
-                            ZStack {
-                                Circle()
-                                    .fill(role.color)
-                                    .frame(width: 28, height: 28)
-                                if athlete.role == role {
+            Spacer()
+        }
+        .padding(20)
+        .background(.thinMaterial)
+        .confirmationDialog(
+            "Delete \(athlete.label)?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Athlete", role: .destructive, action: onDelete)
+        }
+    }
+}
+
+struct MultiSelectionInspectorView: View {
+    let count: Int
+    var onClearSelection: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Selection")
+                .font(.headline)
+            Text("\(count) athletes selected")
+                .font(.title3.weight(.semibold))
+            Text("Drag on the court to move the selected athletes together. Use Swap for one athlete at a time.")
+                .font(.body)
+                .foregroundColor(.secondary)
+            Button("Clear Selection", action: onClearSelection)
+                .buttonStyle(.bordered)
+            Spacer()
+        }
+        .padding(20)
+        .background(.thinMaterial)
+    }
+}
+
+struct EmptyInspectorView: View {
+    let title: String
+    let message: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(title)
+                .font(.headline)
+            Text(message)
+                .foregroundColor(.secondary)
+            Spacer()
+        }
+        .padding(20)
+        .background(.thinMaterial)
+    }
+}
+
+struct AthleteRolePicker: View {
+    let selectedRole: AthleteRole
+    var onSelect: (AthleteRole) -> Void
+
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 74), spacing: 8)], spacing: 8) {
+            ForEach(AthleteRole.allCases, id: \.self) { role in
+                Button {
+                    onSelect(role)
+                } label: {
+                    VStack(spacing: 6) {
+                        Circle()
+                            .fill(role.color)
+                            .frame(width: 26, height: 26)
+                            .overlay {
+                                if role == selectedRole {
                                     Image(systemName: "checkmark")
                                         .font(.caption.bold())
                                         .foregroundColor(.white)
                                 }
                             }
-                            Text(role.rawValue.capitalized)
-                                .font(.system(size: 9))
-                                .foregroundColor(athlete.role == role ? .primary : .secondary)
-                        }
+                        Text(role.rawValue.capitalized)
+                            .font(.caption2)
+                            .foregroundColor(role == selectedRole ? .primary : .secondary)
                     }
-                    .accessibilityLabel("Set role to \(role.rawValue)")
-                    .accessibilityAddTraits(athlete.role == role ? .isSelected : [])
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(role == selectedRole ? Color.primary.opacity(0.08) : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
-            }
-
-            HStack {
-                Image(systemName: "location")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                Text(String(format: "%.1f ft, %.1f ft", athlete.position.x, athlete.position.y))
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                Spacer()
+                .buttonStyle(.plain)
             }
         }
-        .padding(12)
-        .background(.ultraThinMaterial)
-        .cornerRadius(12)
-        .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
     }
 }
