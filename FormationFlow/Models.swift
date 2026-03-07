@@ -473,6 +473,7 @@ final class RoutineStore: ObservableObject {
         guard routine.formations.count > 1 else {
             routine.formations = [Formation(name: "Formation 1")]
             routine.transitionSpecs = []
+            reconcileRoutineShape()
             return
         }
 

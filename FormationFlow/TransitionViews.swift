@@ -128,6 +128,7 @@ struct TransitionPlayerView: View {
                     offset: offset
                 )
                 .gesture(canvasGesture(cellSize: cellSize, offset: offset))
+                .simultaneousGesture(waypointDoubleTapGesture(cellSize: cellSize, offset: offset))
 
                 VStack(spacing: 10) {
                     banner(
@@ -343,14 +344,9 @@ struct TransitionPlayerView: View {
                             Label("Curve", systemImage: "scribble")
                         }
                         .buttonStyle(.bordered)
-
-                        Button(action: addWaypoint) {
-                            Label("Add Waypoint", systemImage: "plus.circle")
-                        }
-                        .buttonStyle(.borderedProminent)
                     }
 
-                    Text("Use the buttons to create the path, then drag the on-court handles to place it precisely.")
+                    Text("Use the buttons to create the path, then double-tap the selected athlete on the court to add a waypoint and drag the handles to place it precisely.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -573,6 +569,28 @@ struct TransitionPlayerView: View {
             .onEnded { _ in
                 isDraggingHandle = false
                 draggingWaypointID = nil
+            }
+    }
+
+    private func waypointDoubleTapGesture(cellSize: CGFloat, offset: CGPoint) -> some Gesture {
+        SpatialTapGesture(count: 2)
+            .onEnded { value in
+                guard
+                    let selectedAthleteID,
+                    let selectedAthlete = player.currentAthletes.first(where: { $0.id == selectedAthleteID })
+                else { return }
+
+                let scaledPoint = CGPoint(
+                    x: (value.location.x - offset.x) / cellSize,
+                    y: (value.location.y - offset.y) / cellSize
+                )
+
+                guard
+                    PathCalculations.squaredDistance(from: scaledPoint, to: selectedAthlete.position)
+                        < CourtConstants.hitRadiusSquared
+                else { return }
+
+                addWaypoint()
             }
     }
 
