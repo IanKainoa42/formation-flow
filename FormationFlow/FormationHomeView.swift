@@ -13,6 +13,8 @@ struct RoutineWorkspaceView: View {
     @State private var detailMode: DetailMode = .edit
     @State private var showingResetConfirmation = false
     @State private var showingDeleteConfirmation = false
+    @State private var renamingFormationID: UUID?
+    @State private var formationNameDraft = ""
 
     private var selectedFormationIndex: Int? {
         store.formationIndex(id: selectedFormationID)
@@ -27,6 +29,18 @@ struct RoutineWorkspaceView: View {
         guard let selectedFormationIndex, store.routine.formations.indices.contains(selectedFormationIndex + 1)
         else { return nil }
         return store.routine.formations[selectedFormationIndex + 1].id
+    }
+
+    private var showingRenamePrompt: Binding<Bool> {
+        Binding(
+            get: { renamingFormationID != nil },
+            set: { isPresented in
+                if !isPresented {
+                    renamingFormationID = nil
+                    formationNameDraft = ""
+                }
+            }
+        )
     }
 
     var body: some View {
@@ -80,6 +94,18 @@ struct RoutineWorkspaceView: View {
         } message: {
             Text("This removes the formation and updates adjacent transition previews.")
         }
+        .alert("Rename Formation", isPresented: showingRenamePrompt) {
+            TextField("Formation name", text: $formationNameDraft)
+
+            Button("Save") {
+                commitFormationRename()
+            }
+            .disabled(formationNameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Use the sidebar or toolbar menu to rename formations without covering the floor.")
+        }
     }
 
     private var sidebar: some View {
@@ -112,6 +138,12 @@ struct RoutineWorkspaceView: View {
                     }
                     .tag(formation.id)
                     .contextMenu {
+                        Button {
+                            beginRenaming(formation)
+                        } label: {
+                            Label("Rename", systemImage: "pencil")
+                        }
+
                         Button {
                             selectedFormationID = store.duplicateFormation(after: formation.id)
                         } label: {
@@ -151,9 +183,6 @@ struct RoutineWorkspaceView: View {
     private var detailView: some View {
         if let selectedFormation, let selectedFormationID {
             VStack(spacing: 0) {
-                detailHeader(for: selectedFormation)
-                Divider()
-
                 switch detailMode {
                 case .edit:
                     FloorGridView(
@@ -175,73 +204,80 @@ struct RoutineWorkspaceView: View {
             }
             .navigationTitle(selectedFormation.name)
             .navigationBarTitleDisplayMode(.inline)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                detailToolbar(for: selectedFormation)
+            }
         } else {
             ContentUnavailableView("Select a formation", systemImage: "rectangle.grid.1x2")
         }
     }
 
-    private func detailHeader(for formation: Formation) -> some View {
-        VStack(spacing: 14) {
-            HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 6) {
-                    TextField(
-                        "Formation Name",
-                        text: Binding(
-                            get: { formation.name },
-                            set: { newValue in
-                                store.mutateFormation(id: formation.id) { formation in
-                                    let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                                    formation.name = trimmed.isEmpty ? formation.name : trimmed
-                                }
-                            }
-                        )
-                    )
-                    .font(.title2.weight(.semibold))
-                    .textFieldStyle(.roundedBorder)
-
-                    Text("\(formation.placements.count) athletes in this picture")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-
-                Spacer()
-
-                Button(action: duplicateSelectedFormation) {
-                    Label("Duplicate as Next", systemImage: "plus.square.on.square")
-                }
-                .buttonStyle(.borderedProminent)
-
-                Menu {
-                    Button(role: .destructive) {
-                        showingDeleteConfirmation = true
-                    } label: {
-                        Label("Delete Formation", systemImage: "trash")
-                    }
-
-                    Divider()
-
-                    Button(role: .destructive) {
-                        showingResetConfirmation = true
-                    } label: {
-                        Label("Reset Routine", systemImage: "arrow.counterclockwise")
-                    }
-                } label: {
-                    Label("Routine Actions", systemImage: "ellipsis.circle")
-                }
-                .buttonStyle(.bordered)
+    private func detailToolbar(for formation: Formation) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                detailModeControl
+                Spacer(minLength: 0)
+                detailToolbarActions(for: formation)
             }
 
-            HStack(spacing: 0) {
-                modeButton(title: "Edit Formation", mode: .edit, disabled: false)
-                modeButton(title: "Preview to Next", mode: .preview, disabled: nextFormationID == nil)
+            VStack(spacing: 10) {
+                detailModeControl
+                HStack {
+                    Spacer(minLength: 0)
+                    detailToolbarActions(for: formation)
+                }
             }
-            .padding(4)
-            .background(Color.secondary.opacity(0.12))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
         .background(.bar)
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
+    }
+
+    private var detailModeControl: some View {
+        HStack(spacing: 0) {
+            modeButton(title: "Edit", mode: .edit, disabled: false)
+            modeButton(title: "Preview", mode: .preview, disabled: nextFormationID == nil)
+        }
+        .padding(4)
+        .background(Color.secondary.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func detailToolbarActions(for formation: Formation) -> some View {
+        HStack(spacing: 12) {
+            Button(action: duplicateSelectedFormation) {
+                Label("Duplicate", systemImage: "plus.square.on.square")
+            }
+            .buttonStyle(.borderedProminent)
+
+            Menu {
+                Button {
+                    beginRenaming(formation)
+                } label: {
+                    Label("Rename", systemImage: "pencil")
+                }
+
+                Button(role: .destructive) {
+                    showingDeleteConfirmation = true
+                } label: {
+                    Label("Delete Formation", systemImage: "trash")
+                }
+
+                Divider()
+
+                Button(role: .destructive) {
+                    showingResetConfirmation = true
+                } label: {
+                    Label("Reset Routine", systemImage: "arrow.counterclockwise")
+                }
+            } label: {
+                Label("More", systemImage: "ellipsis.circle")
+            }
+            .buttonStyle(.bordered)
+        }
     }
 
     private func modeButton(title: String, mode: DetailMode, disabled: Bool) -> some View {
@@ -294,6 +330,25 @@ struct RoutineWorkspaceView: View {
         guard let selectedFormationID else { return }
         self.selectedFormationID = store.duplicateFormation(after: selectedFormationID)
         detailMode = .edit
+    }
+
+    private func beginRenaming(_ formation: Formation) {
+        selectedFormationID = formation.id
+        renamingFormationID = formation.id
+        formationNameDraft = formation.name
+    }
+
+    private func commitFormationRename() {
+        guard let renamingFormationID else { return }
+        let trimmedName = formationNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return }
+
+        store.mutateFormation(id: renamingFormationID) { formation in
+            formation.name = trimmedName
+        }
+
+        self.renamingFormationID = nil
+        formationNameDraft = ""
     }
 }
 

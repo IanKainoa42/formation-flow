@@ -28,6 +28,7 @@ struct TransitionPlayerView: View {
     @State private var timelineMode: TimelineMode = .seconds
     @State private var isDraggingHandle = false
     @State private var draggingWaypointID: UUID?
+    @State private var showingResetAllPathsConfirmation = false
 
     init(store: RoutineStore, startFormationID: UUID, endFormationID: UUID) {
         self.store = store
@@ -86,6 +87,12 @@ struct TransitionPlayerView: View {
         return player.transitionSpec.athleteTransition(for: selectedAthleteID)
     }
 
+    private var hasCustomPaths: Bool {
+        player.transitionSpec.athleteTransitions.contains {
+            $0.pathControlPoint != nil || !$0.pathWaypoints.isEmpty
+        }
+    }
+
     var body: some View {
         Group {
             if startFormation != nil && endFormation != nil {
@@ -102,6 +109,17 @@ struct TransitionPlayerView: View {
         .onAppear(perform: refreshFromStore)
         .onChange(of: store.routine) { _, _ in
             refreshFromStore()
+        }
+        .confirmationDialog(
+            "Reset all paths?",
+            isPresented: $showingResetAllPathsConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Reset All Paths", role: .destructive) {
+                resetAllPaths()
+            }
+        } message: {
+            Text("This removes every custom curve and waypoint in this preview and returns all athletes to straight-line travel.")
         }
     }
 
@@ -132,7 +150,7 @@ struct TransitionPlayerView: View {
 
                 VStack(spacing: 10) {
                     banner(
-                        text: "Select an athlete to adjust delay and path. Drag path handles on the court for fine tuning.",
+                        text: "Select an athlete to adjust delay and path. Double-tap the selected athlete to add a waypoint, then drag path handles to fine tune.",
                         color: .accentColor
                     )
 
@@ -164,13 +182,27 @@ struct TransitionPlayerView: View {
 
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Transition Preview")
-                .font(.headline)
-            if let startFormation, let endFormation {
-                Text("\(startFormation.name) → \(endFormation.name)")
-                    .font(.title3.weight(.semibold))
-                Text("This preview always uses the selected formation and the one immediately after it.")
-                    .foregroundColor(.secondary)
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Transition Preview")
+                        .font(.headline)
+                    if let startFormation, let endFormation {
+                        Text("\(startFormation.name) → \(endFormation.name)")
+                            .font(.title3.weight(.semibold))
+                        Text("This preview always uses the selected formation and the one immediately after it.")
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                Spacer(minLength: 0)
+
+                Button(role: .destructive) {
+                    showingResetAllPathsConfirmation = true
+                } label: {
+                    Label("Reset All Paths", systemImage: "arrow.uturn.backward.circle")
+                }
+                .buttonStyle(.bordered)
+                .disabled(!hasCustomPaths)
             }
         }
     }
@@ -441,7 +473,7 @@ struct TransitionPlayerView: View {
         } else {
             EmptyInspectorView(
                 title: "Path Inspector",
-                message: "Select one athlete on the canvas to edit its start delay, curve, and waypoint timing."
+                message: "Select one athlete on the canvas to edit its start delay and curve, then double-tap that athlete to add waypoints."
             )
         }
     }
@@ -636,6 +668,19 @@ struct TransitionPlayerView: View {
                     y: (lastNode.y + endAthlete.position.y) / 2
                 )
                 transition.pathWaypoints.append(PathWaypoint(position: point, isSmooth: true))
+            }
+        }
+        refreshFromStore()
+    }
+
+    private func resetAllPaths() {
+        isDraggingHandle = false
+        draggingWaypointID = nil
+
+        store.mutateTransitionSpec(from: startFormationID, to: endFormationID) { spec in
+            for index in spec.athleteTransitions.indices {
+                spec.athleteTransitions[index].pathControlPoint = nil
+                spec.athleteTransitions[index].pathWaypoints = []
             }
         }
         refreshFromStore()
