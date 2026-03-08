@@ -101,7 +101,7 @@ struct MultiSelectionInspectorView: View {
                 .font(.headline)
             Text("\(count) athletes selected")
                 .font(.title3.weight(.semibold))
-            Text("Drag on the court to move the selected athletes together. Use Swap for one athlete at a time.")
+            Text("Drag on the floor to move the selected athletes together. Use Swap for one athlete at a time.")
                 .font(.body)
                 .foregroundColor(.secondary)
             Button("Clear Selection", action: onClearSelection)
@@ -141,19 +141,12 @@ struct AthleteRolePicker: View {
                     onSelect(role)
                 } label: {
                     VStack(spacing: 6) {
-                        Circle()
-                            .fill(role.color)
-                            .frame(width: 26, height: 26)
-                            .overlay {
-                                if role == selectedRole {
-                                    Image(systemName: "checkmark")
-                                        .font(.caption.bold())
-                                        .foregroundColor(.white)
-                                }
-                            }
-                        Text(role.rawValue.capitalized)
+                        AthleteRoleSwatch(role: role, isSelected: role == selectedRole)
+                            .frame(width: 28, height: 28)
+                        Text(role.displayName)
                             .font(.caption2)
                             .foregroundColor(role == selectedRole ? .primary : .secondary)
+                            .multilineTextAlignment(.center)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
@@ -163,5 +156,39 @@ struct AthleteRolePicker: View {
                 .buttonStyle(.plain)
             }
         }
+    }
+}
+
+private struct AthleteRoleSwatch: View {
+    let role: AthleteRole
+    let isSelected: Bool
+
+    var body: some View {
+        ZStack {
+            if role == .stuntGroup {
+                TriangleShape()
+                    .fill(role.color)
+            } else {
+                Circle()
+                    .fill(role.color)
+            }
+
+            if isSelected {
+                Image(systemName: "checkmark")
+                    .font(.caption.bold())
+                    .foregroundColor(.white)
+            }
+        }
+    }
+}
+
+private struct TriangleShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.closeSubpath()
+        return path
     }
 }

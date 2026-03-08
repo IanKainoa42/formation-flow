@@ -6,6 +6,8 @@ struct FloorCanvasView: View {
     let athletes: [RenderedAthlete]
     var selectedAthleteIDs: Set<UUID> = []
     var transitionPaths: [TransitionPathRenderItem] = []
+    var endpointMarkers: [TransitionEndpointMarkerRenderItem] = []
+    var alignmentGuides: [AlignmentGuideRenderItem] = []
     var collisionIDs: Set<UUID> = []
     var pathCollisionIDs: Set<UUID> = []
     var cellSize: CGFloat = 12
@@ -18,7 +20,9 @@ struct FloorCanvasView: View {
             var context = context
             context.translateBy(x: offset.x, y: offset.y)
             drawGrid(in: &context)
+            drawAlignmentGuides(in: &context)
             drawTransitionPaths(in: &context)
+            drawEndpointMarkers(in: &context)
             drawAthletes(in: &context)
 
             if let selectionRect {
@@ -40,6 +44,38 @@ struct FloorCanvasView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.background)
+    }
+
+    private func drawAlignmentGuides(in context: inout GraphicsContext) {
+        guard !alignmentGuides.isEmpty else { return }
+
+        for guide in alignmentGuides {
+            var path = Path()
+            let color = Color.accentColor.opacity(guide.emphasis == .strong ? 0.72 : 0.38)
+            let lineWidth: CGFloat = guide.emphasis == .strong ? 2.5 : 1.5
+
+            switch guide.geometry {
+            case let .axis(orientation, value):
+                let position = value * cellSize
+                switch orientation {
+                case .vertical:
+                    path.move(to: CGPoint(x: position, y: 0))
+                    path.addLine(to: CGPoint(x: position, y: CourtConstants.height * cellSize))
+                case .horizontal:
+                    path.move(to: CGPoint(x: 0, y: position))
+                    path.addLine(to: CGPoint(x: CourtConstants.width * cellSize, y: position))
+                }
+            case let .line(start, end):
+                path.move(to: CGPoint(x: start.x * cellSize, y: start.y * cellSize))
+                path.addLine(to: CGPoint(x: end.x * cellSize, y: end.y * cellSize))
+            }
+
+            context.stroke(
+                path,
+                with: .color(color),
+                style: StrokeStyle(lineWidth: lineWidth, dash: guide.emphasis == .strong ? [8, 4] : [4, 4])
+            )
+        }
     }
 
     private func drawTransitionPaths(in context: inout GraphicsContext) {
@@ -258,52 +294,61 @@ struct FloorCanvasView: View {
         )
     }
 
+    private func drawEndpointMarkers(in context: inout GraphicsContext) {
+        for marker in endpointMarkers {
+            let point = CGPoint(x: marker.position.x * cellSize, y: marker.position.y * cellSize)
+            let isSelected = selectedAthleteIDs.contains(marker.athleteID)
+            let baseRadius = max(9, marker.role.markerRadius - (marker.style == .editable ? 2 : 4))
+            let radius = baseRadius + (isSelected ? 2 : 0)
+            let path = marker.role.markerPath(center: point, radius: radius)
+
+            switch marker.style {
+            case .editable:
+                context.fill(path, with: .color(.white.opacity(isSelected ? 0.92 : 0.78)))
+                context.stroke(
+                    path,
+                    with: .color(marker.role.color.opacity(isSelected ? 1.0 : 0.82)),
+                    style: StrokeStyle(lineWidth: isSelected ? 3 : 2.25)
+                )
+
+                let halo = marker.role.markerPath(center: point, radius: radius + 5)
+                context.stroke(
+                    halo,
+                    with: .color(marker.role.color.opacity(isSelected ? 0.45 : 0.28)),
+                    style: StrokeStyle(lineWidth: isSelected ? 2 : 1.5, dash: [6, 3])
+                )
+            case .readOnly:
+                context.fill(path, with: .color(marker.role.color.opacity(0.08)))
+                context.stroke(
+                    path,
+                    with: .color(marker.role.color.opacity(isSelected ? 0.55 : 0.3)),
+                    style: StrokeStyle(lineWidth: isSelected ? 2 : 1.25, dash: [4, 4])
+                )
+            }
+        }
+    }
+
     private func drawAthletes(in context: inout GraphicsContext) {
         for athlete in athletes {
             let point = CGPoint(x: athlete.position.x * cellSize, y: athlete.position.y * cellSize)
             let isSelected = selectedAthleteIDs.contains(athlete.id)
             let isColliding = collisionIDs.contains(athlete.id)
             let fillColor: Color = isColliding ? .red : (isSelected ? .white : athlete.role.color)
-            let radius: CGFloat = isSelected ? 18 : 14
-
-            var circle = Path()
-            circle.addEllipse(
-                in: CGRect(
-                    x: point.x - radius,
-                    y: point.y - radius,
-                    width: radius * 2,
-                    height: radius * 2
-                )
-            )
-            context.fill(circle, with: .color(fillColor.opacity(0.86)))
+            let radius = isSelected ? athlete.role.selectedMarkerRadius : athlete.role.markerRadius
+            let marker = athlete.role.markerPath(center: point, radius: radius)
+            context.fill(marker, with: .color(fillColor.opacity(0.86)))
 
             if isSelected {
-                context.stroke(circle, with: .color(athlete.role.color), lineWidth: 3)
+                context.stroke(marker, with: .color(athlete.role.color), lineWidth: 3)
             }
 
             if isColliding {
-                var ring = Path()
-                ring.addEllipse(
-                    in: CGRect(
-                        x: point.x - (radius + 4),
-                        y: point.y - (radius + 4),
-                        width: (radius + 4) * 2,
-                        height: (radius + 4) * 2
-                    )
-                )
+                let ring = athlete.role.markerPath(center: point, radius: radius + 4)
                 context.stroke(ring, with: .color(.red), lineWidth: 2)
             }
 
             if athlete.id == swapSourceID {
-                var ring = Path()
-                ring.addEllipse(
-                    in: CGRect(
-                        x: point.x - (radius + 6),
-                        y: point.y - (radius + 6),
-                        width: (radius + 6) * 2,
-                        height: (radius + 6) * 2
-                    )
-                )
+                let ring = athlete.role.markerPath(center: point, radius: radius + 6)
                 context.stroke(
                     ring,
                     with: .color(.blue),

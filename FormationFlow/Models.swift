@@ -56,6 +56,7 @@ enum AthleteRole: String, Codable, CaseIterable, Hashable {
     case spotter
     case backspot
     case tumbler
+    case stuntGroup
 
     var color: Color {
         switch self {
@@ -64,6 +65,7 @@ enum AthleteRole: String, Codable, CaseIterable, Hashable {
         case .spotter: return .green
         case .backspot: return .purple
         case .tumbler: return .orange
+        case .stuntGroup: return .pink
         }
     }
 
@@ -74,6 +76,131 @@ enum AthleteRole: String, Codable, CaseIterable, Hashable {
         case .spotter: return "S"
         case .backspot: return "BS"
         case .tumbler: return "T"
+        case .stuntGroup: return "SG"
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .base: return "Base"
+        case .flyer: return "Flyer"
+        case .spotter: return "Spotter"
+        case .backspot: return "Backspot"
+        case .tumbler: return "Tumbler"
+        case .stuntGroup: return "Stunt Group"
+        }
+    }
+
+    var markerRadius: CGFloat {
+        switch self {
+        case .stuntGroup:
+            return 18
+        default:
+            return 14
+        }
+    }
+
+    var selectedMarkerRadius: CGFloat {
+        switch self {
+        case .stuntGroup:
+            return 22
+        default:
+            return 18
+        }
+    }
+
+    func markerPath(center: CGPoint, radius: CGFloat) -> Path {
+        markerPath(
+            in: CGRect(
+                x: center.x - radius,
+                y: center.y - radius,
+                width: radius * 2,
+                height: radius * 2
+            )
+        )
+    }
+
+    func markerPath(in rect: CGRect) -> Path {
+        var path = Path()
+
+        switch self {
+        case .stuntGroup:
+            path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+            path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+            path.closeSubpath()
+        default:
+            path.addEllipse(in: rect)
+        }
+
+        return path
+    }
+}
+
+enum PreviewReferenceMode: String, Codable, CaseIterable, Hashable, Identifiable {
+    case intoSelected
+    case outOfSelected
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .intoSelected:
+            return "Into Current"
+        case .outOfSelected:
+            return "Out of Current"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .intoSelected:
+            return "Preview the transition from the prior formation into the selected one."
+        case .outOfSelected:
+            return "Preview the transition from the selected formation into the next one."
+        }
+    }
+
+    var editableEndpoint: PreviewEditableEndpoint {
+        switch self {
+        case .intoSelected:
+            return .start
+        case .outOfSelected:
+            return .end
+        }
+    }
+
+    var emptyStateTitle: String {
+        switch self {
+        case .intoSelected:
+            return "Preview needs a previous formation"
+        case .outOfSelected:
+            return "Preview needs a next formation"
+        }
+    }
+
+    var emptyStateMessage: String {
+        switch self {
+        case .intoSelected:
+            return "Select any formation after the first, or switch the preview preference to look forward instead."
+        case .outOfSelected:
+            return "Duplicate this formation to create the next picture, or switch the preview preference to look backward instead."
+        }
+    }
+
+    func transitionPair(
+        in formations: [Formation],
+        selectedIndex: Int?
+    ) -> (start: Formation, end: Formation)? {
+        guard let selectedIndex, formations.indices.contains(selectedIndex) else { return nil }
+
+        switch self {
+        case .intoSelected:
+            guard formations.indices.contains(selectedIndex - 1) else { return nil }
+            return (formations[selectedIndex - 1], formations[selectedIndex])
+        case .outOfSelected:
+            guard formations.indices.contains(selectedIndex + 1) else { return nil }
+            return (formations[selectedIndex], formations[selectedIndex + 1])
         }
     }
 }
@@ -85,6 +212,11 @@ struct PathWaypoint: Codable, Identifiable, Equatable, Hashable {
     var position: CGPoint
     var isSmooth: Bool
     var holdDuration: CGFloat
+
+    var holdCounts: CGFloat {
+        get { holdDuration }
+        set { holdDuration = newValue }
+    }
 
     init(
         id: UUID = UUID(),
@@ -199,6 +331,10 @@ struct AthleteTransition: Codable, Identifiable, Equatable, Hashable {
     var pathWaypoints: [PathWaypoint]
 
     var id: UUID { athleteID }
+    var moveDelayCounts: CGFloat {
+        get { moveDelay }
+        set { moveDelay = newValue }
+    }
 
     enum CodingKeys: String, CodingKey {
         case athleteID, moveDelay, pathWaypoints
@@ -250,11 +386,16 @@ struct TransitionSpec: Codable, Identifiable, Equatable, Hashable {
     var duration: Double
     var athleteTransitions: [AthleteTransition]
 
+    var counts: Double {
+        get { duration }
+        set { duration = newValue }
+    }
+
     init(
         id: UUID = UUID(),
         fromFormationID: UUID,
         toFormationID: UUID,
-        duration: Double = 2.0,
+        duration: Double = 8.0,
         athleteTransitions: [AthleteTransition] = []
     ) {
         self.id = id
@@ -312,6 +453,487 @@ struct TransitionPathRenderItem: Identifiable, Equatable, Hashable {
     let waypoints: [PathWaypoint]
 
     var id: UUID { athleteID }
+}
+
+enum PreviewEditableEndpoint: Hashable {
+    case start
+    case end
+
+    var title: String {
+        switch self {
+        case .start:
+            return "Previous Picture"
+        case .end:
+            return "Next Picture"
+        }
+    }
+
+    var shortTitle: String {
+        switch self {
+        case .start:
+            return "Previous"
+        case .end:
+            return "Next"
+        }
+    }
+}
+
+struct TransitionEndpointMarkerRenderItem: Identifiable, Equatable, Hashable {
+    enum Style: Hashable {
+        case editable
+        case readOnly
+    }
+
+    let athleteID: UUID
+    let label: String
+    let role: AthleteRole
+    let position: CGPoint
+    let endpoint: PreviewEditableEndpoint
+    let style: Style
+
+    var id: String {
+        "\(athleteID)-\(endpoint)-\(style)"
+    }
+}
+
+enum AlignmentGuideOrientation: Hashable {
+    case vertical
+    case horizontal
+}
+
+enum AlignmentGuideGeometry: Hashable {
+    case axis(orientation: AlignmentGuideOrientation, value: CGFloat)
+    case line(start: CGPoint, end: CGPoint)
+
+    var idComponent: String {
+        switch self {
+        case let .axis(orientation, value):
+            return "axis-\(orientation)-\(Self.quantized(value))"
+        case let .line(start, end):
+            return "line-\(Self.quantized(start.x))-\(Self.quantized(start.y))-\(Self.quantized(end.x))-\(Self.quantized(end.y))"
+        }
+    }
+
+    private static func quantized(_ value: CGFloat) -> Int {
+        Int((value * 100).rounded())
+    }
+}
+
+struct AlignmentGuideRenderItem: Identifiable, Equatable, Hashable {
+    enum Emphasis: Hashable {
+        case strong
+        case subtle
+    }
+
+    let geometry: AlignmentGuideGeometry
+    let emphasis: Emphasis
+
+    init(
+        orientation: AlignmentGuideOrientation,
+        value: CGFloat,
+        emphasis: Emphasis
+    ) {
+        geometry = .axis(orientation: orientation, value: value)
+        self.emphasis = emphasis
+    }
+
+    init(
+        start: CGPoint,
+        end: CGPoint,
+        emphasis: Emphasis
+    ) {
+        geometry = .line(start: start, end: end)
+        self.emphasis = emphasis
+    }
+
+    var id: String {
+        "\(geometry.idComponent)-\(emphasis)"
+    }
+}
+
+struct AlignmentSnapResult: Equatable, Hashable {
+    let translation: CGPoint
+    let guides: [AlignmentGuideRenderItem]
+}
+
+enum AlignmentSnapEngine {
+    static func snap(
+        translation: CGPoint,
+        startingPositions: [CGPoint],
+        otherAthletePositions: [CGPoint],
+        threshold: CGFloat = 0.8
+    ) -> AlignmentSnapResult {
+        guard !startingPositions.isEmpty else {
+            return AlignmentSnapResult(translation: translation, guides: [])
+        }
+
+        let movingPositions = startingPositions.map {
+            CGPoint(x: $0.x + translation.x, y: $0.y + translation.y)
+        }
+        let candidates = alignmentGuideCandidates(otherAthletePositions: otherAthletePositions)
+        let verticalMatch = bestSnapMatch(
+            currentValues: movingPositions.map(\.x),
+            candidates: candidates.filter { $0.orientation == .vertical },
+            threshold: threshold
+        )
+        let horizontalMatch = bestSnapMatch(
+            currentValues: movingPositions.map(\.y),
+            candidates: candidates.filter { $0.orientation == .horizontal },
+            threshold: threshold
+        )
+        let adjustedTranslation = CGPoint(
+            x: translation.x + (verticalMatch?.delta ?? 0),
+            y: translation.y + (horizontalMatch?.delta ?? 0)
+        )
+        let adjustedMovingPositions = startingPositions.map {
+            CGPoint(x: $0.x + adjustedTranslation.x, y: $0.y + adjustedTranslation.y)
+        }
+        var guides = [verticalMatch?.guide, horizontalMatch?.guide].compactMap { $0 }
+        guides.append(
+            contentsOf: linearAlignmentGuides(
+                movingPositions: adjustedMovingPositions,
+                otherAthletePositions: otherAthletePositions
+            )
+        )
+
+        return AlignmentSnapResult(
+            translation: adjustedTranslation,
+            guides: guides
+        )
+    }
+
+    private static func alignmentGuideCandidates(otherAthletePositions: [CGPoint]) -> [SnapGuideCandidate] {
+        var candidates = courtGuideCandidates(length: CourtConstants.width, orientation: .vertical)
+        candidates.append(
+            contentsOf: courtGuideCandidates(length: CourtConstants.height, orientation: .horizontal)
+        )
+
+        let xValues = Array(Set(otherAthletePositions.map { round($0.x) }))
+        let yValues = Array(Set(otherAthletePositions.map { round($0.y) }))
+
+        candidates.append(
+            contentsOf: xValues.map {
+                SnapGuideCandidate(
+                    orientation: .vertical,
+                    value: $0,
+                    emphasis: .strong,
+                    priority: 130
+                )
+            }
+        )
+        candidates.append(
+            contentsOf: yValues.map {
+                SnapGuideCandidate(
+                    orientation: .horizontal,
+                    value: $0,
+                    emphasis: .strong,
+                    priority: 130
+                )
+            }
+        )
+
+        return candidates
+    }
+
+    private static func courtGuideCandidates(
+        length: CGFloat,
+        orientation: AlignmentGuideOrientation
+    ) -> [SnapGuideCandidate] {
+        var candidates: [SnapGuideCandidate] = stride(from: CGFloat.zero, through: length, by: 8).map {
+            SnapGuideCandidate(
+                orientation: orientation,
+                value: $0,
+                emphasis: .strong,
+                priority: 110
+            )
+        }
+
+        let center = length / 2
+        let quarterValues = [length / 4, length * 3 / 4]
+        let eighthValues = [length / 8, length * 3 / 8, length * 5 / 8, length * 7 / 8]
+
+        candidates.append(
+            SnapGuideCandidate(
+                orientation: orientation,
+                value: center,
+                emphasis: .strong,
+                priority: 125
+            )
+        )
+        candidates.append(
+            contentsOf: quarterValues.map {
+                SnapGuideCandidate(
+                    orientation: orientation,
+                    value: $0,
+                    emphasis: .strong,
+                    priority: 118
+                )
+            }
+        )
+        candidates.append(
+            contentsOf: eighthValues.map {
+                SnapGuideCandidate(
+                    orientation: orientation,
+                    value: $0,
+                    emphasis: .subtle,
+                    priority: 100
+                )
+            }
+        )
+
+        return candidates
+    }
+
+    private static func bestSnapMatch(
+        currentValues: [CGFloat],
+        candidates: [SnapGuideCandidate],
+        threshold: CGFloat
+    ) -> SnapMatch? {
+        currentValues
+            .flatMap { currentValue in
+                candidates.compactMap { candidate -> SnapMatch? in
+                    let delta = candidate.value - currentValue
+                    guard abs(delta) <= threshold else { return nil }
+                    return SnapMatch(
+                        delta: delta,
+                        guide: AlignmentGuideRenderItem(
+                            orientation: candidate.orientation,
+                            value: candidate.value,
+                            emphasis: candidate.emphasis
+                        ),
+                        priority: candidate.priority,
+                        distance: abs(delta)
+                    )
+                }
+            }
+            .sorted {
+                if $0.priority != $1.priority {
+                    return $0.priority > $1.priority
+                }
+                return $0.distance < $1.distance
+            }
+            .first
+    }
+
+    private static func linearAlignmentGuides(
+        movingPositions: [CGPoint],
+        otherAthletePositions: [CGPoint],
+        distanceThreshold: CGFloat = 0.35
+    ) -> [AlignmentGuideRenderItem] {
+        let allPositions = movingPositions + otherAthletePositions
+        guard movingPositions.count + otherAthletePositions.count >= 3 else { return [] }
+
+        var seenKeys: Set<LinearGuideKey> = []
+        var matches: [LinearGuideMatch] = []
+
+        for firstIndex in 0..<allPositions.count {
+            for secondIndex in (firstIndex + 1)..<allPositions.count {
+                guard
+                    let line = NormalizedGuideLine(
+                        from: allPositions[firstIndex],
+                        to: allPositions[secondIndex]
+                    ),
+                    !line.isAxisAligned,
+                    seenKeys.insert(line.key).inserted
+                else { continue }
+
+                let alignedMovingIndices = movingPositions.indices.filter {
+                    line.distance(to: movingPositions[$0]) <= distanceThreshold
+                }
+                let alignedOtherIndices = otherAthletePositions.indices.filter {
+                    line.distance(to: otherAthletePositions[$0]) <= distanceThreshold
+                }
+                let alignedCount = alignedMovingIndices.count + alignedOtherIndices.count
+
+                guard !alignedMovingIndices.isEmpty, !alignedOtherIndices.isEmpty, alignedCount >= 3 else { continue }
+                guard let segment = guideSegment(for: line) else { continue }
+
+                let averageDistance = (
+                    alignedMovingIndices.reduce(CGFloat.zero) { total, index in
+                        total + line.distance(to: movingPositions[index])
+                    }
+                    + alignedOtherIndices.reduce(CGFloat.zero) { total, index in
+                        total + line.distance(to: otherAthletePositions[index])
+                    }
+                ) / CGFloat(alignedCount)
+
+                matches.append(
+                    LinearGuideMatch(
+                        membershipKey: LinearGuideMembershipKey(
+                            movingIndices: alignedMovingIndices,
+                            otherIndices: alignedOtherIndices
+                        ),
+                        guide: AlignmentGuideRenderItem(
+                            start: segment.start,
+                            end: segment.end,
+                            emphasis: .strong
+                        ),
+                        alignedCount: alignedCount,
+                        stationaryCount: alignedOtherIndices.count,
+                        averageDistance: averageDistance,
+                        segmentLength: segment.length
+                    )
+                )
+            }
+        }
+
+        return matches
+            .sorted {
+                if $0.alignedCount != $1.alignedCount {
+                    return $0.alignedCount > $1.alignedCount
+                }
+                if $0.stationaryCount != $1.stationaryCount {
+                    return $0.stationaryCount > $1.stationaryCount
+                }
+                if abs($0.averageDistance - $1.averageDistance) > 0.001 {
+                    return $0.averageDistance < $1.averageDistance
+                }
+                return $0.segmentLength > $1.segmentLength
+            }
+            .reduce(into: [LinearGuideMatch]()) { result, match in
+                guard !result.contains(where: { $0.membershipKey == match.membershipKey }) else { return }
+                result.append(match)
+            }
+            .prefix(3)
+            .map(\.guide)
+    }
+
+    private static func guideSegment(
+        for line: NormalizedGuideLine
+    ) -> (start: CGPoint, end: CGPoint, length: CGFloat)? {
+        let courtWidth = CourtConstants.width
+        let courtHeight = CourtConstants.height
+        let epsilon: CGFloat = 0.0001
+        var intersections: [CGPoint] = []
+
+        if abs(line.b) > epsilon {
+            let yAtLeft = (line.c - line.a * 0) / line.b
+            if (0...courtHeight).contains(yAtLeft) {
+                intersections.append(CGPoint(x: 0, y: yAtLeft))
+            }
+
+            let yAtRight = (line.c - line.a * courtWidth) / line.b
+            if (0...courtHeight).contains(yAtRight) {
+                intersections.append(CGPoint(x: courtWidth, y: yAtRight))
+            }
+        }
+
+        if abs(line.a) > epsilon {
+            let xAtTop = (line.c - line.b * 0) / line.a
+            if (0...courtWidth).contains(xAtTop) {
+                intersections.append(CGPoint(x: xAtTop, y: 0))
+            }
+
+            let xAtBottom = (line.c - line.b * courtHeight) / line.a
+            if (0...courtWidth).contains(xAtBottom) {
+                intersections.append(CGPoint(x: xAtBottom, y: courtHeight))
+            }
+        }
+
+        intersections = deduplicatedIntersections(intersections)
+        guard intersections.count >= 2 else { return nil }
+
+        let sorted = intersections.sorted { line.projection(of: $0) < line.projection(of: $1) }
+        guard let start = sorted.first, let end = sorted.last else { return nil }
+
+        return (
+            start: start,
+            end: end,
+            length: hypot(end.x - start.x, end.y - start.y)
+        )
+    }
+
+    private static func deduplicatedIntersections(_ points: [CGPoint]) -> [CGPoint] {
+        points.reduce(into: [CGPoint]()) { result, point in
+            let alreadyIncluded = result.contains {
+                hypot($0.x - point.x, $0.y - point.y) < 0.05
+            }
+            if !alreadyIncluded {
+                result.append(point)
+            }
+        }
+    }
+
+    private struct SnapGuideCandidate {
+        let orientation: AlignmentGuideOrientation
+        let value: CGFloat
+        let emphasis: AlignmentGuideRenderItem.Emphasis
+        let priority: Int
+    }
+
+    private struct SnapMatch {
+        let delta: CGFloat
+        let guide: AlignmentGuideRenderItem
+        let priority: Int
+        let distance: CGFloat
+    }
+
+    private struct LinearGuideMatch {
+        let membershipKey: LinearGuideMembershipKey
+        let guide: AlignmentGuideRenderItem
+        let alignedCount: Int
+        let stationaryCount: Int
+        let averageDistance: CGFloat
+        let segmentLength: CGFloat
+    }
+
+    private struct LinearGuideMembershipKey: Hashable {
+        let movingIndices: [Int]
+        let otherIndices: [Int]
+    }
+
+    private struct LinearGuideKey: Hashable {
+        let a: Int
+        let b: Int
+        let c: Int
+    }
+
+    private struct NormalizedGuideLine {
+        let a: CGFloat
+        let b: CGFloat
+        let c: CGFloat
+        let direction: CGPoint
+        let key: LinearGuideKey
+
+        init?(from start: CGPoint, to end: CGPoint) {
+            let dx = end.x - start.x
+            let dy = end.y - start.y
+            let length = hypot(dx, dy)
+            guard length > 0.001 else { return nil }
+
+            var normalizedA = dy / length
+            var normalizedB = -dx / length
+            var normalizedC = normalizedA * start.x + normalizedB * start.y
+
+            if normalizedA < -0.0001 || (abs(normalizedA) <= 0.0001 && normalizedB < 0) {
+                normalizedA *= -1
+                normalizedB *= -1
+                normalizedC *= -1
+            }
+
+            a = normalizedA
+            b = normalizedB
+            c = normalizedC
+            direction = CGPoint(x: -normalizedB, y: normalizedA)
+            key = LinearGuideKey(
+                a: Int((normalizedA * 1000).rounded()),
+                b: Int((normalizedB * 1000).rounded()),
+                c: Int((normalizedC * 1000).rounded())
+            )
+        }
+
+        var isAxisAligned: Bool {
+            abs(direction.x) < 0.01 || abs(direction.y) < 0.01
+        }
+
+        func distance(to point: CGPoint) -> CGFloat {
+            abs(a * point.x + b * point.y - c)
+        }
+
+        func projection(of point: CGPoint) -> CGFloat {
+            direction.x * point.x + direction.y * point.y
+        }
+    }
 }
 
 // MARK: - Persistence
@@ -1052,6 +1674,11 @@ final class TransitionPlayer: ObservableObject {
         didSet { transitionSpec.duration = duration }
     }
 
+    var counts: TimeInterval {
+        get { duration }
+        set { duration = newValue }
+    }
+
     private var animationTimer: AnimationTimer?
 
     init(
@@ -1136,7 +1763,7 @@ final class TransitionPlayer: ObservableObject {
                 to: endAthlete.position,
                 transition: transition
             )
-            let hold = transition.pathWaypoints.reduce(CGFloat(0)) { $0 + $1.holdDuration }
+            let hold = transition.pathWaypoints.reduce(CGFloat(0)) { $0 + $1.holdCounts }
             return travel + hold
         }.max() ?? 1
 
@@ -1148,10 +1775,10 @@ final class TransitionPlayer: ObservableObject {
                 to: endAthlete.position,
                 transition: transition
             )
-            let hold = transition.pathWaypoints.reduce(CGFloat(0)) { $0 + $1.holdDuration }
+            let hold = transition.pathWaypoints.reduce(CGFloat(0)) { $0 + $1.holdCounts }
             let effectiveTime = travel + hold
             let durationFraction = maxEffectiveTime > 0 ? effectiveTime / maxEffectiveTime : 1
-            let timingOffset = min(0.99, transition.moveDelay / max(CGFloat(duration), 0.5))
+            let timingOffset = min(0.99, transition.moveDelayCounts / max(CGFloat(counts), 0.5))
             let adjustedProgress = max(0, progress - timingOffset) / (1.0 - timingOffset)
             let athleteProgress = durationFraction > 0 ? min(1.0, adjustedProgress / durationFraction) : 1.0
 
@@ -1162,7 +1789,7 @@ final class TransitionPlayer: ObservableObject {
                     to: endAthlete.position,
                     waypoints: transition.pathWaypoints
                 )
-                let moveDuration = durationFraction * max(CGFloat(duration), 0.5) * (travel / max(effectiveTime, 0.001))
+                let moveDuration = durationFraction * max(CGFloat(counts), 0.5) * (travel / max(effectiveTime, 0.001))
                 effectiveProgress = PathCalculations.holdAdjustedPathProgress(
                     wallProgress: athleteProgress,
                     waypoints: transition.pathWaypoints,
@@ -1203,6 +1830,43 @@ final class TransitionPlayer: ObservableObject {
                 position: nextPosition
             )
         }
+    }
+}
+
+@MainActor
+final class TransitionPreviewSession: ObservableObject {
+    @Published var player: TransitionPlayer?
+    @Published var startFormationID: UUID?
+    @Published var endFormationID: UUID?
+
+    func configure(store: RoutineStore, startFormationID: UUID, endFormationID: UUID) {
+        let startAthletes = store.renderedAthletes(for: startFormationID)
+        let endAthletes = store.renderedAthletes(for: endFormationID)
+        let transitionSpec = store.transitionSpec(for: startFormationID, to: endFormationID)
+
+        if let player, self.startFormationID == startFormationID, self.endFormationID == endFormationID {
+            player.refresh(
+                startAthletes: startAthletes,
+                endAthletes: endAthletes,
+                transitionSpec: transitionSpec
+            )
+        } else {
+            self.player = TransitionPlayer(
+                startAthletes: startAthletes,
+                endAthletes: endAthletes,
+                transitionSpec: transitionSpec
+            )
+        }
+
+        self.startFormationID = startFormationID
+        self.endFormationID = endFormationID
+    }
+
+    func clear() {
+        player?.pause()
+        player = nil
+        startFormationID = nil
+        endFormationID = nil
     }
 }
 

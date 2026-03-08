@@ -1,46 +1,171 @@
 import SwiftUI
 
-// MARK: - Transition Player View
+private enum TransitionCountFormatting {
+    static func value(_ value: Double) -> String {
+        if abs(value.rounded() - value) < 0.001 {
+            return String(Int(value.rounded()))
+        }
+        return String(format: "%.1f", value)
+    }
 
-struct TransitionPlayerView: View {
-    enum TimelineMode: Int, CaseIterable {
-        case seconds = 0
-        case four = 4
-        case eight = 8
-        case sixteen = 16
+    static func value(_ value: CGFloat) -> String {
+        Self.value(Double(value))
+    }
 
-        var title: String {
-            switch self {
-            case .seconds: return "Seconds"
-            case .four: return "4-count"
-            case .eight: return "8-count"
-            case .sixteen: return "16-count"
-            }
+    static func label(_ value: Double) -> String {
+        let unit = abs(value - 1) < 0.001 ? "count" : "counts"
+        return "\(self.value(value)) \(unit)"
+    }
+
+    static func label(_ value: CGFloat) -> String {
+        Self.label(Double(value))
+    }
+}
+
+enum PreviewInteractionMode: String, CaseIterable, Identifiable {
+    case editSpots
+    case editPath
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .editSpots: return "Edit Spots"
+        case .editPath: return "Edit Path"
         }
     }
 
+    var description: String {
+        switch self {
+        case .editSpots:
+            return "Drag the counterpart picture directly on the floor so you can fix transition issues without leaving preview."
+        case .editPath:
+            return "Adjust delay, curves, and waypoints for the selected athlete without changing formation spots."
+        }
+    }
+}
+
+// MARK: - Transport Sidebar
+
+struct TransitionTransportSidebarView: View {
+    @ObservedObject var player: TransitionPlayer
+    let startFormationName: String
+    let endFormationName: String
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                headerSection
+                playbackButtons
+                scrubSection
+            }
+            .padding(20)
+        }
+        .background(.thinMaterial)
+        .navigationTitle("Transport")
+        .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 280)
+    }
+
+    private var headerSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Preview Transport")
+                .font(.headline)
+            Text("\(startFormationName) → \(endFormationName)")
+                .font(.title3.weight(.semibold))
+            Text("Scrub and playback stay here so the right inspector can focus on settings and path work.")
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private var playbackButtons: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Playback")
+                .font(.subheadline.weight(.semibold))
+
+            Button(action: { player.reset() }) {
+                Label("Reset", systemImage: "backward.end.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+
+            Button(action: togglePlayback) {
+                Label(player.isPlaying ? "Pause" : "Play", systemImage: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+
+            Button(action: { player.isLooping.toggle() }) {
+                Label("Loop", systemImage: "repeat")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .tint(player.isLooping ? .accentColor : .secondary)
+        }
+    }
+
+    private var scrubSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Scrub")
+                .font(.subheadline.weight(.semibold))
+
+            Slider(
+                value: Binding(
+                    get: { player.progress },
+                    set: { player.seek(to: $0) }
+                ),
+                in: 0...1,
+                onEditingChanged: { editing in
+                    if editing {
+                        player.pause()
+                    }
+                }
+            )
+
+            HStack {
+                Text("\(TransitionCountFormatting.value(player.progress * CGFloat(player.counts))) / \(TransitionCountFormatting.value(player.counts))")
+                    .font(.system(.body, design: .monospaced))
+                Spacer()
+                Text(player.counts == 1 ? "Count" : "Counts")
+                    .foregroundColor(.secondary)
+            }
+            .foregroundColor(.secondary)
+        }
+    }
+
+    private func togglePlayback() {
+        if player.isPlaying {
+            player.pause()
+        } else {
+            player.play()
+        }
+    }
+}
+
+// MARK: - Transition Player View
+
+struct TransitionPlayerView: View {
     @ObservedObject var store: RoutineStore
+    @ObservedObject var player: TransitionPlayer
     let startFormationID: UUID
     let endFormationID: UUID
+    let selectedFormationName: String
+    @Binding var previewReferenceMode: PreviewReferenceMode
+    let editableEndpoint: PreviewEditableEndpoint
+    var onSelectPreviousFormation: () -> Void
+    var onSelectNextFormation: () -> Void
+    var canSelectPreviousFormation: Bool
+    var canSelectNextFormation: Bool
 
-    @StateObject private var player: TransitionPlayer
     @State private var selectedAthleteID: UUID?
-    @State private var timelineMode: TimelineMode = .seconds
+    @State private var interactionMode: PreviewInteractionMode = .editSpots
     @State private var isDraggingHandle = false
     @State private var draggingWaypointID: UUID?
+    @State private var editableDragStartPosition: CGPoint?
+    @State private var activeAlignmentGuides: [AlignmentGuideRenderItem] = []
     @State private var showingResetAllPathsConfirmation = false
 
-    init(store: RoutineStore, startFormationID: UUID, endFormationID: UUID) {
-        self.store = store
-        self.startFormationID = startFormationID
-        self.endFormationID = endFormationID
-        _player = StateObject(
-            wrappedValue: TransitionPlayer(
-                startAthletes: store.renderedAthletes(for: startFormationID),
-                endAthletes: store.renderedAthletes(for: endFormationID),
-                transitionSpec: store.transitionSpec(for: startFormationID, to: endFormationID)
-            )
-        )
+    private var transitionIdentity: String {
+        "\(startFormationID.uuidString)-\(endFormationID.uuidString)"
     }
 
     private var startFormation: Formation? {
@@ -51,6 +176,32 @@ struct TransitionPlayerView: View {
     private var endFormation: Formation? {
         guard let index = store.formationIndex(id: endFormationID) else { return nil }
         return store.routine.formations[index]
+    }
+
+    private var editableFormationID: UUID {
+        editableEndpoint == .start ? startFormationID : endFormationID
+    }
+
+    private var editableFormationName: String {
+        switch editableEndpoint {
+        case .start:
+            return startFormation?.name ?? "Previous Formation"
+        case .end:
+            return endFormation?.name ?? "Next Formation"
+        }
+    }
+
+    private var readOnlyFormationName: String {
+        switch editableEndpoint {
+        case .start:
+            return endFormation?.name ?? "Current Formation"
+        case .end:
+            return startFormation?.name ?? "Current Formation"
+        }
+    }
+
+    private var editableAthletes: [RenderedAthlete] {
+        editableEndpoint == .start ? player.startAthletes : player.endAthletes
     }
 
     private var transitionPaths: [TransitionPathRenderItem] {
@@ -66,6 +217,30 @@ struct TransitionPlayerView: View {
                 waypoints: transition.pathWaypoints
             )
         }
+    }
+
+    private var endpointMarkers: [TransitionEndpointMarkerRenderItem] {
+        let startMarkers = player.startAthletes.map { athlete in
+            TransitionEndpointMarkerRenderItem(
+                athleteID: athlete.id,
+                label: athlete.label,
+                role: athlete.role,
+                position: athlete.position,
+                endpoint: .start,
+                style: editableEndpoint == .start ? .editable : .readOnly
+            )
+        }
+        let endMarkers = player.endAthletes.map { athlete in
+            TransitionEndpointMarkerRenderItem(
+                athleteID: athlete.id,
+                label: athlete.label,
+                role: athlete.role,
+                position: athlete.position,
+                endpoint: .end,
+                style: editableEndpoint == .end ? .editable : .readOnly
+            )
+        }
+        return startMarkers + endMarkers
     }
 
     private var pathCollisionIDs: Set<UUID> {
@@ -93,6 +268,15 @@ struct TransitionPlayerView: View {
         }
     }
 
+    private var canvasInstruction: String {
+        switch interactionMode {
+        case .editSpots:
+            return "Drag the \(editableFormationName) spots to fix the move into \(readOnlyFormationName) without leaving preview."
+        case .editPath:
+            return "Select an athlete, double-tap it to add a waypoint, then drag path handles to refine the move."
+        }
+    }
+
     var body: some View {
         Group {
             if startFormation != nil && endFormation != nil {
@@ -100,15 +284,28 @@ struct TransitionPlayerView: View {
                     canvasArea
                     Divider()
                     inspectorPanel
-                        .frame(width: 360)
+                        .frame(width: 380)
                 }
             } else {
-                ContentUnavailableView("Transition unavailable", systemImage: "arrow.left.and.right.righttriangle.left.righttriangle.right")
+                ContentUnavailableView(
+                    "Transition unavailable",
+                    systemImage: "arrow.left.and.right.righttriangle.left.righttriangle.right"
+                )
             }
         }
-        .onAppear(perform: refreshFromStore)
+        .onAppear {
+            resetPreviewInteractionMode()
+            refreshFromStore()
+        }
+        .onChange(of: transitionIdentity) { _, _ in
+            resetPreviewInteractionMode()
+            refreshFromStore()
+        }
         .onChange(of: store.routine) { _, _ in
             refreshFromStore()
+        }
+        .onChange(of: interactionMode) { _, _ in
+            clearCanvasInteractionState()
         }
         .confirmationDialog(
             "Reset all paths?",
@@ -141,6 +338,8 @@ struct TransitionPlayerView: View {
                     athletes: player.currentAthletes,
                     selectedAthleteIDs: selectedAthleteID.map { [$0] } ?? [],
                     transitionPaths: transitionPaths,
+                    endpointMarkers: endpointMarkers,
+                    alignmentGuides: activeAlignmentGuides,
                     pathCollisionIDs: pathCollisionIDs,
                     cellSize: cellSize,
                     offset: offset
@@ -149,10 +348,7 @@ struct TransitionPlayerView: View {
                 .simultaneousGesture(waypointDoubleTapGesture(cellSize: cellSize, offset: offset))
 
                 VStack(spacing: 10) {
-                    banner(
-                        text: "Select an athlete to adjust delay and path. Double-tap the selected athlete to add a waypoint, then drag path handles to fine tune.",
-                        color: .accentColor
-                    )
+                    banner(text: canvasInstruction, color: .accentColor)
 
                     if !pathCollisionIDs.isEmpty {
                         banner(
@@ -171,8 +367,8 @@ struct TransitionPlayerView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 headerSection
-                playbackSection
-                timelineSection
+                previewSettingsSection
+                playbackSettingsSection
                 selectedAthleteSection
             }
             .padding(20)
@@ -184,12 +380,12 @@ struct TransitionPlayerView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Transition Preview")
+                    Text("Preview Inspector")
                         .font(.headline)
                     if let startFormation, let endFormation {
                         Text("\(startFormation.name) → \(endFormation.name)")
                             .font(.title3.weight(.semibold))
-                        Text("This preview always uses the selected formation and the one immediately after it.")
+                        Text("The selected formation stays anchored while preview lets you tune the counterpart picture and the path in one place.")
                             .foregroundColor(.secondary)
                     }
                 }
@@ -207,110 +403,139 @@ struct TransitionPlayerView: View {
         }
     }
 
-    private var playbackSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Playback")
+    private var previewSettingsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Preview")
                 .font(.subheadline.weight(.semibold))
 
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Duration")
-                    Spacer()
-                    Text(String(format: "%.1fs", player.duration))
-                        .font(.system(.body, design: .monospaced))
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Selected Formation")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.secondary)
+
+                HStack(spacing: 12) {
+                    Button(action: onSelectPreviousFormation) {
+                        Image(systemName: "chevron.left")
+                            .frame(width: 34, height: 34)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!canSelectPreviousFormation)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(selectedFormationName)
+                            .font(.body.weight(.semibold))
+                        Text("Previewing \(previewReferenceMode == .intoSelected ? "into" : "out of") this picture")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    Button(action: onSelectNextFormation) {
+                        Image(systemName: "chevron.right")
+                            .frame(width: 34, height: 34)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!canSelectNextFormation)
                 }
-                Slider(
-                    value: Binding(
-                        get: { player.duration },
-                        set: { newValue in
-                            store.mutateTransitionSpec(from: startFormationID, to: endFormationID) { spec in
-                                spec.duration = max(0.5, newValue)
-                            }
-                            refreshFromStore()
-                        }
-                    ),
-                    in: 0.5...20,
-                    step: 0.5
-                )
             }
 
-            HStack(spacing: 10) {
-                Button(action: { player.reset() }) {
-                    Label("Reset", systemImage: "backward.end.fill")
-                }
-                .buttonStyle(.bordered)
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Preview Pairing")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.secondary)
 
-                Button(action: {
-                    if player.isPlaying {
-                        player.pause()
-                    } else {
-                        player.play()
+                Picker("Preview pairing", selection: $previewReferenceMode) {
+                    ForEach(PreviewReferenceMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
                     }
-                }) {
-                    Label(player.isPlaying ? "Pause" : "Play", systemImage: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                 }
-                .buttonStyle(.borderedProminent)
+                .pickerStyle(.segmented)
 
-                Button(action: { player.isLooping.toggle() }) {
-                    Label("Loop", systemImage: "repeat")
+                Text(previewReferenceMode.description)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Canvas Interaction")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.secondary)
+
+                Picker("Canvas interaction", selection: $interactionMode) {
+                    ForEach(PreviewInteractionMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
                 }
-                .buttonStyle(.bordered)
-                .tint(player.isLooping ? .accentColor : .secondary)
+                .pickerStyle(.segmented)
+
+                Text(interactionMode.description)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                Label("Dragging now updates \(editableFormationName). \(readOnlyFormationName) stays read-only in preview.", systemImage: "scope")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
         }
     }
 
-    private var timelineSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Timing")
+    private var playbackSettingsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Playback Settings")
                 .font(.subheadline.weight(.semibold))
 
-            Slider(
-                value: Binding(
-                    get: { player.progress },
-                    set: { player.seek(to: $0) }
-                ),
-                in: 0...1,
-                onEditingChanged: { editing in
-                    if editing { player.pause() }
-                }
-            )
-
-            HStack {
-                if timelineMode == .seconds {
-                    Text(formatTime(player.progress * CGFloat(player.duration)))
-                        .font(.system(.body, design: .monospaced))
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Transition Counts")
                     Spacer()
-                    Text(formatTime(CGFloat(player.duration)))
+                    Text(TransitionCountFormatting.label(player.counts))
                         .font(.system(.body, design: .monospaced))
-                } else {
-                    let totalCounts = CGFloat(timelineMode.rawValue)
-                    Text(String(format: "%.1f / %.0f", player.progress * totalCounts, totalCounts))
-                        .font(.system(.body, design: .monospaced))
-                    Spacer()
-                    Text("Counts")
-                        .foregroundColor(.secondary)
                 }
+                Slider(
+                    value: Binding(
+                        get: { player.counts },
+                        set: { newValue in
+                            store.mutateTransitionSpec(from: startFormationID, to: endFormationID) { spec in
+                                spec.counts = max(1, newValue.rounded())
+                                let maxTimingValue = CGFloat(spec.counts)
+                                for athleteIndex in spec.athleteTransitions.indices {
+                                    spec.athleteTransitions[athleteIndex].moveDelayCounts = min(
+                                        spec.athleteTransitions[athleteIndex].moveDelayCounts,
+                                        maxTimingValue
+                                    )
+                                    for waypointIndex in spec.athleteTransitions[athleteIndex].pathWaypoints.indices {
+                                        spec.athleteTransitions[athleteIndex].pathWaypoints[waypointIndex].holdCounts = min(
+                                            spec.athleteTransitions[athleteIndex].pathWaypoints[waypointIndex].holdCounts,
+                                            maxTimingValue
+                                        )
+                                    }
+                                }
+                            }
+                            refreshFromStore()
+                        }
+                    ),
+                    in: 1...32,
+                    step: 1
+                )
             }
-            .foregroundColor(.secondary)
 
-            Picker("Timeline", selection: $timelineMode) {
-                ForEach(TimelineMode.allCases, id: \.self) { mode in
-                    Text(mode.title).tag(mode)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Speed")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.secondary)
+
+                Picker("Speed", selection: Binding(
+                    get: { speedSelection(for: player.speed) },
+                    set: { player.speed = $0 }
+                )) {
+                    Text("0.5x").tag(CGFloat(0.5))
+                    Text("1x").tag(CGFloat(1.0))
+                    Text("1.5x").tag(CGFloat(1.5))
+                    Text("2x").tag(CGFloat(2.0))
                 }
+                .pickerStyle(.segmented)
             }
-            .pickerStyle(.segmented)
-
-            Picker("Speed", selection: Binding(
-                get: { speedSelection(for: player.speed) },
-                set: { player.speed = $0 }
-            )) {
-                Text("0.5x").tag(CGFloat(0.5))
-                Text("1x").tag(CGFloat(1.0))
-                Text("1.5x").tag(CGFloat(1.5))
-                Text("2x").tag(CGFloat(2.0))
-            }
-            .pickerStyle(.segmented)
         }
     }
 
@@ -322,9 +547,15 @@ struct TransitionPlayerView: View {
                     .font(.subheadline.weight(.semibold))
 
                 HStack {
-                    Circle()
-                        .fill(selectedStartAthlete.role.color)
-                        .frame(width: 14, height: 14)
+                    if selectedStartAthlete.role == .stuntGroup {
+                        Image(systemName: "triangle.fill")
+                            .foregroundColor(selectedStartAthlete.role.color)
+                    } else {
+                        Circle()
+                            .fill(selectedStartAthlete.role.color)
+                            .frame(width: 14, height: 14)
+                    }
+
                     Text(selectedStartAthlete.label)
                         .font(.title3.weight(.semibold))
                     Spacer()
@@ -341,25 +572,25 @@ struct TransitionPlayerView: View {
                     .foregroundColor(.secondary)
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Starts moving after")
+                    Text("Start Delay")
                     Slider(
                         value: Binding(
-                            get: { selectedTransition.moveDelay },
+                            get: { selectedTransition.moveDelayCounts },
                             set: { newValue in
                                 store.mutateAthleteTransition(
                                     from: startFormationID,
                                     to: endFormationID,
                                     athleteID: selectedStartAthlete.id
                                 ) { transition in
-                                    transition.moveDelay = min(CGFloat(player.duration), max(0, newValue))
+                                    transition.moveDelayCounts = min(CGFloat(player.counts), max(0, newValue))
                                 }
                                 refreshFromStore()
                             }
                         ),
-                        in: 0...CGFloat(player.duration),
-                        step: 0.1
+                        in: 0...CGFloat(player.counts),
+                        step: 0.5
                     )
-                    Text(String(format: "%.1fs", selectedTransition.moveDelay))
+                    Text(TransitionCountFormatting.label(selectedTransition.moveDelayCounts))
                         .font(.system(.body, design: .monospaced))
                         .foregroundColor(.secondary)
                 }
@@ -378,9 +609,13 @@ struct TransitionPlayerView: View {
                         .buttonStyle(.bordered)
                     }
 
-                    Text("Use the buttons to create the path, then double-tap the selected athlete on the court to add a waypoint and drag the handles to place it precisely.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    Text(
+                        interactionMode == .editPath
+                            ? "Double-tap the selected athlete on the floor to add a waypoint, then drag the handles to place it."
+                            : "Switch the canvas to Edit Path when you want to drag curve handles directly on the floor."
+                    )
+                    .font(.caption)
+                    .foregroundColor(.secondary)
                 }
 
                 if !selectedTransition.pathWaypoints.isEmpty {
@@ -428,34 +663,34 @@ struct TransitionPlayerView: View {
                                 HStack {
                                     Text("Hold")
                                     Spacer()
-                                    Button("- 0.5s") {
+                                    Button("- 0.5 count") {
                                         store.mutateAthleteTransition(
                                             from: startFormationID,
                                             to: endFormationID,
                                             athleteID: selectedStartAthlete.id
                                         ) { transition in
-                                            transition.pathWaypoints[waypointIndex].holdDuration = max(
+                                            transition.pathWaypoints[waypointIndex].holdCounts = max(
                                                 0,
-                                                transition.pathWaypoints[waypointIndex].holdDuration - 0.5
+                                                transition.pathWaypoints[waypointIndex].holdCounts - 0.5
                                             )
                                         }
                                         refreshFromStore()
                                     }
                                     .buttonStyle(.bordered)
 
-                                    Text(String(format: "%.1fs", waypoint.holdDuration))
+                                    Text(TransitionCountFormatting.label(waypoint.holdCounts))
                                         .font(.system(.body, design: .monospaced))
-                                        .frame(width: 56)
+                                        .frame(width: 84)
 
-                                    Button("+ 0.5s") {
+                                    Button("+ 0.5 count") {
                                         store.mutateAthleteTransition(
                                             from: startFormationID,
                                             to: endFormationID,
                                             athleteID: selectedStartAthlete.id
                                         ) { transition in
-                                            transition.pathWaypoints[waypointIndex].holdDuration = min(
-                                                10,
-                                                transition.pathWaypoints[waypointIndex].holdDuration + 0.5
+                                            transition.pathWaypoints[waypointIndex].holdCounts = min(
+                                                CGFloat(player.counts),
+                                                transition.pathWaypoints[waypointIndex].holdCounts + 0.5
                                             )
                                         }
                                         refreshFromStore()
@@ -472,8 +707,10 @@ struct TransitionPlayerView: View {
             }
         } else {
             EmptyInspectorView(
-                title: "Path Inspector",
-                message: "Select one athlete on the canvas to edit its start delay and curve, then double-tap that athlete to add waypoints."
+                title: "Athlete Inspector",
+                message: interactionMode == .editSpots
+                    ? "Tap or drag an editable endpoint marker to fix a formation spot, or switch to Edit Path to work on curves and waypoints."
+                    : "Select one athlete on the canvas to edit its start delay and path."
             )
         }
     }
@@ -481,132 +718,222 @@ struct TransitionPlayerView: View {
     private func canvasGesture(cellSize: CGFloat, offset: CGPoint) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
-                let scaledPoint = CGPoint(
-                    x: (value.location.x - offset.x) / cellSize,
-                    y: (value.location.y - offset.y) / cellSize
-                )
-                let startScaledPoint = CGPoint(
-                    x: (value.startLocation.x - offset.x) / cellSize,
-                    y: (value.startLocation.y - offset.y) / cellSize
-                )
+                switch interactionMode {
+                case .editSpots:
+                    handleSpotGestureChanged(value, cellSize: cellSize, offset: offset)
+                case .editPath:
+                    handlePathGestureChanged(value, cellSize: cellSize, offset: offset)
+                }
+            }
+            .onEnded { value in
+                switch interactionMode {
+                case .editSpots:
+                    handleSpotGestureEnded(value, cellSize: cellSize, offset: offset)
+                case .editPath:
+                    handlePathGestureEnded()
+                }
+            }
+    }
 
-                if let selectedAthleteID,
-                    let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID }),
-                    let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
+    private func handleSpotGestureChanged(
+        _ value: DragGesture.Value,
+        cellSize: CGFloat,
+        offset: CGPoint
+    ) {
+        let startScaledPoint = CGPoint(
+            x: (value.startLocation.x - offset.x) / cellSize,
+            y: (value.startLocation.y - offset.y) / cellSize
+        )
+
+        if editableDragStartPosition == nil {
+            guard let hitAthlete = editableAthlete(at: startScaledPoint) else {
+                selectedAthleteID = nil
+                activeAlignmentGuides = []
+                return
+            }
+
+            selectedAthleteID = hitAthlete.id
+            editableDragStartPosition = hitAthlete.position
+        }
+
+        guard let selectedAthleteID, let editableDragStartPosition else { return }
+
+        let rawTranslation = CGPoint(
+            x: value.translation.width / cellSize,
+            y: value.translation.height / cellSize
+        )
+        let snapResult = AlignmentSnapEngine.snap(
+            translation: rawTranslation,
+            startingPositions: [editableDragStartPosition],
+            otherAthletePositions: editableAthletes
+                .filter { $0.id != selectedAthleteID }
+                .map(\.position)
+        )
+        activeAlignmentGuides = snapResult.guides
+
+        let nextPosition = CGPoint(
+            x: clampedCoordinate(editableDragStartPosition.x + snapResult.translation.x, upperBound: CourtConstants.width),
+            y: clampedCoordinate(editableDragStartPosition.y + snapResult.translation.y, upperBound: CourtConstants.height)
+        )
+
+        store.mutateFormation(id: editableFormationID) { formation in
+            guard let placementIndex = formation.placementIndex(for: selectedAthleteID) else { return }
+            formation.placements[placementIndex].position = nextPosition
+        }
+        refreshFromStore()
+    }
+
+    private func handleSpotGestureEnded(
+        _ value: DragGesture.Value,
+        cellSize: CGFloat,
+        offset: CGPoint
+    ) {
+        if selectedAthleteID == nil {
+            let tapPoint = CGPoint(
+                x: (value.location.x - offset.x) / cellSize,
+                y: (value.location.y - offset.y) / cellSize
+            )
+            selectedAthleteID = editableAthlete(at: tapPoint)?.id
+        }
+
+        editableDragStartPosition = nil
+        activeAlignmentGuides = []
+    }
+
+    private func handlePathGestureChanged(
+        _ value: DragGesture.Value,
+        cellSize: CGFloat,
+        offset: CGPoint
+    ) {
+        activeAlignmentGuides = []
+
+        let scaledPoint = CGPoint(
+            x: (value.location.x - offset.x) / cellSize,
+            y: (value.location.y - offset.y) / cellSize
+        )
+        let startScaledPoint = CGPoint(
+            x: (value.startLocation.x - offset.x) / cellSize,
+            y: (value.startLocation.y - offset.y) / cellSize
+        )
+
+        if let selectedAthleteID,
+            let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID }),
+            let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
+        {
+            let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
+
+            if !transition.pathWaypoints.isEmpty {
+                if let draggingWaypointID,
+                    let waypointIndex = transition.pathWaypoints.firstIndex(where: { $0.id == draggingWaypointID })
                 {
-                    let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
+                    isDraggingHandle = true
+                    store.mutateAthleteTransition(
+                        from: startFormationID,
+                        to: endFormationID,
+                        athleteID: selectedAthleteID
+                    ) { transition in
+                        transition.pathWaypoints[waypointIndex].position = scaledPoint
+                    }
+                    refreshFromStore()
+                    return
+                }
 
-                    if !transition.pathWaypoints.isEmpty {
-                        if let draggingWaypointID,
-                            let waypointIndex = transition.pathWaypoints.firstIndex(where: { $0.id == draggingWaypointID })
-                        {
-                            isDraggingHandle = true
-                            store.mutateAthleteTransition(
-                                from: startFormationID,
-                                to: endFormationID,
-                                athleteID: selectedAthleteID
-                            ) { transition in
-                                transition.pathWaypoints[waypointIndex].position = scaledPoint
-                            }
-                            refreshFromStore()
-                            return
-                        }
-
-                        for waypoint in transition.pathWaypoints {
-                            if PathCalculations.squaredDistance(from: startScaledPoint, to: waypoint.position)
-                                < CourtConstants.hitRadiusSquared
-                            {
-                                draggingWaypointID = waypoint.id
-                                isDraggingHandle = true
-                                return
-                            }
-                        }
-
-                        let nodes = PathCalculations.waypointNodes(
-                            from: startAthlete.position,
-                            to: endAthlete.position,
-                            waypoints: transition.pathWaypoints
-                        )
-                        for segmentIndex in 0..<(nodes.count - 1) {
-                            let midpoint = CGPoint(
-                                x: (nodes[segmentIndex].x + nodes[segmentIndex + 1].x) / 2,
-                                y: (nodes[segmentIndex].y + nodes[segmentIndex + 1].y) / 2
-                            )
-                            if PathCalculations.squaredDistance(from: startScaledPoint, to: midpoint)
-                                < CourtConstants.hitRadiusSquared
-                            {
-                                let waypoint = PathWaypoint(position: midpoint, isSmooth: true)
-                                store.mutateAthleteTransition(
-                                    from: startFormationID,
-                                    to: endFormationID,
-                                    athleteID: selectedAthleteID
-                                ) { transition in
-                                    let insertIndex = min(segmentIndex, transition.pathWaypoints.count)
-                                    transition.pathWaypoints.insert(waypoint, at: insertIndex)
-                                    transition.pathControlPoint = nil
-                                }
-                                draggingWaypointID = waypoint.id
-                                isDraggingHandle = true
-                                refreshFromStore()
-                                return
-                            }
-                        }
-                    } else {
-                        let midpoint: CGPoint
-                        if let controlPoint = transition.pathControlPoint {
-                            midpoint = PathCalculations.quadraticBezierPoint(
-                                from: startAthlete.position,
-                                control: controlPoint,
-                                to: endAthlete.position,
-                                t: 0.5
-                            )
-                        } else {
-                            midpoint = CGPoint(
-                                x: (startAthlete.position.x + endAthlete.position.x) / 2,
-                                y: (startAthlete.position.y + endAthlete.position.y) / 2
-                            )
-                        }
-
-                        if isDraggingHandle
-                            || PathCalculations.squaredDistance(from: startScaledPoint, to: midpoint)
-                                < CourtConstants.hitRadiusSquared
-                        {
-                            isDraggingHandle = true
-                            let newControlPoint = CGPoint(
-                                x: 2 * scaledPoint.x - 0.5 * startAthlete.position.x - 0.5 * endAthlete.position.x,
-                                y: 2 * scaledPoint.y - 0.5 * startAthlete.position.y - 0.5 * endAthlete.position.y
-                            )
-                            store.mutateAthleteTransition(
-                                from: startFormationID,
-                                to: endFormationID,
-                                athleteID: selectedAthleteID
-                            ) { transition in
-                                transition.pathControlPoint = newControlPoint
-                                transition.pathWaypoints = []
-                            }
-                            refreshFromStore()
-                            return
-                        }
+                for waypoint in transition.pathWaypoints {
+                    if PathCalculations.squaredDistance(from: startScaledPoint, to: waypoint.position)
+                        < CourtConstants.hitRadiusSquared
+                    {
+                        draggingWaypointID = waypoint.id
+                        isDraggingHandle = true
+                        return
                     }
                 }
 
-                if let athlete = player.currentAthletes.first(where: {
-                    PathCalculations.squaredDistance(from: startScaledPoint, to: $0.position) < CourtConstants.hitRadiusSquared
-                }) {
-                    selectedAthleteID = athlete.id
-                } else if !isDraggingHandle {
-                    selectedAthleteID = nil
+                let nodes = PathCalculations.waypointNodes(
+                    from: startAthlete.position,
+                    to: endAthlete.position,
+                    waypoints: transition.pathWaypoints
+                )
+                for segmentIndex in 0..<(nodes.count - 1) {
+                    let midpoint = CGPoint(
+                        x: (nodes[segmentIndex].x + nodes[segmentIndex + 1].x) / 2,
+                        y: (nodes[segmentIndex].y + nodes[segmentIndex + 1].y) / 2
+                    )
+                    if PathCalculations.squaredDistance(from: startScaledPoint, to: midpoint)
+                        < CourtConstants.hitRadiusSquared
+                    {
+                        let waypoint = PathWaypoint(position: midpoint, isSmooth: true)
+                        store.mutateAthleteTransition(
+                            from: startFormationID,
+                            to: endFormationID,
+                            athleteID: selectedAthleteID
+                        ) { transition in
+                            let insertIndex = min(segmentIndex, transition.pathWaypoints.count)
+                            transition.pathWaypoints.insert(waypoint, at: insertIndex)
+                            transition.pathControlPoint = nil
+                        }
+                        draggingWaypointID = waypoint.id
+                        isDraggingHandle = true
+                        refreshFromStore()
+                        return
+                    }
+                }
+            } else {
+                let midpoint: CGPoint
+                if let controlPoint = transition.pathControlPoint {
+                    midpoint = PathCalculations.quadraticBezierPoint(
+                        from: startAthlete.position,
+                        control: controlPoint,
+                        to: endAthlete.position,
+                        t: 0.5
+                    )
+                } else {
+                    midpoint = CGPoint(
+                        x: (startAthlete.position.x + endAthlete.position.x) / 2,
+                        y: (startAthlete.position.y + endAthlete.position.y) / 2
+                    )
+                }
+
+                if isDraggingHandle
+                    || PathCalculations.squaredDistance(from: startScaledPoint, to: midpoint)
+                        < CourtConstants.hitRadiusSquared
+                {
+                    isDraggingHandle = true
+                    let newControlPoint = CGPoint(
+                        x: 2 * scaledPoint.x - 0.5 * startAthlete.position.x - 0.5 * endAthlete.position.x,
+                        y: 2 * scaledPoint.y - 0.5 * startAthlete.position.y - 0.5 * endAthlete.position.y
+                    )
+                    store.mutateAthleteTransition(
+                        from: startFormationID,
+                        to: endFormationID,
+                        athleteID: selectedAthleteID
+                    ) { transition in
+                        transition.pathControlPoint = newControlPoint
+                        transition.pathWaypoints = []
+                    }
+                    refreshFromStore()
+                    return
                 }
             }
-            .onEnded { _ in
-                isDraggingHandle = false
-                draggingWaypointID = nil
-            }
+        }
+
+        if let athlete = player.currentAthletes.first(where: {
+            PathCalculations.squaredDistance(from: startScaledPoint, to: $0.position) < CourtConstants.hitRadiusSquared
+        }) {
+            selectedAthleteID = athlete.id
+        } else if !isDraggingHandle {
+            selectedAthleteID = nil
+        }
+    }
+
+    private func handlePathGestureEnded() {
+        isDraggingHandle = false
+        draggingWaypointID = nil
     }
 
     private func waypointDoubleTapGesture(cellSize: CGFloat, offset: CGPoint) -> some Gesture {
         SpatialTapGesture(count: 2)
             .onEnded { value in
+                guard interactionMode == .editPath else { return }
                 guard
                     let selectedAthleteID,
                     let selectedAthlete = player.currentAthletes.first(where: { $0.id == selectedAthleteID })
@@ -626,6 +953,12 @@ struct TransitionPlayerView: View {
             }
     }
 
+    private func editableAthlete(at point: CGPoint) -> RenderedAthlete? {
+        editableAthletes.first(where: {
+            PathCalculations.squaredDistance(from: point, to: $0.position) < CourtConstants.hitRadiusSquared
+        })
+    }
+
     private func clearPath() {
         guard let selectedAthleteID else { return }
         store.mutateAthleteTransition(from: startFormationID, to: endFormationID, athleteID: selectedAthleteID) { transition in
@@ -636,7 +969,9 @@ struct TransitionPlayerView: View {
     }
 
     private func ensureCurve() {
-        guard let selectedAthleteID, let startAthlete = selectedStartAthlete, let endAthlete = selectedEndAthlete else { return }
+        guard let selectedAthleteID, let startAthlete = selectedStartAthlete, let endAthlete = selectedEndAthlete else {
+            return
+        }
 
         store.mutateAthleteTransition(from: startFormationID, to: endFormationID, athleteID: selectedAthleteID) { transition in
             guard transition.pathControlPoint == nil && transition.pathWaypoints.isEmpty else { return }
@@ -650,7 +985,9 @@ struct TransitionPlayerView: View {
     }
 
     private func addWaypoint() {
-        guard let selectedAthleteID, let startAthlete = selectedStartAthlete, let endAthlete = selectedEndAthlete else { return }
+        guard let selectedAthleteID, let startAthlete = selectedStartAthlete, let endAthlete = selectedEndAthlete else {
+            return
+        }
 
         store.mutateAthleteTransition(from: startFormationID, to: endFormationID, athleteID: selectedAthleteID) { transition in
             if transition.pathWaypoints.isEmpty {
@@ -674,8 +1011,7 @@ struct TransitionPlayerView: View {
     }
 
     private func resetAllPaths() {
-        isDraggingHandle = false
-        draggingWaypointID = nil
+        clearCanvasInteractionState()
 
         store.mutateTransitionSpec(from: startFormationID, to: endFormationID) { spec in
             for index in spec.athleteTransitions.indices {
@@ -684,6 +1020,19 @@ struct TransitionPlayerView: View {
             }
         }
         refreshFromStore()
+    }
+
+    private func resetPreviewInteractionMode() {
+        interactionMode = .editSpots
+        selectedAthleteID = nil
+        clearCanvasInteractionState()
+    }
+
+    private func clearCanvasInteractionState() {
+        isDraggingHandle = false
+        draggingWaypointID = nil
+        editableDragStartPosition = nil
+        activeAlignmentGuides = []
     }
 
     private func speedSelection(for value: CGFloat) -> CGFloat {
@@ -699,8 +1048,8 @@ struct TransitionPlayerView: View {
         )
     }
 
-    private func formatTime(_ seconds: CGFloat) -> String {
-        String(format: "%.1fs", max(0, seconds))
+    private func clampedCoordinate(_ value: CGFloat, upperBound: CGFloat) -> CGFloat {
+        max(0, min(upperBound, round(value)))
     }
 
     private func banner(text: String, color: Color) -> some View {
@@ -722,15 +1071,46 @@ struct TransitionPlayerView: View {
 #Preview {
     struct PreviewWrapper: View {
         @StateObject private var store = RoutineStore()
+        @State private var previewReferenceMode: PreviewReferenceMode = .intoSelected
 
         var body: some View {
             Group {
                 if store.routine.formations.count > 1 {
-                    TransitionPlayerView(
-                        store: store,
-                        startFormationID: store.routine.formations[0].id,
-                        endFormationID: store.routine.formations[1].id
+                    let selectedIndex = 1
+                    let selectedFormation = store.routine.formations[selectedIndex]
+                    let pair = previewReferenceMode.transitionPair(
+                        in: store.routine.formations,
+                        selectedIndex: selectedIndex
+                    )!
+                    let player = TransitionPlayer(
+                        startAthletes: store.renderedAthletes(for: pair.start.id),
+                        endAthletes: store.renderedAthletes(for: pair.end.id),
+                        transitionSpec: store.transitionSpec(for: pair.start.id, to: pair.end.id)
                     )
+
+                    HStack(spacing: 0) {
+                        TransitionTransportSidebarView(
+                            player: player,
+                            startFormationName: pair.start.name,
+                            endFormationName: pair.end.name
+                        )
+
+                        Divider()
+
+                        TransitionPlayerView(
+                            store: store,
+                            player: player,
+                            startFormationID: pair.start.id,
+                            endFormationID: pair.end.id,
+                            selectedFormationName: selectedFormation.name,
+                            previewReferenceMode: $previewReferenceMode,
+                            editableEndpoint: previewReferenceMode.editableEndpoint,
+                            onSelectPreviousFormation: {},
+                            onSelectNextFormation: {},
+                            canSelectPreviousFormation: true,
+                            canSelectNextFormation: true
+                        )
+                    }
                 } else {
                     Text("Preparing preview...")
                         .onAppear {

@@ -22,6 +22,7 @@ struct FloorGridView: View {
     @State private var swapSourceAthleteID: UUID?
     @State private var collisionMessage: String?
     @State private var hasMadeFirstSelection = false
+    @State private var activeAlignmentGuides: [AlignmentGuideRenderItem] = []
 
     private var formationIndex: Int? {
         store.formationIndex(id: formationID)
@@ -73,6 +74,7 @@ struct FloorGridView: View {
             isSwapMode = false
             swapSourceAthleteID = nil
             collisionMessage = nil
+            activeAlignmentGuides = []
         }
         .onChange(of: selectedAthleteIDs) { _, newSelection in
             if !newSelection.isEmpty {
@@ -218,6 +220,7 @@ struct FloorGridView: View {
                 FloorCanvasView(
                     athletes: renderedAthletes,
                     selectedAthleteIDs: selectedAthleteIDs,
+                    alignmentGuides: activeAlignmentGuides,
                     collisionIDs: collisionSummary.ids,
                     cellSize: cellSize,
                     offset: offset,
@@ -312,7 +315,7 @@ struct FloorGridView: View {
                             .frame(width: 12, height: 12)
                         Text(athlete.label)
                         Spacer()
-                        Text(athlete.role.rawValue.capitalized)
+                        Text(athlete.role.displayName)
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
@@ -406,10 +409,13 @@ struct FloorGridView: View {
                 }
 
                 if isDraggingAthletes {
-                    let translation = CGPoint(
+                    let rawTranslation = CGPoint(
                         x: value.translation.width / cellSize,
                         y: value.translation.height / cellSize
                     )
+                    let snapResult = snappingResult(for: rawTranslation)
+                    activeAlignmentGuides = snapResult.guides
+
                     store.mutateFormation(id: formationID) { formation in
                         for athleteID in selectedAthleteIDs {
                             guard
@@ -418,13 +424,14 @@ struct FloorGridView: View {
                             else { continue }
 
                             let nextPosition = CGPoint(
-                                x: max(0, min(CourtConstants.width, round(startPosition.x + translation.x))),
-                                y: max(0, min(CourtConstants.height, round(startPosition.y + translation.y)))
+                                x: clampedCoordinate(startPosition.x + snapResult.translation.x, upperBound: CourtConstants.width),
+                                y: clampedCoordinate(startPosition.y + snapResult.translation.y, upperBound: CourtConstants.height)
                             )
                             formation.placements[placementIndex].position = nextPosition
                         }
                     }
                 } else if isDrawingSelectionBox {
+                    activeAlignmentGuides = []
                     selectionRect = CGRect(
                         x: min(selectionStartPoint.x, value.location.x),
                         y: min(selectionStartPoint.y, value.location.y),
@@ -439,6 +446,7 @@ struct FloorGridView: View {
                     isDrawingSelectionBox = false
                     selectionRect = nil
                     dragStartPositions = [:]
+                    activeAlignmentGuides = []
                 }
 
                 if isSwapMode, let swapSourceAthleteID {
@@ -480,6 +488,25 @@ struct FloorGridView: View {
                     }
                 }
             }
+    }
+
+    private func snappingResult(for translation: CGPoint) -> SnapResult {
+        guard !dragStartPositions.isEmpty else {
+            return SnapResult(translation: translation, guides: [])
+        }
+
+        let result = AlignmentSnapEngine.snap(
+            translation: translation,
+            startingPositions: Array(dragStartPositions.values),
+            otherAthletePositions: renderedAthletes
+                .filter { !selectedAthleteIDs.contains($0.id) }
+                .map(\.position)
+        )
+        return SnapResult(translation: result.translation, guides: result.guides)
+    }
+
+    private func clampedCoordinate(_ value: CGFloat, upperBound: CGFloat) -> CGFloat {
+        max(0, min(upperBound, round(value)))
     }
 
     private func addAthlete() {
@@ -537,6 +564,11 @@ struct FloorGridView: View {
             lastZoomScale = 1.0
         }
     }
+}
+
+private struct SnapResult {
+    let translation: CGPoint
+    let guides: [AlignmentGuideRenderItem]
 }
 
 // MARK: - Previews

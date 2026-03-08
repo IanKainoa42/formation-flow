@@ -9,6 +9,9 @@ struct RoutineWorkspaceView: View {
     }
 
     @StateObject private var store = RoutineStore()
+    @StateObject private var previewSession = TransitionPreviewSession()
+    @AppStorage("preview.reference.mode") private var previewReferenceModeRaw = PreviewReferenceMode.intoSelected.rawValue
+
     @State private var selectedFormationID: UUID?
     @State private var detailMode: DetailMode = .edit
     @State private var showingResetConfirmation = false
@@ -25,10 +28,26 @@ struct RoutineWorkspaceView: View {
         return store.routine.formations[selectedFormationIndex]
     }
 
-    private var nextFormationID: UUID? {
-        guard let selectedFormationIndex, store.routine.formations.indices.contains(selectedFormationIndex + 1)
-        else { return nil }
-        return store.routine.formations[selectedFormationIndex + 1].id
+    private var previewReferenceMode: PreviewReferenceMode {
+        get { PreviewReferenceMode(rawValue: previewReferenceModeRaw) ?? .intoSelected }
+        nonmutating set { previewReferenceModeRaw = newValue.rawValue }
+    }
+
+    private var previewTransitionPair: (start: Formation, end: Formation)? {
+        previewReferenceMode.transitionPair(
+            in: store.routine.formations,
+            selectedIndex: selectedFormationIndex
+        )
+    }
+
+    private var canSelectPreviousFormation: Bool {
+        guard let selectedFormationIndex else { return false }
+        return store.routine.formations.indices.contains(selectedFormationIndex - 1)
+    }
+
+    private var canSelectNextFormation: Bool {
+        guard let selectedFormationIndex else { return false }
+        return store.routine.formations.indices.contains(selectedFormationIndex + 1)
     }
 
     private var showingRenamePrompt: Binding<Bool> {
@@ -54,16 +73,31 @@ struct RoutineWorkspaceView: View {
             if selectedFormationID == nil {
                 selectedFormationID = store.routine.formations.first?.id
             }
+            refreshPreviewSession()
         }
         .onChange(of: store.routine.formations) { _, formations in
             if formations.isEmpty {
                 selectedFormationID = nil
+            } else if let selectedFormationID, formations.contains(where: { $0.id == selectedFormationID }) {
+                refreshPreviewSession()
                 return
+            } else {
+                selectedFormationID = formations.first?.id
             }
-            if let selectedFormationID, formations.contains(where: { $0.id == selectedFormationID }) {
-                return
-            }
-            self.selectedFormationID = formations.first?.id
+
+            refreshPreviewSession()
+        }
+        .onChange(of: store.routine) { _, _ in
+            refreshPreviewSession()
+        }
+        .onChange(of: selectedFormationID) { _, _ in
+            refreshPreviewSession()
+        }
+        .onChange(of: detailMode) { _, _ in
+            refreshPreviewSession()
+        }
+        .onChange(of: previewReferenceModeRaw) { _, _ in
+            refreshPreviewSession()
         }
         .confirmationDialog(
             "Reset routine?",
@@ -74,6 +108,7 @@ struct RoutineWorkspaceView: View {
                 store.resetRoutine()
                 selectedFormationID = store.routine.formations.first?.id
                 detailMode = .edit
+                refreshPreviewSession()
             }
         } message: {
             Text("This clears the current routine and starts over with one empty formation.")
@@ -87,9 +122,7 @@ struct RoutineWorkspaceView: View {
                 guard let selectedFormationID else { return }
                 store.deleteFormation(id: selectedFormationID)
                 self.selectedFormationID = store.routine.formations.first?.id
-                if nextFormationID == nil {
-                    detailMode = .edit
-                }
+                refreshPreviewSession()
             }
         } message: {
             Text("This removes the formation and updates adjacent transition previews.")
@@ -108,7 +141,17 @@ struct RoutineWorkspaceView: View {
         }
     }
 
+    @ViewBuilder
     private var sidebar: some View {
+        switch detailMode {
+        case .edit:
+            formationSidebar
+        case .preview:
+            previewSidebar
+        }
+    }
+
+    private var formationSidebar: some View {
         List(selection: $selectedFormationID) {
             Section {
                 ForEach(store.routine.formations) { formation in
@@ -180,6 +223,19 @@ struct RoutineWorkspaceView: View {
     }
 
     @ViewBuilder
+    private var previewSidebar: some View {
+        if let previewTransitionPair, let player = previewSession.player {
+            TransitionTransportSidebarView(
+                player: player,
+                startFormationName: previewTransitionPair.start.name,
+                endFormationName: previewTransitionPair.end.name
+            )
+        } else {
+            previewSidebarUnavailable
+        }
+    }
+
+    @ViewBuilder
     private var detailView: some View {
         if let selectedFormation, let selectedFormationID {
             VStack(spacing: 0) {
@@ -191,11 +247,22 @@ struct RoutineWorkspaceView: View {
                         onDuplicateAsNext: duplicateSelectedFormation
                     )
                 case .preview:
-                    if let nextFormationID {
+                    if let previewTransitionPair, let player = previewSession.player {
                         TransitionPlayerView(
                             store: store,
-                            startFormationID: selectedFormationID,
-                            endFormationID: nextFormationID
+                            player: player,
+                            startFormationID: previewTransitionPair.start.id,
+                            endFormationID: previewTransitionPair.end.id,
+                            selectedFormationName: selectedFormation.name,
+                            previewReferenceMode: Binding(
+                                get: { previewReferenceMode },
+                                set: { previewReferenceMode = $0 }
+                            ),
+                            editableEndpoint: previewReferenceMode.editableEndpoint,
+                            onSelectPreviousFormation: selectPreviousFormation,
+                            onSelectNextFormation: selectNextFormation,
+                            canSelectPreviousFormation: canSelectPreviousFormation,
+                            canSelectNextFormation: canSelectNextFormation
                         )
                     } else {
                         previewEmptyState
@@ -238,8 +305,8 @@ struct RoutineWorkspaceView: View {
 
     private var detailModeControl: some View {
         HStack(spacing: 0) {
-            modeButton(title: "Edit", mode: .edit, disabled: false)
-            modeButton(title: "Preview", mode: .preview, disabled: nextFormationID == nil)
+            modeButton(title: "Edit", mode: .edit)
+            modeButton(title: "Preview", mode: .preview)
         }
         .padding(4)
         .background(Color.secondary.opacity(0.12))
@@ -280,26 +347,29 @@ struct RoutineWorkspaceView: View {
         }
     }
 
-    private func modeButton(title: String, mode: DetailMode, disabled: Bool) -> some View {
+    private func modeButton(title: String, mode: DetailMode) -> some View {
         Button {
-            guard !disabled else { return }
             detailMode = mode
         } label: {
             Text(title)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, minHeight: 44)
                 .background(
                     RoundedRectangle(cornerRadius: 10)
                         .fill(detailMode == mode ? Color.accentColor : Color.clear)
                 )
-                .foregroundColor(
-                    disabled
-                        ? .secondary
-                        : (detailMode == mode ? .white : .primary)
-                )
+                .foregroundColor(detailMode == mode ? .white : .primary)
         }
+        .contentShape(RoundedRectangle(cornerRadius: 10))
         .buttonStyle(.plain)
-        .disabled(disabled)
+    }
+
+    private var previewSidebarUnavailable: some View {
+        ContentUnavailableView(
+            "Transport unavailable",
+            systemImage: "play.slash",
+            description: Text("Choose a formation with a playable preview pair to use transport controls.")
+        )
+        .navigationTitle("Transport")
     }
 
     private var previewEmptyState: some View {
@@ -309,14 +379,22 @@ struct RoutineWorkspaceView: View {
                 Image(systemName: "play.slash")
                     .font(.system(size: 48))
                     .foregroundColor(.accentColor)
-                Text("Preview needs a next formation")
+                Text(previewReferenceMode.emptyStateTitle)
                     .font(.title2.weight(.semibold))
-                Text("Duplicate this formation to create the next picture.")
+                Text(previewReferenceMode.emptyStateMessage)
                     .foregroundColor(.secondary)
-                Button(action: duplicateSelectedFormation) {
-                    Label("Duplicate as Next Formation", systemImage: "plus.square.on.square")
+                    .multilineTextAlignment(.center)
+                if previewReferenceMode == .outOfSelected {
+                    Button(action: duplicateSelectedFormation) {
+                        Label("Duplicate as Next Formation", systemImage: "plus.square.on.square")
+                    }
+                    .buttonStyle(.borderedProminent)
+                } else {
+                    Button("Use Outgoing Preview") {
+                        previewReferenceMode = .outOfSelected
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
-                .buttonStyle(.borderedProminent)
             }
             .padding(28)
             .background(.thinMaterial)
@@ -330,6 +408,21 @@ struct RoutineWorkspaceView: View {
         guard let selectedFormationID else { return }
         self.selectedFormationID = store.duplicateFormation(after: selectedFormationID)
         detailMode = .edit
+        refreshPreviewSession()
+    }
+
+    private func selectPreviousFormation() {
+        guard let selectedFormationIndex, store.routine.formations.indices.contains(selectedFormationIndex - 1) else {
+            return
+        }
+        selectedFormationID = store.routine.formations[selectedFormationIndex - 1].id
+    }
+
+    private func selectNextFormation() {
+        guard let selectedFormationIndex, store.routine.formations.indices.contains(selectedFormationIndex + 1) else {
+            return
+        }
+        selectedFormationID = store.routine.formations[selectedFormationIndex + 1].id
     }
 
     private func beginRenaming(_ formation: Formation) {
@@ -349,6 +442,22 @@ struct RoutineWorkspaceView: View {
 
         self.renamingFormationID = nil
         formationNameDraft = ""
+    }
+
+    private func refreshPreviewSession() {
+        guard
+            detailMode == .preview,
+            let previewTransitionPair
+        else {
+            previewSession.clear()
+            return
+        }
+
+        previewSession.configure(
+            store: store,
+            startFormationID: previewTransitionPair.start.id,
+            endFormationID: previewTransitionPair.end.id
+        )
     }
 }
 
