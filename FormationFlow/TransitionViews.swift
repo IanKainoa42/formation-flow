@@ -492,26 +492,21 @@ struct TransitionPlayerView: View {
                     Text(TransitionCountFormatting.label(player.counts))
                         .font(.system(.body, design: .monospaced))
                 }
+                HStack(spacing: 8) {
+                    ForEach([4, 8, 16, 32], id: \.self) { count in
+                        Button("\(count)") {
+                            setTransitionCounts(CGFloat(count))
+                            refreshFromStore()
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(player.counts == CGFloat(count) ? .accentColor : .secondary)
+                    }
+                }
                 Slider(
                     value: Binding(
                         get: { player.counts },
                         set: { newValue in
-                            store.mutateTransitionSpec(from: startFormationID, to: endFormationID) { spec in
-                                spec.counts = max(1, newValue.rounded())
-                                let maxTimingValue = CGFloat(spec.counts)
-                                for athleteIndex in spec.athleteTransitions.indices {
-                                    spec.athleteTransitions[athleteIndex].moveDelayCounts = min(
-                                        spec.athleteTransitions[athleteIndex].moveDelayCounts,
-                                        maxTimingValue
-                                    )
-                                    for waypointIndex in spec.athleteTransitions[athleteIndex].pathWaypoints.indices {
-                                        spec.athleteTransitions[athleteIndex].pathWaypoints[waypointIndex].holdCounts = min(
-                                            spec.athleteTransitions[athleteIndex].pathWaypoints[waypointIndex].holdCounts,
-                                            maxTimingValue
-                                        )
-                                    }
-                                }
-                            }
+                            setTransitionCounts(newValue)
                             refreshFromStore()
                         }
                     ),
@@ -1046,6 +1041,25 @@ struct TransitionPlayerView: View {
             endAthletes: store.renderedAthletes(for: endFormationID),
             transitionSpec: store.transitionSpec(for: startFormationID, to: endFormationID)
         )
+    }
+
+    private func setTransitionCounts(_ newValue: CGFloat) {
+        store.mutateTransitionSpec(from: startFormationID, to: endFormationID) { spec in
+            spec.counts = max(1, newValue.rounded())
+            let maxTimingValue = CGFloat(spec.counts)
+            for athleteIndex in spec.athleteTransitions.indices {
+                spec.athleteTransitions[athleteIndex].moveDelayCounts = min(
+                    spec.athleteTransitions[athleteIndex].moveDelayCounts,
+                    maxTimingValue
+                )
+                for waypointIndex in spec.athleteTransitions[athleteIndex].pathWaypoints.indices {
+                    spec.athleteTransitions[athleteIndex].pathWaypoints[waypointIndex].holdCounts = min(
+                        spec.athleteTransitions[athleteIndex].pathWaypoints[waypointIndex].holdCounts,
+                        maxTimingValue
+                    )
+                }
+            }
+        }
     }
 
     private func clampedCoordinate(_ value: CGFloat, upperBound: CGFloat) -> CGFloat {

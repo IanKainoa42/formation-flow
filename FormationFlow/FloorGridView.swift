@@ -23,6 +23,8 @@ struct FloorGridView: View {
     @State private var collisionMessage: String?
     @State private var hasMadeFirstSelection = false
     @State private var activeAlignmentGuides: [AlignmentGuideRenderItem] = []
+    @State private var rosterDeleteIDs: [UUID] = []
+    @State private var collisionCycleIndex: Int = 0
 
     private var formationIndex: Int? {
         store.formationIndex(id: formationID)
@@ -39,6 +41,10 @@ struct FloorGridView: View {
 
     private var collisionSummary: (count: Int, ids: Set<UUID>) {
         PathCalculations.collisionSummary(in: renderedAthletes)
+    }
+
+    private var collidingAthletes: [RenderedAthlete] {
+        renderedAthletes.filter { collisionSummary.ids.contains($0.id) }
     }
 
     private var selectedAthleteID: UUID? {
@@ -75,6 +81,7 @@ struct FloorGridView: View {
             swapSourceAthleteID = nil
             collisionMessage = nil
             activeAlignmentGuides = []
+            collisionCycleIndex = 0
         }
         .onChange(of: selectedAthleteIDs) { _, newSelection in
             if !newSelection.isEmpty {
@@ -108,15 +115,31 @@ struct FloorGridView: View {
     private var controlStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 12) {
-                if collisionSummary.count > 0 {
-                    Button(action: cycleCollidingSelection) {
+                if !collidingAthletes.isEmpty {
+                    HStack(spacing: 4) {
+                        Button {
+                            collisionCycleIndex = (collisionCycleIndex - 1 + collidingAthletes.count) % collidingAthletes.count
+                            selectCollision(at: collisionCycleIndex)
+                        } label: {
+                            Image(systemName: "chevron.left")
+                        }
+                        .buttonStyle(.bordered)
+
                         Label(
-                            "\(collisionSummary.count) collisions",
+                            "\(collisionCycleIndex + 1)/\(collidingAthletes.count) collisions",
                             systemImage: "exclamationmark.triangle.fill"
                         )
                         .foregroundColor(.red)
+                        .font(.subheadline.weight(.medium))
+
+                        Button {
+                            collisionCycleIndex = (collisionCycleIndex + 1) % collidingAthletes.count
+                            selectCollision(at: collisionCycleIndex)
+                        } label: {
+                            Image(systemName: "chevron.right")
+                        }
+                        .buttonStyle(.bordered)
                     }
-                    .buttonStyle(.bordered)
                 }
 
                 Button(action: addAthlete) {
@@ -144,6 +167,14 @@ struct FloorGridView: View {
                     Label("Notes", systemImage: "note.text")
                 }
                 .buttonStyle(.bordered)
+                .overlay(alignment: .topTrailing) {
+                    if formation?.notes.isEmpty == false {
+                        Circle()
+                            .fill(.orange)
+                            .frame(width: 8, height: 8)
+                            .offset(x: 2, y: -2)
+                    }
+                }
 
                 Button(action: undoLastMove) {
                     Label("Undo Move", systemImage: "arrow.uturn.backward")
@@ -270,6 +301,7 @@ struct FloorGridView: View {
                     athlete: selectedRosterAthlete,
                     position: selectedPlacement.position,
                     isSwapMode: isSwapMode,
+                    formationCount: store.routine.formations.count,
                     onUpdateLabel: { newLabel in
                         store.mutateRosterAthlete(id: selectedRosterAthlete.id) { athlete in
                             athlete.label = newLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -324,12 +356,26 @@ struct FloorGridView: View {
                     store.moveRoster(fromOffsets: from, toOffset: to)
                 }
                 .onDelete { offsets in
-                    let ids = offsets.map { store.routine.roster[$0].id }
-                    for id in ids {
+                    rosterDeleteIDs = offsets.map { store.routine.roster[$0].id }
+                }
+            }
+            .confirmationDialog(
+                "Delete \(rosterDeleteIDs.count == 1 ? "this athlete" : "these athletes")?",
+                isPresented: Binding(
+                    get: { !rosterDeleteIDs.isEmpty },
+                    set: { if !$0 { rosterDeleteIDs = [] } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) {
+                    for id in rosterDeleteIDs {
                         store.deleteAthlete(id: id)
                     }
-                    selectedAthleteIDs.subtract(ids)
+                    selectedAthleteIDs.subtract(rosterDeleteIDs)
+                    rosterDeleteIDs = []
                 }
+            } message: {
+                Text("This will remove them from all \(store.routine.formations.count) formations and their transitions.")
             }
             .navigationTitle("Manage Roster")
             .toolbar {
@@ -542,20 +588,11 @@ struct FloorGridView: View {
         }
     }
 
-    private func cycleCollidingSelection() {
-        let collidingAthletes = renderedAthletes.filter { collisionSummary.ids.contains($0.id) }
+    private func selectCollision(at index: Int) {
         guard !collidingAthletes.isEmpty else { return }
-
-        if let current = selectedAthleteID,
-            let currentIndex = collidingAthletes.firstIndex(where: { $0.id == current })
-        {
-            let nextIndex = (currentIndex + 1) % collidingAthletes.count
-            selectedAthleteIDs = [collidingAthletes[nextIndex].id]
-        } else {
-            selectedAthleteIDs = [collidingAthletes[0].id]
-        }
-
-        collisionMessage = "\(collisionSummary.count) athletes are within 2ft. Tap again to cycle the selection."
+        let safeIndex = index % collidingAthletes.count
+        selectedAthleteIDs = [collidingAthletes[safeIndex].id]
+        collisionMessage = "\(collidingAthletes.count) athletes are within 2ft. Use arrows to cycle."
     }
 
     private func resetView() {

@@ -156,13 +156,7 @@ struct RoutineWorkspaceView: View {
             Section {
                 ForEach(store.routine.formations) { formation in
                     HStack(spacing: 12) {
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.accentColor.opacity(0.12))
-                            .frame(width: 34, height: 34)
-                            .overlay {
-                                Image(systemName: "square.grid.2x2")
-                                    .foregroundColor(.accentColor)
-                            }
+                        FormationThumbnailView(athletes: store.renderedAthletes(for: formation))
 
                         VStack(alignment: .leading, spacing: 4) {
                             Text(formation.name)
@@ -457,6 +451,39 @@ struct RoutineWorkspaceView: View {
             store: store,
             startFormationID: previewTransitionPair.start.id,
             endFormationID: previewTransitionPair.end.id
+        )
+    }
+}
+
+// MARK: - Formation Thumbnail
+
+private struct FormationThumbnailView: View {
+    let athletes: [RenderedAthlete]
+
+    var body: some View {
+        Canvas { context, size in
+            let scaleX = size.width / CourtConstants.width
+            let scaleY = size.height / CourtConstants.height
+            let radius: CGFloat = 2
+
+            for athlete in athletes {
+                let center = CGPoint(
+                    x: athlete.position.x * scaleX,
+                    y: athlete.position.y * scaleY
+                )
+                let rect = CGRect(
+                    x: center.x - radius,
+                    y: center.y - radius,
+                    width: radius * 2,
+                    height: radius * 2
+                )
+                context.fill(Path(ellipseIn: rect), with: .color(athlete.role.color))
+            }
+        }
+        .frame(width: 34, height: 34)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.accentColor.opacity(0.12))
         )
     }
 }

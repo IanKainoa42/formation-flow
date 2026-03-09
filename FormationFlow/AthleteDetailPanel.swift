@@ -6,6 +6,7 @@ struct AthleteInspectorView: View {
     let athlete: RosterAthlete
     let position: CGPoint
     let isSwapMode: Bool
+    let formationCount: Int
     var onUpdateLabel: (String) -> Void
     var onUpdateRole: (AthleteRole) -> Void
     var onSwap: () -> Void
@@ -87,6 +88,8 @@ struct AthleteInspectorView: View {
             titleVisibility: .visible
         ) {
             Button("Delete Athlete", role: .destructive, action: onDelete)
+        } message: {
+            Text("This will remove them from all \(formationCount) formations and their transitions.")
         }
     }
 }
