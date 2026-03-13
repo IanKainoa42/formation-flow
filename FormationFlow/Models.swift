@@ -155,9 +155,9 @@ enum PreviewReferenceMode: String, Codable, CaseIterable, Hashable, Identifiable
     var description: String {
         switch self {
         case .intoSelected:
-            return "Preview the transition from the prior formation into the selected one."
+            return "Transition from the prior formation into the selected one."
         case .outOfSelected:
-            return "Preview the transition from the selected formation into the next one."
+            return "Transition from the selected formation into the next one."
         }
     }
 
@@ -167,24 +167,6 @@ enum PreviewReferenceMode: String, Codable, CaseIterable, Hashable, Identifiable
             return .start
         case .outOfSelected:
             return .end
-        }
-    }
-
-    var emptyStateTitle: String {
-        switch self {
-        case .intoSelected:
-            return "Preview needs a previous formation"
-        case .outOfSelected:
-            return "Preview needs a next formation"
-        }
-    }
-
-    var emptyStateMessage: String {
-        switch self {
-        case .intoSelected:
-            return "Select any formation after the first, or switch the preview preference to look forward instead."
-        case .outOfSelected:
-            return "Duplicate this formation to create the next picture, or switch the preview preference to look backward instead."
         }
     }
 
@@ -451,8 +433,25 @@ struct TransitionPathRenderItem: Identifiable, Equatable, Hashable {
     let endPosition: CGPoint
     let controlPoint: CGPoint?
     let waypoints: [PathWaypoint]
+    let moveDelay: CGFloat
 
     var id: UUID { athleteID }
+
+    init(
+        athleteID: UUID,
+        startPosition: CGPoint,
+        endPosition: CGPoint,
+        controlPoint: CGPoint?,
+        waypoints: [PathWaypoint],
+        moveDelay: CGFloat = 0
+    ) {
+        self.athleteID = athleteID
+        self.startPosition = startPosition
+        self.endPosition = endPosition
+        self.controlPoint = controlPoint
+        self.waypoints = waypoints
+        self.moveDelay = moveDelay
+    }
 }
 
 enum PreviewEditableEndpoint: Hashable {
@@ -649,8 +648,6 @@ enum AlignmentSnapEngine {
         }
 
         let center = length / 2
-        let quarterValues = [length / 4, length * 3 / 4]
-        let eighthValues = [length / 8, length * 3 / 8, length * 5 / 8, length * 7 / 8]
 
         candidates.append(
             SnapGuideCandidate(
@@ -660,18 +657,12 @@ enum AlignmentSnapEngine {
                 priority: 125
             )
         )
+
+        // Panel center guides at the midpoint of each 8ft panel (4, 12, 20, ...)
+        let panelCenters = stride(from: CGFloat(4), to: length, by: 8)
+            .filter { abs($0 - center) > 0.5 }
         candidates.append(
-            contentsOf: quarterValues.map {
-                SnapGuideCandidate(
-                    orientation: orientation,
-                    value: $0,
-                    emphasis: .strong,
-                    priority: 118
-                )
-            }
-        )
-        candidates.append(
-            contentsOf: eighthValues.map {
+            contentsOf: panelCenters.map {
                 SnapGuideCandidate(
                     orientation: orientation,
                     value: $0,
@@ -1053,7 +1044,8 @@ final class RoutineStore: ObservableObject {
                 startPosition: placement.position,
                 endPosition: endPosition,
                 controlPoint: athleteTransition.pathControlPoint,
-                waypoints: athleteTransition.pathWaypoints
+                waypoints: athleteTransition.pathWaypoints,
+                moveDelay: athleteTransition.moveDelay
             )
         }
     }
@@ -1614,26 +1606,95 @@ struct PathCalculations {
 
     static func findPathCollisionIDs(
         paths: [TransitionPathRenderItem],
-        steps: Int = 20,
+        counts: CGFloat = 8,
+        steps: Int = 60,
         minDistance: CGFloat = CourtConstants.collisionDistance
     ) -> Set<UUID> {
         guard paths.count > 1 else { return [] }
 
-        let sampledPaths: [[CGPoint]] = paths.map { item in
-            if !item.waypoints.isEmpty {
-                return waypointPath(
-                    from: item.startPosition,
-                    to: item.endPosition,
-                    waypoints: item.waypoints,
-                    steps: steps
-                )
-            }
-            return athletePath(
-                from: item.startPosition,
-                to: item.endPosition,
-                control: item.controlPoint,
-                steps: steps
+        // Compute per-athlete timing data (mirrors TransitionPlayer.updateAthletesForProgress)
+        struct AthleteTiming {
+            let item: TransitionPathRenderItem
+            let transition: AthleteTransition
+            let travel: CGFloat
+            let hold: CGFloat
+            let effectiveTime: CGFloat
+        }
+
+        let timings: [AthleteTiming] = paths.map { item in
+            let transition = AthleteTransition(
+                athleteID: item.athleteID,
+                moveDelay: item.moveDelay,
+                pathControlPoint: item.controlPoint,
+                pathWaypoints: item.waypoints
             )
+            let travel = travelDistance(from: item.startPosition, to: item.endPosition, transition: transition)
+            let hold = item.waypoints.reduce(CGFloat(0)) { $0 + $1.holdCounts }
+            return AthleteTiming(
+                item: item,
+                transition: transition,
+                travel: travel,
+                hold: hold,
+                effectiveTime: travel + hold
+            )
+        }
+
+        let maxEffectiveTime = timings.map(\.effectiveTime).max() ?? 1
+        let effectiveCounts = max(counts, 0.5)
+
+        // Sample each athlete's position at each time step
+        let sampledPositions: [[CGPoint]] = timings.map { timing in
+            var positions: [CGPoint] = []
+            for step in 0...steps {
+                let progress = CGFloat(step) / CGFloat(steps)
+                let durationFraction = maxEffectiveTime > 0 ? timing.effectiveTime / maxEffectiveTime : 1
+                let timingOffset = min(0.99, timing.item.moveDelay / effectiveCounts)
+                let adjustedProgress = max(0, progress - timingOffset) / (1.0 - timingOffset)
+                let athleteProgress = durationFraction > 0 ? min(1.0, adjustedProgress / durationFraction) : 1.0
+
+                let effectiveProgress: CGFloat
+                if !timing.item.waypoints.isEmpty && timing.hold > 0 {
+                    let thresholds = waypointProgressThresholds(
+                        from: timing.item.startPosition,
+                        to: timing.item.endPosition,
+                        waypoints: timing.item.waypoints
+                    )
+                    let moveDuration = durationFraction * effectiveCounts * (timing.travel / max(timing.effectiveTime, 0.001))
+                    effectiveProgress = holdAdjustedPathProgress(
+                        wallProgress: athleteProgress,
+                        waypoints: timing.item.waypoints,
+                        thresholds: thresholds,
+                        moveDuration: moveDuration,
+                        totalHoldTime: timing.hold
+                    )
+                } else {
+                    effectiveProgress = athleteProgress
+                }
+
+                let position: CGPoint
+                if !timing.item.waypoints.isEmpty {
+                    position = interpolateWaypointPath(
+                        from: timing.item.startPosition,
+                        to: timing.item.endPosition,
+                        waypoints: timing.item.waypoints,
+                        progress: effectiveProgress
+                    )
+                } else if let controlPoint = timing.item.controlPoint {
+                    position = quadraticBezierPoint(
+                        from: timing.item.startPosition,
+                        control: controlPoint,
+                        to: timing.item.endPosition,
+                        t: athleteProgress
+                    )
+                } else {
+                    position = CGPoint(
+                        x: timing.item.startPosition.x + (timing.item.endPosition.x - timing.item.startPosition.x) * athleteProgress,
+                        y: timing.item.startPosition.y + (timing.item.endPosition.y - timing.item.startPosition.y) * athleteProgress
+                    )
+                }
+                positions.append(position)
+            }
+            return positions
         }
 
         let minDistanceSquared = minDistance * minDistance
@@ -1641,8 +1702,8 @@ struct PathCalculations {
 
         for firstIndex in 0..<paths.count {
             for secondIndex in (firstIndex + 1)..<paths.count {
-                for step in 0..<min(sampledPaths[firstIndex].count, sampledPaths[secondIndex].count) {
-                    if squaredDistance(from: sampledPaths[firstIndex][step], to: sampledPaths[secondIndex][step])
+                for step in 0...steps {
+                    if squaredDistance(from: sampledPositions[firstIndex][step], to: sampledPositions[secondIndex][step])
                         < minDistanceSquared
                     {
                         collisionIDs.insert(paths[firstIndex].athleteID)

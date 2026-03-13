@@ -157,12 +157,13 @@ struct TransitionPlayerView: View {
     var canSelectNextFormation: Bool
 
     @State private var selectedAthleteID: UUID?
-    @State private var interactionMode: PreviewInteractionMode = .editSpots
+    @State private var interactionMode: PreviewInteractionMode = .editPath
     @State private var isDraggingHandle = false
     @State private var draggingWaypointID: UUID?
     @State private var editableDragStartPosition: CGPoint?
     @State private var activeAlignmentGuides: [AlignmentGuideRenderItem] = []
     @State private var showingResetAllPathsConfirmation = false
+    @State private var swapSourceAthleteID: UUID?
 
     private var transitionIdentity: String {
         "\(startFormationID.uuidString)-\(endFormationID.uuidString)"
@@ -214,7 +215,8 @@ struct TransitionPlayerView: View {
                 startPosition: athlete.position,
                 endPosition: endAthlete.position,
                 controlPoint: transition.pathControlPoint,
-                waypoints: transition.pathWaypoints
+                waypoints: transition.pathWaypoints,
+                moveDelay: transition.moveDelay
             )
         }
     }
@@ -244,7 +246,7 @@ struct TransitionPlayerView: View {
     }
 
     private var pathCollisionIDs: Set<UUID> {
-        PathCalculations.findPathCollisionIDs(paths: transitionPaths)
+        PathCalculations.findPathCollisionIDs(paths: transitionPaths, counts: CGFloat(player.counts))
     }
 
     private var selectedStartAthlete: RenderedAthlete? {
@@ -342,17 +344,27 @@ struct TransitionPlayerView: View {
                     alignmentGuides: activeAlignmentGuides,
                     pathCollisionIDs: pathCollisionIDs,
                     cellSize: cellSize,
-                    offset: offset
+                    offset: offset,
+                    swapSourceID: swapSourceAthleteID
                 )
                 .gesture(canvasGesture(cellSize: cellSize, offset: offset))
                 .simultaneousGesture(waypointDoubleTapGesture(cellSize: cellSize, offset: offset))
 
                 VStack(spacing: 10) {
-                    banner(text: canvasInstruction, color: .accentColor)
+                    if let swapSourceAthleteID,
+                       let rosterAthlete = store.routine.roster.first(where: { $0.id == swapSourceAthleteID })
+                    {
+                        banner(
+                            text: "Tap another athlete to swap with \(rosterAthlete.label).",
+                            color: .orange
+                        )
+                    } else {
+                        banner(text: canvasInstruction, color: .accentColor)
+                    }
 
                     if !pathCollisionIDs.isEmpty {
                         banner(
-                            text: "\(pathCollisionIDs.count) athletes have crossing paths inside this preview.",
+                            text: "\(pathCollisionIDs.count) athletes have crossing paths.",
                             color: .red
                         )
                     }
@@ -376,17 +388,40 @@ struct TransitionPlayerView: View {
         .background(.thinMaterial)
     }
 
+    private var canFlipDirection: Bool {
+        let selectedID = previewReferenceMode == .intoSelected ? endFormationID : startFormationID
+        guard let idx = store.formationIndex(id: selectedID) else { return false }
+        switch previewReferenceMode {
+        case .intoSelected:
+            return idx < store.routine.formations.count - 1
+        case .outOfSelected:
+            return idx > 0
+        }
+    }
+
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Preview Inspector")
+                    Text("Transition Inspector")
                         .font(.headline)
                     if let startFormation, let endFormation {
-                        Text("\(startFormation.name) → \(endFormation.name)")
-                            .font(.title3.weight(.semibold))
-                        Text("The selected formation stays anchored while preview lets you tune the counterpart picture and the path in one place.")
-                            .foregroundColor(.secondary)
+                        HStack(spacing: 6) {
+                            Text("\(startFormation.name) → \(endFormation.name)")
+                                .font(.title3.weight(.semibold))
+
+                            Button {
+                                previewReferenceMode = previewReferenceMode == .intoSelected
+                                    ? .outOfSelected : .intoSelected
+                            } label: {
+                                Image(systemName: "arrow.left.arrow.right")
+                                    .font(.caption.weight(.semibold))
+                                    .frame(width: 28, height: 28)
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(!canFlipDirection)
+                            .help("Flip direction")
+                        }
                     }
                 }
 
@@ -405,7 +440,7 @@ struct TransitionPlayerView: View {
 
     private var previewSettingsSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Preview")
+            Text("Navigation")
                 .font(.subheadline.weight(.semibold))
 
             VStack(alignment: .leading, spacing: 12) {
@@ -424,9 +459,6 @@ struct TransitionPlayerView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(selectedFormationName)
                             .font(.body.weight(.semibold))
-                        Text("Previewing \(previewReferenceMode == .intoSelected ? "into" : "out of") this picture")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
                     }
 
                     Spacer(minLength: 0)
@@ -438,23 +470,6 @@ struct TransitionPlayerView: View {
                     .buttonStyle(.bordered)
                     .disabled(!canSelectNextFormation)
                 }
-            }
-
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Preview Pairing")
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(.secondary)
-
-                Picker("Preview pairing", selection: $previewReferenceMode) {
-                    ForEach(PreviewReferenceMode.allCases) { mode in
-                        Text(mode.title).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-
-                Text(previewReferenceMode.description)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
             }
 
             VStack(alignment: .leading, spacing: 12) {
@@ -470,10 +485,6 @@ struct TransitionPlayerView: View {
                 .pickerStyle(.segmented)
 
                 Text(interactionMode.description)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                Label("Dragging now updates \(editableFormationName). \(readOnlyFormationName) stays read-only in preview.", systemImage: "scope")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -556,6 +567,7 @@ struct TransitionPlayerView: View {
                     Spacer()
                     Button {
                         selectedAthleteID = nil
+                        swapSourceAthleteID = nil
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(.secondary)
@@ -565,6 +577,23 @@ struct TransitionPlayerView: View {
 
                 Text("Starts at (\(Int(selectedStartAthlete.position.x)), \(Int(selectedStartAthlete.position.y))) and finishes at (\(Int(selectedEndAthlete.position.x)), \(Int(selectedEndAthlete.position.y))).")
                     .foregroundColor(.secondary)
+
+                Button {
+                    if swapSourceAthleteID == selectedAthleteID {
+                        swapSourceAthleteID = nil
+                    } else {
+                        swapSourceAthleteID = selectedAthleteID
+                    }
+                } label: {
+                    Label(
+                        swapSourceAthleteID == selectedAthleteID
+                            ? "Tap another athlete to swap"
+                            : "Swap Position",
+                        systemImage: "arrow.triangle.swap"
+                    )
+                }
+                .buttonStyle(.bordered)
+                .tint(swapSourceAthleteID == selectedAthleteID ? .orange : nil)
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Start Delay")
@@ -713,6 +742,7 @@ struct TransitionPlayerView: View {
     private func canvasGesture(cellSize: CGFloat, offset: CGPoint) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
+                if swapSourceAthleteID != nil { return }
                 switch interactionMode {
                 case .editSpots:
                     handleSpotGestureChanged(value, cellSize: cellSize, offset: offset)
@@ -721,6 +751,23 @@ struct TransitionPlayerView: View {
                 }
             }
             .onEnded { value in
+                if let swapSourceAthleteID {
+                    let tapPoint = CGPoint(
+                        x: (value.location.x - offset.x) / cellSize,
+                        y: (value.location.y - offset.y) / cellSize
+                    )
+                    if let targetAthlete = editableAthletes.first(where: {
+                        $0.id != swapSourceAthleteID
+                            && PathCalculations.squaredDistance(from: tapPoint, to: $0.position) < CourtConstants.hitRadiusSquared
+                    }) {
+                        store.swapPositions(in: editableFormationID, id1: swapSourceAthleteID, id2: targetAthlete.id)
+                        selectedAthleteID = targetAthlete.id
+                        refreshFromStore()
+                    }
+                    self.swapSourceAthleteID = nil
+                    return
+                }
+
                 switch interactionMode {
                 case .editSpots:
                     handleSpotGestureEnded(value, cellSize: cellSize, offset: offset)

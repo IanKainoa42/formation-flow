@@ -10,10 +10,10 @@ struct RoutineWorkspaceView: View {
 
     @StateObject private var store = RoutineStore()
     @StateObject private var previewSession = TransitionPreviewSession()
-    @AppStorage("preview.reference.mode") private var previewReferenceModeRaw = PreviewReferenceMode.intoSelected.rawValue
 
     @State private var selectedFormationID: UUID?
     @State private var detailMode: DetailMode = .edit
+    @State private var previewReferenceMode: PreviewReferenceMode = .intoSelected
     @State private var showingResetConfirmation = false
     @State private var showingDeleteConfirmation = false
     @State private var renamingFormationID: UUID?
@@ -28,9 +28,15 @@ struct RoutineWorkspaceView: View {
         return store.routine.formations[selectedFormationIndex]
     }
 
-    private var previewReferenceMode: PreviewReferenceMode {
-        get { PreviewReferenceMode(rawValue: previewReferenceModeRaw) ?? .intoSelected }
-        nonmutating set { previewReferenceModeRaw = newValue.rawValue }
+    private func smartPickReferenceMode() -> PreviewReferenceMode {
+        guard let selectedFormationIndex else { return .intoSelected }
+        if selectedFormationIndex > 0 {
+            return .intoSelected
+        }
+        if selectedFormationIndex < store.routine.formations.count - 1 {
+            return .outOfSelected
+        }
+        return .intoSelected
     }
 
     private var previewTransitionPair: (start: Formation, end: Formation)? {
@@ -91,12 +97,18 @@ struct RoutineWorkspaceView: View {
             refreshPreviewSession()
         }
         .onChange(of: selectedFormationID) { _, _ in
+            if detailMode == .preview {
+                previewReferenceMode = smartPickReferenceMode()
+            }
             refreshPreviewSession()
         }
-        .onChange(of: detailMode) { _, _ in
+        .onChange(of: detailMode) { _, newMode in
+            if newMode == .preview {
+                previewReferenceMode = smartPickReferenceMode()
+            }
             refreshPreviewSession()
         }
-        .onChange(of: previewReferenceModeRaw) { _, _ in
+        .onChange(of: previewReferenceMode) { _, _ in
             refreshPreviewSession()
         }
         .confirmationDialog(
@@ -248,10 +260,7 @@ struct RoutineWorkspaceView: View {
                             startFormationID: previewTransitionPair.start.id,
                             endFormationID: previewTransitionPair.end.id,
                             selectedFormationName: selectedFormation.name,
-                            previewReferenceMode: Binding(
-                                get: { previewReferenceMode },
-                                set: { previewReferenceMode = $0 }
-                            ),
+                            previewReferenceMode: $previewReferenceMode,
                             editableEndpoint: previewReferenceMode.editableEndpoint,
                             onSelectPreviousFormation: selectPreviousFormation,
                             onSelectNextFormation: selectNextFormation,
@@ -300,7 +309,7 @@ struct RoutineWorkspaceView: View {
     private var detailModeControl: some View {
         HStack(spacing: 0) {
             modeButton(title: "Edit", mode: .edit)
-            modeButton(title: "Preview", mode: .preview)
+            modeButton(title: "Transition", mode: .preview)
         }
         .padding(4)
         .background(Color.secondary.opacity(0.12))
@@ -373,22 +382,15 @@ struct RoutineWorkspaceView: View {
                 Image(systemName: "play.slash")
                     .font(.system(size: 48))
                     .foregroundColor(.accentColor)
-                Text(previewReferenceMode.emptyStateTitle)
+                Text("No adjacent formation")
                     .font(.title2.weight(.semibold))
-                Text(previewReferenceMode.emptyStateMessage)
+                Text("This formation needs a neighbor to show a transition. Add another formation to get started.")
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
-                if previewReferenceMode == .outOfSelected {
-                    Button(action: duplicateSelectedFormation) {
-                        Label("Duplicate as Next Formation", systemImage: "plus.square.on.square")
-                    }
-                    .buttonStyle(.borderedProminent)
-                } else {
-                    Button("Use Outgoing Preview") {
-                        previewReferenceMode = .outOfSelected
-                    }
-                    .buttonStyle(.borderedProminent)
+                Button(action: duplicateSelectedFormation) {
+                    Label("Duplicate as Next Formation", systemImage: "plus.square.on.square")
                 }
+                .buttonStyle(.borderedProminent)
             }
             .padding(28)
             .background(.thinMaterial)
