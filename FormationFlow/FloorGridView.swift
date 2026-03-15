@@ -364,10 +364,14 @@ struct FloorGridView: View {
                     } else {
                         HStack(spacing: 0) {
                             canvasArea
-                            Divider()
-                            inspectorPanel
-                                .frame(width: 320)
+                            if !selectedAthleteIDs.isEmpty {
+                                Divider()
+                                inspectorPanel
+                                    .frame(width: 320)
+                                    .transition(.move(edge: .trailing))
+                            }
                         }
+                        .animation(.easeInOut(duration: 0.2), value: selectedAthleteIDs.isEmpty)
                     }
                 }
             }

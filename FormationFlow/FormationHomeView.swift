@@ -272,28 +272,25 @@ struct RoutineWorkspaceView: View {
             editor
                 .navigationTitle(formation.name)
                 .navigationBarTitleDisplayMode(.inline)
-                .safeAreaInset(edge: .top, spacing: 0) {
-                    detailToolbar(for: formation)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button(action: toggleSidebar) {
+                            Image(systemName: splitViewVisibility == .detailOnly ? "sidebar.left" : "sidebar.leading")
+                        }
+                    }
+
+                    ToolbarItemGroup(placement: .navigationBarTrailing) {
+                        Button(action: duplicateSelectedFormation) {
+                            Label("Duplicate", systemImage: "plus.square.on.square")
+                        }
+
+                        Menu {
+                            formationOverflowMenu(for: formation)
+                        } label: {
+                            Label("More", systemImage: "ellipsis.circle")
+                        }
+                    }
                 }
-        }
-    }
-
-    private func detailToolbar(for formation: Formation) -> some View {
-        HStack(spacing: 12) {
-            Button(action: toggleSidebar) {
-                Image(systemName: splitViewVisibility == .detailOnly ? "sidebar.left" : "sidebar.leading")
-            }
-            .buttonStyle(.bordered)
-            .accessibilityLabel(splitViewVisibility == .detailOnly ? "Show formations" : "Hide formations")
-
-            Spacer(minLength: 0)
-            detailToolbarActions(for: formation)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(.bar)
-        .overlay(alignment: .bottom) {
-            Divider()
         }
     }
 
@@ -375,22 +372,6 @@ struct RoutineWorkspaceView: View {
         }
         .presentationDetents(isPhoneLayout ? [.large] : [.medium, .large])
         .presentationDragIndicator(.visible)
-    }
-
-    private func detailToolbarActions(for formation: Formation) -> some View {
-        HStack(spacing: 12) {
-            Button(action: duplicateSelectedFormation) {
-                Label("Duplicate", systemImage: "plus.square.on.square")
-            }
-            .buttonStyle(.borderedProminent)
-
-            Menu {
-                formationOverflowMenu(for: formation)
-            } label: {
-                Label("More", systemImage: "ellipsis.circle")
-            }
-            .buttonStyle(.bordered)
-        }
     }
 
     @ViewBuilder
