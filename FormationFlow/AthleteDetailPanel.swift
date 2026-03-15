@@ -3,6 +3,8 @@ import SwiftUI
 // MARK: - Inspector Components
 
 struct AthleteInspectorView: View {
+    private let swapButtonSymbolName = "arrow.triangle.2.circlepath"
+
     let athlete: RosterAthlete
     let position: CGPoint
     let isSwapMode: Bool
@@ -69,7 +71,7 @@ struct AthleteInspectorView: View {
                 Text("Actions")
                     .font(.subheadline.weight(.semibold))
                 Button(action: onSwap) {
-                    Label(isSwapMode ? "Tap another athlete on the court" : "Swap Position", systemImage: "arrow.triangle.swap")
+                    Label(isSwapMode ? "Cancel Swap" : "Swap Position", systemImage: swapButtonSymbolName)
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)

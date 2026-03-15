@@ -20,9 +20,11 @@ struct FloorGridView: View {
     @State private var showingNotesSheet = false
     @State private var showingInspectorSheet = false
     @State private var showingTransportSheet = false
+    @State private var showingPinnedInspector = false
     @State private var showingAthleteRenamePrompt = false
     @State private var athleteLabelDraft = ""
     @State private var showingAthleteDeleteConfirmation = false
+    @State private var showTransitionPaths = true
     @State private var isDraggingAthletes = false
     @State private var isPanningCanvas = false
     @State private var isDrawingSelectionBox = false
@@ -36,11 +38,11 @@ struct FloorGridView: View {
     @State private var lastCanvasPanOffset: CGSize = .zero
     @State private var isSwapMode = false
     @State private var swapSourceAthleteID: UUID?
-    @State private var collisionMessage: String?
     @State private var hasMadeFirstSelection = false
     @State private var activeAlignmentGuides: [AlignmentGuideRenderItem] = []
     @State private var rosterDeleteIDs: [UUID] = []
     @State private var collisionCycleIndex: Int = 0
+    @State private var pathCollisionCycleIndex: Int = 0
 
     // Transition editing state
     @State private var focusedEndpoint: PreviewEditableEndpoint?
@@ -248,20 +250,32 @@ struct FloorGridView: View {
         return "Inspect"
     }
 
-    private var compactBannerConfiguration: (text: String, color: Color)? {
-        if let collisionMessage {
-            return (collisionMessage, .red)
-        }
+    private var regularInspectButtonTitle: String {
+        showingPinnedInspector ? "Hide Inspector" : "Inspect"
+    }
 
+    private var pathCollidingAthletes: [RenderedAthlete] {
+        renderedAthletes.filter { pathCollisionIDs.contains($0.id) }
+    }
+
+    private var swapButtonSymbolName: String {
+        "arrow.triangle.2.circlepath"
+    }
+
+    private var swapButtonTitle: String {
+        isSwapMode ? "Cancel Swap" : "Swap Position"
+    }
+
+    private var swapButtonShortTitle: String {
+        isSwapMode ? "Cancel Swap" : "Swap"
+    }
+
+    private var compactBannerConfiguration: (text: String, color: Color)? {
         if isSwapMode,
            let swapSourceAthleteID,
            let rosterAthlete = store.routine.roster.first(where: { $0.id == swapSourceAthleteID })
         {
             return ("Tap another athlete to swap with \(rosterAthlete.label).", .blue)
-        }
-
-        if !pathCollisionIDs.isEmpty {
-            return ("\(pathCollisionIDs.count) athletes have crossing paths.", .red)
         }
 
         if !hasMadeFirstSelection {
@@ -320,13 +334,13 @@ struct FloorGridView: View {
         }
         .onChange(of: formationID) { _, _ in
             selectedAthleteIDs = []
-            isSwapMode = false
-            swapSourceAthleteID = nil
-            collisionMessage = nil
+            endSwapMode()
             activeAlignmentGuides = []
             collisionCycleIndex = 0
+            pathCollisionCycleIndex = 0
             focusedEndpoint = nil
             showingInspectorSheet = false
+            showingPinnedInspector = false
             showingTransportSheet = false
             showingAthleteRenamePrompt = false
             showingAthleteDeleteConfirmation = false
@@ -340,8 +354,7 @@ struct FloorGridView: View {
                 hasMadeFirstSelection = true
             }
             if newSelection.isEmpty {
-                isSwapMode = false
-                swapSourceAthleteID = nil
+                endSwapMode()
                 focusedEndpoint = nil
             }
         }
@@ -379,16 +392,24 @@ struct FloorGridView: View {
                     } else if isCompactLayout {
                         canvasArea
                     } else {
-                        HStack(spacing: 0) {
-                            canvasArea
-                            if !selectedAthleteIDs.isEmpty {
-                                Divider()
+                        canvasArea
+                            .overlay(alignment: .trailing) {
+                                if showingPinnedInspector {
+                                    HStack(spacing: 0) {
+                                        Rectangle()
+                                            .fill(Color(uiColor: .separator).opacity(0.35))
+                                            .frame(width: 1)
+
+                                        inspectorPanel
+                                            .frame(width: 320)
+                                            .frame(maxHeight: .infinity)
+                                    }
+                                    .background(.thinMaterial)
+                                    .shadow(color: .black.opacity(0.12), radius: 14, x: -4, y: 0)
+                                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                                }
                             }
-                            inspectorPanel
-                                .frame(width: selectedAthleteIDs.isEmpty ? 0 : 320)
-                                .clipped()
-                        }
-                        .animation(.easeInOut(duration: 0.2), value: selectedAthleteIDs.isEmpty)
+                            .animation(.easeInOut(duration: 0.22), value: selectedAthleteIDs.isEmpty)
                     }
                 }
             }
@@ -414,6 +435,26 @@ struct FloorGridView: View {
                         .background(.red.opacity(0.15), in: Capsule())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Athlete spacing alerts")
+                }
+
+                if showTransitionPaths, !pathCollidingAthletes.isEmpty {
+                    Button {
+                        pathCollisionCycleIndex = (pathCollisionCycleIndex + 1) % pathCollidingAthletes.count
+                        selectPathCollision(at: pathCollisionCycleIndex)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "point.topleft.down.curvedto.point.bottomright.up")
+                            Text("\(pathCollidingAthletes.count)")
+                        }
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(.orange)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(.orange.opacity(0.15), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Path crossing alerts")
                 }
 
                 Button(action: addAthlete) {
@@ -450,8 +491,20 @@ struct FloorGridView: View {
                     .buttonStyle(.bordered)
                 }
 
-                Button(action: beginSwapMode) {
-                    Label("Swap", systemImage: "arrow.triangle.swap")
+                if hasTransition {
+                    Button {
+                        showTransitionPaths.toggle()
+                    } label: {
+                        Label(
+                            showTransitionPaths ? "Hide Paths" : "Show Paths",
+                            systemImage: showTransitionPaths ? "eye.slash" : "eye"
+                        )
+                    }
+                    .buttonStyle(.bordered)
+                }
+
+                Button(action: toggleSwapMode) {
+                    Label(swapButtonShortTitle, systemImage: swapButtonSymbolName)
                 }
                 .buttonStyle(.bordered)
                 .disabled(selectedAthleteID == nil)
@@ -459,6 +512,19 @@ struct FloorGridView: View {
                 if isCompactLayout {
                     compactOverflowMenu
                 } else {
+                    if showingPinnedInspector {
+                        Button(action: togglePinnedInspector) {
+                            Label(regularInspectButtonTitle, systemImage: "slider.horizontal.3")
+                        }
+                        .buttonStyle(.borderedProminent)
+                    } else {
+                        Button(action: togglePinnedInspector) {
+                            Label(regularInspectButtonTitle, systemImage: "slider.horizontal.3")
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(selectedAthleteIDs.isEmpty)
+                    }
+
                     Button(action: { showingRosterSheet = true }) {
                         Label("Manage Roster", systemImage: "list.bullet.rectangle")
                     }
@@ -628,67 +694,67 @@ struct FloorGridView: View {
             let phoneUsesPlaybackRail =
                 isPhoneLandscape && player != nil && startFormationName != nil && endFormationName != nil
 
-            let canvasContent = ZStack(alignment: .top) {
-                FloorCanvasView(
-                    athletes: renderedAthletes,
-                    selectedAthleteIDs: selectedAthleteIDs,
-                    transitionPaths: transitionPaths,
-                    endpointMarkers: endpointMarkers,
-                    alignmentGuides: activeAlignmentGuides,
-                    collisionIDs: collisionSummary.ids,
-                    pathCollisionIDs: pathCollisionIDs,
+            let baseCanvasContent = FloorCanvasView(
+                athletes: renderedAthletes,
+                selectedAthleteIDs: selectedAthleteIDs,
+                transitionPaths: showTransitionPaths ? transitionPaths : [],
+                endpointMarkers: endpointMarkers,
+                alignmentGuides: activeAlignmentGuides,
+                collisionIDs: collisionSummary.ids,
+                pathCollisionIDs: pathCollisionIDs,
+                cellSize: cellSize,
+                offset: offset,
+                swapSourceID: swapSourceAthleteID,
+                selectionRect: selectionRect,
+                focusedEndpoint: focusedEndpoint,
+                hasTransition: hasTransition,
+                startFormationColor: transitionStartColor,
+                endFormationColor: transitionEndColor,
+                transitionProgress: player?.progress ?? 0,
+                formationColor: currentFormationColor,
+                ghostAthletes: previousFormationAthletes
+            )
+            .gesture(
+                dragGesture(
                     cellSize: cellSize,
                     offset: offset,
-                    swapSourceID: swapSourceAthleteID,
-                    selectionRect: selectionRect,
-                    focusedEndpoint: focusedEndpoint,
-                    hasTransition: hasTransition,
-                    startFormationColor: transitionStartColor,
-                    endFormationColor: transitionEndColor,
-                    transitionProgress: player?.progress ?? 0,
-                    formationColor: currentFormationColor,
-                    ghostAthletes: previousFormationAthletes
+                    viewportSize: geometry.size,
+                    canvasSize: canvasSize
                 )
-                .gesture(
-                    dragGesture(
-                        cellSize: cellSize,
-                        offset: offset,
-                        viewportSize: geometry.size,
-                        canvasSize: canvasSize
-                    )
-                )
-                .simultaneousGesture(waypointDoubleTapGesture(cellSize: cellSize, offset: offset))
-                .gesture(
-                    MagnifyGesture()
-                        .onChanged { value in
-                            let nextZoomScale = max(0.65, min(3.0, lastZoomScale * value.magnification))
-                            let nextCellSize = baseCellSize * nextZoomScale
-                            let nextCanvasSize = CGSize(
-                                width: CourtConstants.width * nextCellSize,
-                                height: CourtConstants.height * nextCellSize
-                            )
+            )
+            .simultaneousGesture(waypointDoubleTapGesture(cellSize: cellSize, offset: offset))
+            .gesture(
+                MagnifyGesture()
+                    .onChanged { value in
+                        let nextZoomScale = max(0.65, min(3.0, lastZoomScale * value.magnification))
+                        let nextCellSize = baseCellSize * nextZoomScale
+                        let nextCanvasSize = CGSize(
+                            width: CourtConstants.width * nextCellSize,
+                            height: CourtConstants.height * nextCellSize
+                        )
 
-                            zoomScale = nextZoomScale
-                            canvasPanOffset = clampedCanvasPanOffset(
-                                canvasPanOffset,
-                                viewportSize: geometry.size,
-                                canvasSize: nextCanvasSize
+                        zoomScale = nextZoomScale
+                        canvasPanOffset = clampedCanvasPanOffset(
+                            canvasPanOffset,
+                            viewportSize: geometry.size,
+                            canvasSize: nextCanvasSize
+                        )
+                    }
+                    .onEnded { _ in
+                        lastZoomScale = zoomScale
+                        canvasPanOffset = clampedCanvasPanOffset(
+                            canvasPanOffset,
+                            viewportSize: geometry.size,
+                            canvasSize: CGSize(
+                                width: CourtConstants.width * baseCellSize * zoomScale,
+                                height: CourtConstants.height * baseCellSize * zoomScale
                             )
-                        }
-                        .onEnded { _ in
-                            lastZoomScale = zoomScale
-                            canvasPanOffset = clampedCanvasPanOffset(
-                                canvasPanOffset,
-                                viewportSize: geometry.size,
-                                canvasSize: CGSize(
-                                    width: CourtConstants.width * baseCellSize * zoomScale,
-                                    height: CourtConstants.height * baseCellSize * zoomScale
-                                )
-                            )
-                            lastCanvasPanOffset = canvasPanOffset
-                        }
-                )
+                        )
+                        lastCanvasPanOffset = canvasPanOffset
+                    }
+            )
 
+            let canvasContent = baseCanvasContent.overlay(alignment: .top) {
                 if isPhoneLayout {
                     VStack(spacing: 10) {
                         phoneTopOverlay
@@ -696,29 +762,9 @@ struct FloorGridView: View {
                         if let compactBannerConfiguration {
                             banner(text: compactBannerConfiguration.text, color: compactBannerConfiguration.color)
                         }
-
-                        Spacer(minLength: 0)
-
-                        VStack(spacing: 10) {
-                            if selectedRosterAthlete != nil || selectedAthleteIDs.count > 1 {
-                                phoneSelectionOverlay
-                            }
-
-                            if !phoneUsesPlaybackRail,
-                                let player,
-                                let startFormationName,
-                                let endFormationName
-                            {
-                                CompactTransitionPlaybackOverlayView(
-                                    player: player,
-                                    startFormationName: startFormationName,
-                                    endFormationName: endFormationName
-                                )
-                            }
-                        }
                     }
                     .padding(.horizontal, 12)
-                    .padding(.vertical, 12)
+                    .padding(.top, 12)
                 } else {
                     VStack(spacing: isCompactLayout ? 8 : 10) {
                         if isCompactLayout {
@@ -726,10 +772,6 @@ struct FloorGridView: View {
                                 banner(text: compactBannerConfiguration.text, color: compactBannerConfiguration.color)
                             }
                         } else {
-                            if let collisionMessage {
-                                banner(text: collisionMessage, color: .red)
-                            }
-
                             if isSwapMode, let swapSourceAthleteID,
                                 let rosterAthlete = store.routine.roster.first(where: { $0.id == swapSourceAthleteID })
                             {
@@ -743,17 +785,33 @@ struct FloorGridView: View {
                                     color: .accentColor
                                 )
                             }
-
-                            if !pathCollisionIDs.isEmpty {
-                                banner(
-                                    text: "\(pathCollisionIDs.count) athletes have crossing paths.",
-                                    color: .red
-                                )
-                            }
                         }
                     }
                     .padding(.horizontal, isCompactLayout ? 12 : 0)
                     .padding(.top, isHeightConstrained ? 4 : 8)
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if isPhoneLayout {
+                    VStack(spacing: 10) {
+                        if selectedRosterAthlete != nil || selectedAthleteIDs.count > 1 {
+                            phoneSelectionOverlay
+                        }
+
+                        if !phoneUsesPlaybackRail,
+                            let player,
+                            let startFormationName,
+                            let endFormationName
+                        {
+                            CompactTransitionPlaybackOverlayView(
+                                player: player,
+                                startFormationName: startFormationName,
+                                endFormationName: endFormationName
+                            )
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 12)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -763,7 +821,7 @@ struct FloorGridView: View {
                 let startFormationName,
                 let endFormationName
             {
-                HStack(spacing: 10) {
+                HStack(alignment: .top, spacing: 10) {
                     canvasContent
 
                     CompactTransitionPlaybackRailView(
@@ -772,6 +830,7 @@ struct FloorGridView: View {
                         endFormationName: endFormationName
                     )
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             } else {
                 canvasContent
             }
@@ -834,11 +893,14 @@ struct FloorGridView: View {
             .buttonStyle(.borderedProminent)
 
             if selectedAthleteID != nil {
-                Button(action: beginSwapMode) {
-                    Image(systemName: "arrow.triangle.swap")
+                Button(action: toggleSwapMode) {
+                    Image(systemName: swapButtonSymbolName)
                         .frame(width: 30, height: 30)
                 }
                 .buttonStyle(.bordered)
+                .tint(isSwapMode ? .blue : .accentColor)
+                .accessibilityLabel(swapButtonTitle)
+                .accessibilityValue(isSwapMode ? "Active" : "Inactive")
             }
 
             Spacer(minLength: 0)
@@ -930,8 +992,8 @@ struct FloorGridView: View {
                         }
                     }
 
-                    Button(action: beginSwapMode) {
-                        Label("Swap Position", systemImage: "arrow.triangle.swap")
+                    Button(action: toggleSwapMode) {
+                        Label(swapButtonTitle, systemImage: swapButtonSymbolName)
                     }
 
                     if hasTransition {
@@ -1022,7 +1084,7 @@ struct FloorGridView: View {
                                 athlete.role = newRole
                             }
                         },
-                        onSwap: beginSwapMode,
+                        onSwap: toggleSwapMode,
                         onDelete: {
                             deleteSelectedAthlete()
                         },
@@ -1403,6 +1465,38 @@ struct FloorGridView: View {
         .overlay(Capsule().strokeBorder(color.opacity(0.2), lineWidth: 0.5))
     }
 
+    private func athleteHitRadiusSquared(for athlete: RenderedAthlete, cellSize: CGFloat) -> CGFloat {
+        let baseRadius = sqrt(interactionHitRadiusSquared(for: cellSize))
+        let rolePadding: CGFloat = athlete.role == .tumbler ? 10 : 6
+        let markerRadius = (athlete.role.selectedMarkerRadius + rolePadding) / max(cellSize, 1)
+        let radiusBonus: CGFloat = athlete.role == .tumbler ? 1.25 : 0.5
+        let radius = max(baseRadius + radiusBonus, markerRadius)
+        return radius * radius
+    }
+
+    private func athleteHit(
+        at point: CGPoint,
+        within athletes: [RenderedAthlete],
+        cellSize: CGFloat,
+        excluding excludedID: UUID? = nil
+    ) -> RenderedAthlete? {
+        athletes.first { athlete in
+            athlete.id != excludedID
+                && PathCalculations.squaredDistance(from: point, to: athlete.position)
+                    < athleteHitRadiusSquared(for: athlete, cellSize: cellSize)
+        }
+    }
+
+    private func endpointMarkerHit(
+        at point: CGPoint,
+        within markers: [TransitionEndpointMarkerRenderItem],
+        hitRadiusSquared: CGFloat
+    ) -> TransitionEndpointMarkerRenderItem? {
+        markers.first {
+            PathCalculations.squaredDistance(from: point, to: $0.position) < hitRadiusSquared
+        }
+    }
+
     // MARK: - Unified Gesture Handler
 
     private func dragGesture(
@@ -1453,13 +1547,14 @@ struct FloorGridView: View {
                 }
 
                 // Priority 2: Hit-test for new drag initiation
-                if hasTransition {
-                    // In transition mode: path handles take priority over non-selected athletes
-                    // 2a: Currently selected athlete (allow dragging)
-                    if let hitAthlete = renderedAthletes.first(where: {
-                        selectedAthleteIDs.contains($0.id)
-                            && PathCalculations.squaredDistance(from: startScaledPoint, to: $0.position) < hitRadiusSquared
-                    }) {
+                    if showTransitionPaths, hasTransition {
+                        // In transition mode: path handles take priority over non-selected athletes
+                        // 2a: Currently selected athlete (allow dragging)
+                    if athleteHit(
+                        at: startScaledPoint,
+                        within: renderedAthletes.filter { selectedAthleteIDs.contains($0.id) },
+                        cellSize: cellSize
+                    ) != nil {
                         focusedEndpoint = nil
                         guard dragDistance >= dragActivationDistance else { return }
                         dragStartPositions = Dictionary(
@@ -1563,9 +1658,11 @@ struct FloorGridView: View {
                     }
 
                     // 2c: Non-selected athletes
-                    if let hitAthlete = renderedAthletes.first(where: {
-                        PathCalculations.squaredDistance(from: startScaledPoint, to: $0.position) < hitRadiusSquared
-                    }) {
+                    if let hitAthlete = athleteHit(
+                        at: startScaledPoint,
+                        within: renderedAthletes,
+                        cellSize: cellSize
+                    ) {
                         selectedAthleteIDs = [hitAthlete.id]
                         focusedEndpoint = nil
                         guard dragDistance >= dragActivationDistance else { return }
@@ -1580,9 +1677,11 @@ struct FloorGridView: View {
                     }
                 } else {
                     // Not in transition mode: athletes have highest priority
-                    if let hitAthlete = renderedAthletes.first(where: {
-                        PathCalculations.squaredDistance(from: startScaledPoint, to: $0.position) < hitRadiusSquared
-                    }) {
+                    if let hitAthlete = athleteHit(
+                        at: startScaledPoint,
+                        within: renderedAthletes,
+                        cellSize: cellSize
+                    ) {
                         if !selectedAthleteIDs.contains(hitAthlete.id) {
                             selectedAthleteIDs = [hitAthlete.id]
                         }
@@ -1601,9 +1700,11 @@ struct FloorGridView: View {
 
                 // 2c: Endpoint markers (other formation — tapping focuses that formation)
                 if hasTransition {
-                    if let hitMarker = endpointMarkers.first(where: {
-                        PathCalculations.squaredDistance(from: startScaledPoint, to: $0.position) < hitRadiusSquared
-                    }) {
+                    if let hitMarker = endpointMarkerHit(
+                        at: startScaledPoint,
+                        within: endpointMarkers,
+                        hitRadiusSquared: hitRadiusSquared
+                    ) {
                         selectedAthleteIDs = [hitMarker.athleteID]
                         focusedEndpoint = hitMarker.endpoint
                         endpointDragStartPosition = hitMarker.position
@@ -1660,29 +1761,33 @@ struct FloorGridView: View {
                             player.startAthletes.map { ($0, startFormationID!) }
                             + player.endAthletes.map { ($0, endFormationID!) }
                         if let target = allEndpointAthletes.first(where: {
-                            $0.athlete.id != swapSourceAthleteID
-                                && PathCalculations.squaredDistance(from: tapPoint, to: $0.athlete.position) < hitRadiusSquared
+                            athleteHit(
+                                at: tapPoint,
+                                within: [$0.athlete],
+                                cellSize: cellSize,
+                                excluding: swapSourceAthleteID
+                            ) != nil
                         }) {
                             store.swapPositions(in: target.formationID, id1: swapSourceAthleteID, id2: target.athlete.id)
                             selectedAthleteIDs = [target.athlete.id]
                             refreshTransitionFromStore()
-                            isSwapMode = false
-                            self.swapSourceAthleteID = nil
+                            endSwapMode()
                             return
                         }
                     }
 
                     // Try swapping in main formation
-                    if let targetAthlete = renderedAthletes.first(where: {
-                        $0.id != swapSourceAthleteID
-                            && PathCalculations.squaredDistance(from: tapPoint, to: $0.position) < hitRadiusSquared
-                    }) {
+                    if let targetAthlete = athleteHit(
+                        at: tapPoint,
+                        within: renderedAthletes,
+                        cellSize: cellSize,
+                        excluding: swapSourceAthleteID
+                    ) {
                         store.swapPositions(in: formationID, id1: swapSourceAthleteID, id2: targetAthlete.id)
                         selectedAthleteIDs = [targetAthlete.id]
                         refreshTransitionFromStore()
                     }
-                    isSwapMode = false
-                    self.swapSourceAthleteID = nil
+                    endSwapMode()
                     return
                 }
 
@@ -1717,10 +1822,12 @@ struct FloorGridView: View {
                             x: (value.location.x - offset.x) / cellSize,
                             y: (value.location.y - offset.y) / cellSize
                         )
-                        if hasTransition, let player {
-                            if let athlete = player.currentAthletes.first(where: {
-                                PathCalculations.squaredDistance(from: tapPoint, to: $0.position) < hitRadiusSquared
-                            }) {
+                        if showTransitionPaths, hasTransition, let player {
+                            if let athlete = athleteHit(
+                                at: tapPoint,
+                                within: player.currentAthletes,
+                                cellSize: cellSize
+                            ) {
                                 selectedAthleteIDs = [athlete.id]
                                 return
                             }
@@ -1736,20 +1843,32 @@ struct FloorGridView: View {
                     x: (value.location.x - offset.x) / cellSize,
                     y: (value.location.y - offset.y) / cellSize
                 )
+                let startScaledPoint = CGPoint(
+                    x: (value.startLocation.x - offset.x) / cellSize,
+                    y: (value.startLocation.y - offset.y) / cellSize
+                )
 
-                if renderedAthletes.contains(where: {
-                    PathCalculations.squaredDistance(from: tapPoint, to: $0.position) < hitRadiusSquared
-                }) {
+                if athleteHit(at: tapPoint, within: renderedAthletes, cellSize: cellSize) != nil
+                    || athleteHit(at: startScaledPoint, within: renderedAthletes, cellSize: cellSize) != nil
+                {
                     return
                 }
 
-                if endpointMarkers.contains(where: {
-                    PathCalculations.squaredDistance(from: tapPoint, to: $0.position) < hitRadiusSquared
-                }) {
+                if endpointMarkerHit(at: tapPoint, within: endpointMarkers, hitRadiusSquared: hitRadiusSquared) != nil
+                    || endpointMarkerHit(
+                        at: startScaledPoint,
+                        within: endpointMarkers,
+                        hitRadiusSquared: hitRadiusSquared
+                    ) != nil
+                {
                     return
                 }
 
-                if transitionHandleIsHit(at: tapPoint, hitRadiusSquared: hitRadiusSquared) {
+                if showTransitionPaths && (
+                    transitionHandleIsHit(at: tapPoint, hitRadiusSquared: hitRadiusSquared)
+                        || transitionHandleIsHit(at: startScaledPoint, hitRadiusSquared: hitRadiusSquared)
+                )
+                {
                     return
                 }
 
@@ -1969,7 +2088,7 @@ struct FloorGridView: View {
     private func waypointDoubleTapGesture(cellSize: CGFloat, offset: CGPoint) -> some Gesture {
         SpatialTapGesture(count: 2)
             .onEnded { value in
-                guard hasTransition else { return }
+                guard showTransitionPaths, hasTransition else { return }
                 guard let selectedAthleteID, let player else { return }
                 guard let selectedAthlete = player.currentAthletes.first(where: { $0.id == selectedAthleteID })
                 else { return }
@@ -2122,10 +2241,32 @@ struct FloorGridView: View {
         selectedAthleteIDs = []
     }
 
-    private func beginSwapMode() {
-        guard let selectedAthleteID else { return }
+    private func togglePinnedInspector() {
+        if showingPinnedInspector {
+            showingPinnedInspector = false
+        } else if !selectedAthleteIDs.isEmpty {
+            showingPinnedInspector = true
+        }
+    }
+
+    private func toggleSwapMode() {
+        guard let selectedAthleteID else {
+            endSwapMode()
+            return
+        }
+
+        if isSwapMode, swapSourceAthleteID == selectedAthleteID {
+            endSwapMode()
+            return
+        }
+
         swapSourceAthleteID = selectedAthleteID
         isSwapMode = true
+    }
+
+    private func endSwapMode() {
+        isSwapMode = false
+        swapSourceAthleteID = nil
     }
 
     private func deleteSelectedAthlete() {
@@ -2149,7 +2290,12 @@ struct FloorGridView: View {
         guard !collidingAthletes.isEmpty else { return }
         let safeIndex = index % collidingAthletes.count
         selectedAthleteIDs = [collidingAthletes[safeIndex].id]
-        collisionMessage = "\(collidingAthletes.count) athletes are within 2ft. Use arrows to cycle."
+    }
+
+    private func selectPathCollision(at index: Int) {
+        guard !pathCollidingAthletes.isEmpty else { return }
+        let safeIndex = index % pathCollidingAthletes.count
+        selectedAthleteIDs = [pathCollidingAthletes[safeIndex].id]
     }
 
     private func resetView() {
