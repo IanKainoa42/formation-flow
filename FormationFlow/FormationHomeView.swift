@@ -3,16 +3,10 @@ import SwiftUI
 // MARK: - Routine Workspace View
 
 struct RoutineWorkspaceView: View {
-    enum DetailMode {
-        case edit
-        case preview
-    }
-
     @StateObject private var store = RoutineStore()
     @StateObject private var previewSession = TransitionPreviewSession()
 
     @State private var selectedFormationID: UUID?
-    @State private var detailMode: DetailMode = .edit
     @State private var previewReferenceMode: PreviewReferenceMode = .intoSelected
     @State private var showingResetConfirmation = false
     @State private var showingDeleteConfirmation = false
@@ -79,36 +73,22 @@ struct RoutineWorkspaceView: View {
             if selectedFormationID == nil {
                 selectedFormationID = store.routine.formations.first?.id
             }
+            previewReferenceMode = smartPickReferenceMode()
             refreshPreviewSession()
         }
         .onChange(of: store.routine.formations) { _, formations in
             if formations.isEmpty {
                 selectedFormationID = nil
             } else if let selectedFormationID, formations.contains(where: { $0.id == selectedFormationID }) {
-                refreshPreviewSession()
-                return
+                // Selection still valid — just refresh preview
             } else {
                 selectedFormationID = formations.first?.id
             }
 
             refreshPreviewSession()
         }
-        .onChange(of: store.routine) { _, _ in
-            refreshPreviewSession()
-        }
         .onChange(of: selectedFormationID) { _, _ in
-            if detailMode == .preview {
-                previewReferenceMode = smartPickReferenceMode()
-            }
-            refreshPreviewSession()
-        }
-        .onChange(of: detailMode) { _, newMode in
-            if newMode == .preview {
-                previewReferenceMode = smartPickReferenceMode()
-            }
-            refreshPreviewSession()
-        }
-        .onChange(of: previewReferenceMode) { _, _ in
+            previewReferenceMode = smartPickReferenceMode()
             refreshPreviewSession()
         }
         .confirmationDialog(
@@ -119,7 +99,6 @@ struct RoutineWorkspaceView: View {
             Button("Reset Routine", role: .destructive) {
                 store.resetRoutine()
                 selectedFormationID = store.routine.formations.first?.id
-                detailMode = .edit
                 refreshPreviewSession()
             }
         } message: {
@@ -153,65 +132,74 @@ struct RoutineWorkspaceView: View {
         }
     }
 
-    @ViewBuilder
+    // MARK: - Sidebar
+
     private var sidebar: some View {
-        switch detailMode {
-        case .edit:
-            formationSidebar
-        case .preview:
-            previewSidebar
-        }
+        formationSidebar
     }
 
     private var formationSidebar: some View {
-        List(selection: $selectedFormationID) {
-            Section {
-                ForEach(store.routine.formations) { formation in
-                    HStack(spacing: 12) {
-                        FormationThumbnailView(athletes: store.renderedAthletes(for: formation))
+        VStack(spacing: 0) {
+            List(selection: $selectedFormationID) {
+                Section {
+                    ForEach(store.routine.formations) { formation in
+                        HStack(spacing: 12) {
+                            FormationThumbnailView(athletes: store.renderedAthletes(for: formation))
 
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(formation.name)
-                                .font(.body.weight(.medium))
-                            Text("\(formation.placements.count) athletes")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(formation.name)
+                                    .font(.body.weight(.medium))
+                                Text("\(formation.placements.count) athletes")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+
+                            Spacer()
+
+                            if !formation.notes.isEmpty {
+                                Image(systemName: "note.text")
+                                    .foregroundColor(.secondary)
+                            }
                         }
+                        .tag(formation.id)
+                        .contextMenu {
+                            Button {
+                                beginRenaming(formation)
+                            } label: {
+                                Label("Rename", systemImage: "pencil")
+                            }
 
-                        Spacer()
+                            Button {
+                                selectedFormationID = store.duplicateFormation(after: formation.id)
+                            } label: {
+                                Label("Duplicate as Next", systemImage: "plus.square.on.square")
+                            }
 
-                        if !formation.notes.isEmpty {
-                            Image(systemName: "note.text")
-                                .foregroundColor(.secondary)
+                            Button(role: .destructive) {
+                                selectedFormationID = formation.id
+                                showingDeleteConfirmation = true
+                            } label: {
+                                Label("Delete Formation", systemImage: "trash")
+                            }
                         }
                     }
-                    .tag(formation.id)
-                    .contextMenu {
-                        Button {
-                            beginRenaming(formation)
-                        } label: {
-                            Label("Rename", systemImage: "pencil")
-                        }
-
-                        Button {
-                            selectedFormationID = store.duplicateFormation(after: formation.id)
-                        } label: {
-                            Label("Duplicate as Next", systemImage: "plus.square.on.square")
-                        }
-
-                        Button(role: .destructive) {
-                            selectedFormationID = formation.id
-                            showingDeleteConfirmation = true
-                        } label: {
-                            Label("Delete Formation", systemImage: "trash")
-                        }
+                    .onMove { from, to in
+                        store.moveFormations(fromOffsets: from, toOffset: to)
                     }
+                } header: {
+                    Text(store.routine.name)
                 }
-                .onMove { from, to in
-                    store.moveFormations(fromOffsets: from, toOffset: to)
-                }
-            } header: {
-                Text(store.routine.name)
+            }
+
+            if let previewTransitionPair, let player = previewSession.player {
+                Divider()
+                SidebarTransportView(
+                    player: player,
+                    startFormationName: previewTransitionPair.start.name,
+                    endFormationName: previewTransitionPair.end.name
+                )
+                .padding(16)
+                .background(.thinMaterial)
             }
         }
         .navigationTitle("Routine")
@@ -220,7 +208,6 @@ struct RoutineWorkspaceView: View {
                 EditButton()
                 Button {
                     selectedFormationID = store.addFormation(after: selectedFormationID)
-                    detailMode = .edit
                 } label: {
                     Image(systemName: "plus")
                 }
@@ -228,49 +215,20 @@ struct RoutineWorkspaceView: View {
         }
     }
 
-    @ViewBuilder
-    private var previewSidebar: some View {
-        if let previewTransitionPair, let player = previewSession.player {
-            TransitionTransportSidebarView(
-                player: player,
-                startFormationName: previewTransitionPair.start.name,
-                endFormationName: previewTransitionPair.end.name
-            )
-        } else {
-            previewSidebarUnavailable
-        }
-    }
+    // MARK: - Detail View
 
     @ViewBuilder
     private var detailView: some View {
         if let selectedFormation, let selectedFormationID {
             VStack(spacing: 0) {
-                switch detailMode {
-                case .edit:
-                    FloorGridView(
-                        store: store,
-                        formationID: selectedFormationID,
-                        onDuplicateAsNext: duplicateSelectedFormation
-                    )
-                case .preview:
-                    if let previewTransitionPair, let player = previewSession.player {
-                        TransitionPlayerView(
-                            store: store,
-                            player: player,
-                            startFormationID: previewTransitionPair.start.id,
-                            endFormationID: previewTransitionPair.end.id,
-                            selectedFormationName: selectedFormation.name,
-                            previewReferenceMode: $previewReferenceMode,
-                            editableEndpoint: previewReferenceMode.editableEndpoint,
-                            onSelectPreviousFormation: selectPreviousFormation,
-                            onSelectNextFormation: selectNextFormation,
-                            canSelectPreviousFormation: canSelectPreviousFormation,
-                            canSelectNextFormation: canSelectNextFormation
-                        )
-                    } else {
-                        previewEmptyState
-                    }
-                }
+                FloorGridView(
+                    store: store,
+                    formationID: selectedFormationID,
+                    onDuplicateAsNext: duplicateSelectedFormation,
+                    player: previewSession.player,
+                    startFormationID: previewTransitionPair?.start.id,
+                    endFormationID: previewTransitionPair?.end.id
+                )
             }
             .navigationTitle(selectedFormation.name)
             .navigationBarTitleDisplayMode(.inline)
@@ -283,20 +241,9 @@ struct RoutineWorkspaceView: View {
     }
 
     private func detailToolbar(for formation: Formation) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 12) {
-                detailModeControl
-                Spacer(minLength: 0)
-                detailToolbarActions(for: formation)
-            }
-
-            VStack(spacing: 10) {
-                detailModeControl
-                HStack {
-                    Spacer(minLength: 0)
-                    detailToolbarActions(for: formation)
-                }
-            }
+        HStack(spacing: 12) {
+            Spacer(minLength: 0)
+            detailToolbarActions(for: formation)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -304,16 +251,6 @@ struct RoutineWorkspaceView: View {
         .overlay(alignment: .bottom) {
             Divider()
         }
-    }
-
-    private var detailModeControl: some View {
-        HStack(spacing: 0) {
-            modeButton(title: "Edit", mode: .edit)
-            modeButton(title: "Transition", mode: .preview)
-        }
-        .padding(4)
-        .background(Color.secondary.opacity(0.12))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
     private func detailToolbarActions(for formation: Formation) -> some View {
@@ -350,75 +287,12 @@ struct RoutineWorkspaceView: View {
         }
     }
 
-    private func modeButton(title: String, mode: DetailMode) -> some View {
-        Button {
-            detailMode = mode
-        } label: {
-            Text(title)
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(detailMode == mode ? Color.accentColor : Color.clear)
-                )
-                .foregroundColor(detailMode == mode ? .white : .primary)
-        }
-        .contentShape(RoundedRectangle(cornerRadius: 10))
-        .buttonStyle(.plain)
-    }
-
-    private var previewSidebarUnavailable: some View {
-        ContentUnavailableView(
-            "Transport unavailable",
-            systemImage: "play.slash",
-            description: Text("Choose a formation with a playable preview pair to use transport controls.")
-        )
-        .navigationTitle("Transport")
-    }
-
-    private var previewEmptyState: some View {
-        VStack {
-            Spacer()
-            VStack(spacing: 16) {
-                Image(systemName: "play.slash")
-                    .font(.system(size: 48))
-                    .foregroundColor(.accentColor)
-                Text("No adjacent formation")
-                    .font(.title2.weight(.semibold))
-                Text("This formation needs a neighbor to show a transition. Add another formation to get started.")
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                Button(action: duplicateSelectedFormation) {
-                    Label("Duplicate as Next Formation", systemImage: "plus.square.on.square")
-                }
-                .buttonStyle(.borderedProminent)
-            }
-            .padding(28)
-            .background(.thinMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 24))
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
+    // MARK: - Actions
 
     private func duplicateSelectedFormation() {
         guard let selectedFormationID else { return }
         self.selectedFormationID = store.duplicateFormation(after: selectedFormationID)
-        detailMode = .edit
         refreshPreviewSession()
-    }
-
-    private func selectPreviousFormation() {
-        guard let selectedFormationIndex, store.routine.formations.indices.contains(selectedFormationIndex - 1) else {
-            return
-        }
-        selectedFormationID = store.routine.formations[selectedFormationIndex - 1].id
-    }
-
-    private func selectNextFormation() {
-        guard let selectedFormationIndex, store.routine.formations.indices.contains(selectedFormationIndex + 1) else {
-            return
-        }
-        selectedFormationID = store.routine.formations[selectedFormationIndex + 1].id
     }
 
     private func beginRenaming(_ formation: Formation) {
@@ -441,10 +315,7 @@ struct RoutineWorkspaceView: View {
     }
 
     private func refreshPreviewSession() {
-        guard
-            detailMode == .preview,
-            let previewTransitionPair
-        else {
+        guard let previewTransitionPair else {
             previewSession.clear()
             return
         }
@@ -454,6 +325,87 @@ struct RoutineWorkspaceView: View {
             startFormationID: previewTransitionPair.start.id,
             endFormationID: previewTransitionPair.end.id
         )
+    }
+}
+
+// MARK: - Sidebar Transport View
+
+private struct SidebarTransportView: View {
+    @ObservedObject var player: TransitionPlayer
+    let startFormationName: String
+    let endFormationName: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("\(startFormationName) \u{2192} \(endFormationName)")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+
+            HStack(spacing: 16) {
+                Button(action: player.reset) {
+                    Image(systemName: "backward.end.fill")
+                        .frame(width: 34, height: 34)
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    player.isPlaying ? player.pause() : player.play()
+                } label: {
+                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                        .frame(width: 34, height: 34)
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button {
+                    player.isLooping.toggle()
+                } label: {
+                    Image(systemName: "repeat")
+                        .frame(width: 34, height: 34)
+                }
+                .buttonStyle(.bordered)
+                .tint(player.isLooping ? .accentColor : .secondary)
+            }
+
+            Slider(
+                value: Binding(
+                    get: { player.progress },
+                    set: { player.seek(to: $0) }
+                ),
+                in: 0...1
+            )
+
+            HStack {
+                Text("Counts")
+                    .font(.caption.weight(.semibold))
+                Spacer()
+                Text(TransitionCountFormatting.label(player.counts))
+                    .font(.system(.caption, design: .monospaced))
+            }
+            HStack(spacing: 8) {
+                ForEach([4, 8, 16, 32], id: \.self) { count in
+                    Button("\(count)") {
+                        player.counts = CGFloat(count)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .tint(player.counts == CGFloat(count) ? .accentColor : .secondary)
+                }
+            }
+
+            Picker("Speed", selection: Binding(
+                get: {
+                    [CGFloat(0.5), 1.0, 1.5, 2.0]
+                        .min(by: { abs($0 - player.speed) < abs($1 - player.speed) }) ?? 1.0
+                },
+                set: { player.speed = $0 }
+            )) {
+                Text("0.5x").tag(CGFloat(0.5))
+                Text("1x").tag(CGFloat(1.0))
+                Text("1.5x").tag(CGFloat(1.5))
+                Text("2x").tag(CGFloat(2.0))
+            }
+            .pickerStyle(.segmented)
+        }
     }
 }
 

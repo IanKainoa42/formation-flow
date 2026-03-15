@@ -493,6 +493,15 @@ struct TransitionEndpointMarkerRenderItem: Identifiable, Equatable, Hashable {
     var id: String {
         "\(athleteID)-\(endpoint)-\(style)"
     }
+
+    var formationColor: Color {
+        switch endpoint {
+        case .start:
+            return .blue
+        case .end:
+            return .red
+        }
+    }
 }
 
 enum AlignmentGuideOrientation: Hashable {
