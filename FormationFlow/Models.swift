@@ -1136,6 +1136,8 @@ final class RoutineStore: ObservableObject {
     }
 
     func deleteFormation(id: UUID) {
+        guard formationIndex(id: id) != nil else { return }
+
         guard routine.formations.count > 1 else {
             routine.formations = [Formation(name: "Formation 1")]
             routine.transitionSpecs = []
@@ -1778,7 +1780,7 @@ final class TransitionPlayer: ObservableObject {
     @Published var isLooping = false
     @Published var progress: CGFloat = 0
     @Published var currentAthletes: [RenderedAthlete]
-    @Published var speed: CGFloat = 1.0
+    @Published var speed: CGFloat = 2.0
     @Published var startAthletes: [RenderedAthlete]
     @Published var endAthletes: [RenderedAthlete]
     @Published var transitionSpec: TransitionSpec

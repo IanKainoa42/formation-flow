@@ -691,8 +691,14 @@ struct FloorGridView: View {
                 x: (geometry.size.width - canvasWidth) / 2 + displayPanOffset.width,
                 y: (geometry.size.height - canvasHeight) / 2 + displayPanOffset.height
             )
+            let availableLeadingSideSpace = max(0, offset.x)
+            let phonePlaybackRailWidth = max(0, availableLeadingSideSpace - 16)
             let phoneUsesPlaybackRail =
-                isPhoneLandscape && player != nil && startFormationName != nil && endFormationName != nil
+                isPhoneLandscape
+                && phonePlaybackRailWidth >= 140
+                && player != nil
+                && startFormationName != nil
+                && endFormationName != nil
 
             let baseCanvasContent = FloorCanvasView(
                 athletes: renderedAthletes,
@@ -814,26 +820,25 @@ struct FloorGridView: View {
                     .padding(.bottom, 12)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            if phoneUsesPlaybackRail,
-                let player,
-                let startFormationName,
-                let endFormationName
-            {
-                HStack(alignment: .top, spacing: 10) {
-                    canvasContent
-
+            .overlay(alignment: .topLeading) {
+                if phoneUsesPlaybackRail,
+                    let player,
+                    let startFormationName,
+                    let endFormationName
+                {
                     CompactTransitionPlaybackRailView(
                         player: player,
                         startFormationName: startFormationName,
-                        endFormationName: endFormationName
+                        endFormationName: endFormationName,
+                        availableWidth: phonePlaybackRailWidth
                     )
+                    .padding(.leading, 8)
+                    .padding(.top, 12)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            } else {
-                canvasContent
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            canvasContent
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

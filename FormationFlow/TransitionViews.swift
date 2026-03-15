@@ -269,49 +269,55 @@ struct CompactTransitionPlaybackRailView: View {
     @ObservedObject var player: TransitionPlayer
     let startFormationName: String
     let endFormationName: String
+    let availableWidth: CGFloat
 
     private let countOptions = [4, 8, 16, 32]
     private let speedOptions: [CGFloat] = [0.5, 1.0, 1.5, 2.0]
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             Text("\(startFormationName) \u{2192} \(endFormationName)")
-                .font(.caption2.weight(.semibold))
+                .font(.caption.weight(.semibold))
                 .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .lineLimit(3)
+                .lineLimit(2)
 
             settingsMenu
 
-            Button(action: player.reset) {
-                Image(systemName: "backward.end.fill")
-                    .frame(width: 30, height: 30)
+            HStack(spacing: 8) {
+                Button(action: player.reset) {
+                    Image(systemName: "backward.end.fill")
+                        .frame(width: 30, height: 30)
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    player.isPlaying ? player.pause() : player.play()
+                } label: {
+                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                        .frame(width: 36, height: 36)
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button {
+                    player.isLooping.toggle()
+                } label: {
+                    Image(systemName: "repeat")
+                        .frame(width: 30, height: 30)
+                }
+                .buttonStyle(.bordered)
+                .tint(player.isLooping ? .accentColor : .secondary)
             }
-            .buttonStyle(.bordered)
 
-            Button {
-                player.isPlaying ? player.pause() : player.play()
-            } label: {
-                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                    .frame(width: 36, height: 36)
-            }
-            .buttonStyle(.borderedProminent)
-
-            Button {
-                player.isLooping.toggle()
-            } label: {
-                Image(systemName: "repeat")
-                    .frame(width: 30, height: 30)
-            }
-            .buttonStyle(.bordered)
-            .tint(player.isLooping ? .accentColor : .secondary)
-
-            Spacer(minLength: 0)
-
-            VStack(spacing: 8) {
-                Text(String(format: "%.0f%%", player.progress * 100))
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(.secondary)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Text("Progress")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.secondary)
+                    Spacer(minLength: 0)
+                    Text(String(format: "%.0f%%", player.progress * 100))
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
 
                 Slider(
                     value: Binding(
@@ -320,25 +326,20 @@ struct CompactTransitionPlaybackRailView: View {
                     ),
                     in: 0...1
                 )
-                .frame(width: 170)
-                .rotationEffect(.degrees(-90))
-                .frame(width: 36, height: 170)
 
                 HStack(spacing: 6) {
-                    Text("0")
+                    Text("0%")
                     Spacer(minLength: 0)
-                    Text("100")
+                    Text("100%")
                 }
                 .font(.system(.caption2, design: .monospaced))
                 .foregroundColor(.secondary)
             }
-
-            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 12)
         .padding(.vertical, 12)
-        .frame(width: 94)
-        .frame(maxHeight: .infinity)
+        .frame(width: availableWidth, alignment: .leading)
+        .frame(maxHeight: .infinity, alignment: .top)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
@@ -378,14 +379,18 @@ struct CompactTransitionPlaybackRailView: View {
                 }
             }
         } label: {
-            VStack(spacing: 4) {
+            HStack(spacing: 8) {
                 Image(systemName: "slider.horizontal.3")
-                Text("\(TransitionCountFormatting.value(player.counts)) ct")
-                Text(speedLabel(for: player.speed))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(TransitionCountFormatting.value(player.counts)) ct")
+                    Text(speedLabel(for: player.speed))
+                }
+                Spacer(minLength: 0)
             }
-            .font(.caption2.weight(.semibold))
+            .font(.caption.weight(.semibold))
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
             .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
     }
