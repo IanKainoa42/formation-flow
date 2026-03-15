@@ -382,32 +382,21 @@ struct FloorGridView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: isCompactLayout ? 8 : 12) {
                 if !collidingAthletes.isEmpty {
-                    HStack(spacing: 4) {
-                        Button {
-                            collisionCycleIndex = (collisionCycleIndex - 1 + collidingAthletes.count) % collidingAthletes.count
-                            selectCollision(at: collisionCycleIndex)
-                        } label: {
-                            Image(systemName: "chevron.left")
+                    Button {
+                        collisionCycleIndex = (collisionCycleIndex + 1) % collidingAthletes.count
+                        selectCollision(at: collisionCycleIndex)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                            Text("\(collidingAthletes.count)")
                         }
-                        .buttonStyle(.bordered)
-
-                        Label(
-                            isCompactLayout
-                                ? "\(collisionCycleIndex + 1)/\(collidingAthletes.count)"
-                                : "\(collisionCycleIndex + 1)/\(collidingAthletes.count) collisions",
-                            systemImage: "exclamationmark.triangle.fill"
-                        )
+                        .font(.caption.weight(.bold))
                         .foregroundColor(.red)
-                        .font((isCompactLayout ? Font.caption : .subheadline).weight(.medium))
-
-                        Button {
-                            collisionCycleIndex = (collisionCycleIndex + 1) % collidingAthletes.count
-                            selectCollision(at: collisionCycleIndex)
-                        } label: {
-                            Image(systemName: "chevron.right")
-                        }
-                        .buttonStyle(.bordered)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(.red.opacity(0.15), in: Capsule())
                     }
+                    .buttonStyle(.plain)
                 }
 
                 Button(action: addAthlete) {
@@ -485,7 +474,7 @@ struct FloorGridView: View {
             }
             .controlSize(isCompactLayout || isHeightConstrained ? .small : .regular)
             .padding(.horizontal, 16)
-            .padding(.vertical, isHeightConstrained ? 8 : (isCompactLayout ? 10 : 12))
+            .padding(.vertical, isHeightConstrained ? 6 : (isCompactLayout ? 8 : 8))
         }
         .background(.bar)
     }
@@ -739,7 +728,7 @@ struct FloorGridView: View {
                         }
                     }
                     .padding(.horizontal, isCompactLayout ? 12 : 0)
-                    .padding(.top, isHeightConstrained ? 8 : 14)
+                    .padding(.top, isHeightConstrained ? 4 : 8)
                 }
             }
         }
@@ -1356,25 +1345,18 @@ struct FloorGridView: View {
     }
 
     private func banner(text: String, color: Color) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 6) {
             Image(systemName: "info.circle.fill")
+                .font(.caption2)
             Text(text)
-                .font(isCompactLayout ? .caption.weight(.semibold) : .subheadline.weight(.medium))
-                .lineLimit(isCompactLayout ? 2 : nil)
+                .font(.caption2.weight(.medium))
+                .lineLimit(1)
         }
-        .frame(maxWidth: isCompactLayout ? .infinity : nil, alignment: .leading)
-        .padding(.horizontal, isCompactLayout ? 12 : 14)
-        .padding(.vertical, isCompactLayout ? 8 : 10)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
         .foregroundColor(color)
-        .background {
-            if isCompactLayout {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(color.opacity(0.15))
-            } else {
-                Capsule()
-                    .fill(color.opacity(0.15))
-            }
-        }
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(color.opacity(0.2), lineWidth: 0.5))
     }
 
     // MARK: - Unified Gesture Handler
