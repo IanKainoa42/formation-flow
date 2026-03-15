@@ -122,15 +122,58 @@ enum AthleteRole: String, Codable, CaseIterable, Hashable {
 
     func markerPath(in rect: CGRect) -> Path {
         var path = Path()
+        let cx = rect.midX
+        let cy = rect.midY
+        let r = min(rect.width, rect.height) / 2
 
         switch self {
-        case .stuntGroup:
-            path.move(to: CGPoint(x: rect.midX, y: rect.minY))
-            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-            path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-            path.closeSubpath()
-        default:
+        case .base:
+            // Circle
             path.addEllipse(in: rect)
+
+        case .flyer:
+            // Diamond
+            path.move(to: CGPoint(x: cx, y: cy - r))
+            path.addLine(to: CGPoint(x: cx + r, y: cy))
+            path.addLine(to: CGPoint(x: cx, y: cy + r))
+            path.addLine(to: CGPoint(x: cx - r, y: cy))
+            path.closeSubpath()
+
+        case .spotter:
+            // Pentagon
+            for i in 0..<5 {
+                let angle = (CGFloat(i) * 2 * .pi / 5) - .pi / 2
+                let point = CGPoint(x: cx + r * cos(angle), y: cy + r * sin(angle))
+                if i == 0 { path.move(to: point) } else { path.addLine(to: point) }
+            }
+            path.closeSubpath()
+
+        case .backspot:
+            // Hexagon
+            for i in 0..<6 {
+                let angle = (CGFloat(i) * 2 * .pi / 6) - .pi / 6
+                let point = CGPoint(x: cx + r * cos(angle), y: cy + r * sin(angle))
+                if i == 0 { path.move(to: point) } else { path.addLine(to: point) }
+            }
+            path.closeSubpath()
+
+        case .tumbler:
+            // Star (5-pointed)
+            let innerR = r * 0.42
+            for i in 0..<10 {
+                let angle = (CGFloat(i) * .pi / 5) - .pi / 2
+                let pointR = i % 2 == 0 ? r : innerR
+                let point = CGPoint(x: cx + pointR * cos(angle), y: cy + pointR * sin(angle))
+                if i == 0 { path.move(to: point) } else { path.addLine(to: point) }
+            }
+            path.closeSubpath()
+
+        case .stuntGroup:
+            // Triangle
+            path.move(to: CGPoint(x: cx, y: cy - r))
+            path.addLine(to: CGPoint(x: cx + r, y: cy + r))
+            path.addLine(to: CGPoint(x: cx - r, y: cy + r))
+            path.closeSubpath()
         }
 
         return path
@@ -489,18 +532,18 @@ struct TransitionEndpointMarkerRenderItem: Identifiable, Equatable, Hashable {
     let position: CGPoint
     let endpoint: PreviewEditableEndpoint
     let style: Style
+    let formationColor: Color
 
     var id: String {
         "\(athleteID)-\(endpoint)-\(style)"
     }
 
-    var formationColor: Color {
-        switch endpoint {
-        case .start:
-            return .blue
-        case .end:
-            return .red
-        }
+    static let rainbowColors: [Color] = [
+        .red, .orange, .yellow, .green, .cyan, .blue, .indigo, .purple
+    ]
+
+    static func rainbowColor(forIndex index: Int) -> Color {
+        rainbowColors[index % rainbowColors.count]
     }
 }
 

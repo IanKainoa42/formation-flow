@@ -7,6 +7,7 @@ struct AthleteInspectorView: View {
     let position: CGPoint
     let isSwapMode: Bool
     let formationCount: Int
+    var compactLayout: Bool = false
     var onUpdateLabel: (String) -> Void
     var onUpdateRole: (AthleteRole) -> Void
     var onSwap: () -> Void
@@ -16,7 +17,7 @@ struct AthleteInspectorView: View {
     @State private var showDeleteConfirmation = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: compactLayout ? 14 : 18) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Athlete")
@@ -50,7 +51,11 @@ struct AthleteInspectorView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Role")
                     .font(.subheadline.weight(.semibold))
-                AthleteRolePicker(selectedRole: athlete.role, onSelect: onUpdateRole)
+                AthleteRolePicker(
+                    selectedRole: athlete.role,
+                    compactLayout: compactLayout,
+                    onSelect: onUpdateRole
+                )
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -80,7 +85,7 @@ struct AthleteInspectorView: View {
 
             Spacer()
         }
-        .padding(20)
+        .padding(compactLayout ? 16 : 20)
         .background(.thinMaterial)
         .confirmationDialog(
             "Delete \(athlete.label)?",
@@ -96,14 +101,15 @@ struct AthleteInspectorView: View {
 
 struct MultiSelectionInspectorView: View {
     let count: Int
+    var compactLayout: Bool = false
     var onClearSelection: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: compactLayout ? 12 : 16) {
             Text("Selection")
                 .font(.headline)
             Text("\(count) athletes selected")
-                .font(.title3.weight(.semibold))
+                .font((compactLayout ? Font.title3 : .title3).weight(.semibold))
             Text("Drag on the floor to move the selected athletes together. Use Swap for one athlete at a time.")
                 .font(.body)
                 .foregroundColor(.secondary)
@@ -111,7 +117,7 @@ struct MultiSelectionInspectorView: View {
                 .buttonStyle(.bordered)
             Spacer()
         }
-        .padding(20)
+        .padding(compactLayout ? 16 : 20)
         .background(.thinMaterial)
     }
 }
@@ -119,40 +125,45 @@ struct MultiSelectionInspectorView: View {
 struct EmptyInspectorView: View {
     let title: String
     let message: String
+    var compactLayout: Bool = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: compactLayout ? 12 : 14) {
             Text(title)
                 .font(.headline)
             Text(message)
                 .foregroundColor(.secondary)
             Spacer()
         }
-        .padding(20)
+        .padding(compactLayout ? 16 : 20)
         .background(.thinMaterial)
     }
 }
 
 struct AthleteRolePicker: View {
     let selectedRole: AthleteRole
+    var compactLayout: Bool = false
     var onSelect: (AthleteRole) -> Void
 
     var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 74), spacing: 8)], spacing: 8) {
+        LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: compactLayout ? 68 : 74), spacing: 8)],
+            spacing: 8
+        ) {
             ForEach(AthleteRole.allCases, id: \.self) { role in
                 Button {
                     onSelect(role)
                 } label: {
-                    VStack(spacing: 6) {
+                    VStack(spacing: compactLayout ? 4 : 6) {
                         AthleteRoleSwatch(role: role, isSelected: role == selectedRole)
-                            .frame(width: 28, height: 28)
+                            .frame(width: compactLayout ? 24 : 28, height: compactLayout ? 24 : 28)
                         Text(role.displayName)
                             .font(.caption2)
                             .foregroundColor(role == selectedRole ? .primary : .secondary)
                             .multilineTextAlignment(.center)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, compactLayout ? 6 : 8)
                     .background(role == selectedRole ? Color.primary.opacity(0.08) : Color.clear)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
@@ -168,13 +179,8 @@ private struct AthleteRoleSwatch: View {
 
     var body: some View {
         ZStack {
-            if role == .stuntGroup {
-                TriangleShape()
-                    .fill(role.color)
-            } else {
-                Circle()
-                    .fill(role.color)
-            }
+            RoleShape(role: role)
+                .fill(role.color)
 
             if isSelected {
                 Image(systemName: "checkmark")
@@ -185,13 +191,10 @@ private struct AthleteRoleSwatch: View {
     }
 }
 
-private struct TriangleShape: Shape {
+private struct RoleShape: Shape {
+    let role: AthleteRole
+
     func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-        path.closeSubpath()
-        return path
+        role.markerPath(in: rect)
     }
 }

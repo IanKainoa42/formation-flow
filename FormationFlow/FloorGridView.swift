@@ -4,6 +4,7 @@ import SwiftUI
 // MARK: - Floor Grid View
 
 struct FloorGridView: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @ObservedObject var store: RoutineStore
     let formationID: UUID
     var onDuplicateAsNext: () -> Void
@@ -16,7 +17,10 @@ struct FloorGridView: View {
     @State private var selectedAthleteIDs: Set<UUID> = []
     @State private var showingRosterSheet = false
     @State private var showingNotesSheet = false
+    @State private var showingInspectorSheet = false
+    @State private var showingTransportSheet = false
     @State private var isDraggingAthletes = false
+    @State private var isPanningCanvas = false
     @State private var isDrawingSelectionBox = false
     @State private var selectionRect: CGRect? = nil
     @State private var selectionStartPoint: CGPoint = .zero
@@ -24,6 +28,8 @@ struct FloorGridView: View {
     @State private var undoStack: [[(id: UUID, position: CGPoint)]] = []
     @State private var zoomScale: CGFloat = 1.0
     @State private var lastZoomScale: CGFloat = 1.0
+    @State private var canvasPanOffset: CGSize = .zero
+    @State private var lastCanvasPanOffset: CGSize = .zero
     @State private var isSwapMode = false
     @State private var swapSourceAthleteID: UUID?
     @State private var collisionMessage: String?
@@ -48,6 +54,10 @@ struct FloorGridView: View {
     private var formation: Formation? {
         guard let formationIndex else { return nil }
         return store.routine.formations[formationIndex]
+    }
+
+    private var isCompactLayout: Bool {
+        horizontalSizeClass == .compact
     }
 
     private var renderedAthletes: [RenderedAthlete] {
@@ -105,10 +115,18 @@ struct FloorGridView: View {
 
     private var endpointMarkers: [TransitionEndpointMarkerRenderItem] {
         guard let player else { return [] }
+
         let startStyle: TransitionEndpointMarkerRenderItem.Style =
             focusedEndpoint == nil || focusedEndpoint == .start ? .editable : .readOnly
         let endStyle: TransitionEndpointMarkerRenderItem.Style =
             focusedEndpoint == nil || focusedEndpoint == .end ? .editable : .readOnly
+
+        // Rainbow color per formation index
+        let startIndex = startFormationID.flatMap { store.formationIndex(id: $0) } ?? 0
+        let endIndex = endFormationID.flatMap { store.formationIndex(id: $0) } ?? 0
+        let startColor = TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: startIndex)
+        let endColor = TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: endIndex)
+
         let startMarkers = player.startAthletes.map { athlete in
             TransitionEndpointMarkerRenderItem(
                 athleteID: athlete.id,
@@ -116,7 +134,8 @@ struct FloorGridView: View {
                 role: athlete.role,
                 position: athlete.position,
                 endpoint: .start,
-                style: startStyle
+                style: startStyle,
+                formationColor: startColor
             )
         }
         let endMarkers = player.endAthletes.map { athlete in
@@ -126,7 +145,8 @@ struct FloorGridView: View {
                 role: athlete.role,
                 position: athlete.position,
                 endpoint: .end,
-                style: endStyle
+                style: endStyle,
+                formationColor: endColor
             )
         }
         return startMarkers + endMarkers
@@ -159,6 +179,63 @@ struct FloorGridView: View {
         }
     }
 
+    private var startFormationName: String? {
+        guard let startFormationID else { return nil }
+        return store.routine.formations.first(where: { $0.id == startFormationID })?.name
+    }
+
+    private var endFormationName: String? {
+        guard let endFormationID else { return nil }
+        return store.routine.formations.first(where: { $0.id == endFormationID })?.name
+    }
+
+    private var compactInspectorTitle: String {
+        if selectedAthleteIDs.count > 1 {
+            return "Selection"
+        }
+        if selectedAthleteID != nil {
+            return "Athlete"
+        }
+        return "Inspector"
+    }
+
+    private var compactInspectButtonTitle: String {
+        if selectedAthleteIDs.count > 1 {
+            return "Selection"
+        }
+        if selectedAthleteID != nil {
+            return "Athlete"
+        }
+        return "Inspect"
+    }
+
+    private var compactBannerConfiguration: (text: String, color: Color)? {
+        if let collisionMessage {
+            return (collisionMessage, .red)
+        }
+
+        if isSwapMode,
+           let swapSourceAthleteID,
+           let rosterAthlete = store.routine.roster.first(where: { $0.id == swapSourceAthleteID })
+        {
+            return ("Tap another athlete to swap with \(rosterAthlete.label).", .blue)
+        }
+
+        if !pathCollisionIDs.isEmpty {
+            return ("\(pathCollisionIDs.count) athletes have crossing paths.", .red)
+        }
+
+        if !hasMadeFirstSelection {
+            return ("Tap an athlete to edit it. Drag on empty space to box-select.", .accentColor)
+        }
+
+        return nil
+    }
+
+    private var dragActivationDistance: CGFloat {
+        isCompactLayout ? 10 : 6
+    }
+
     var body: some View {
         Group {
             if formation != nil {
@@ -173,6 +250,12 @@ struct FloorGridView: View {
         .sheet(isPresented: $showingNotesSheet) {
             notesSheet
         }
+        .sheet(isPresented: $showingInspectorSheet) {
+            compactInspectorSheet
+        }
+        .sheet(isPresented: $showingTransportSheet) {
+            compactTransportSheet
+        }
         .onChange(of: formationID) { _, _ in
             selectedAthleteIDs = []
             isSwapMode = false
@@ -181,6 +264,10 @@ struct FloorGridView: View {
             activeAlignmentGuides = []
             collisionCycleIndex = 0
             focusedEndpoint = nil
+            showingInspectorSheet = false
+            showingTransportSheet = false
+            canvasPanOffset = .zero
+            lastCanvasPanOffset = .zero
             clearTransitionDragState()
         }
         .onChange(of: selectedAthleteIDs) { _, newSelection in
@@ -216,6 +303,8 @@ struct FloorGridView: View {
 
             if renderedAthletes.isEmpty {
                 emptyState
+            } else if isCompactLayout {
+                canvasArea
             } else {
                 HStack(spacing: 0) {
                     canvasArea
@@ -229,7 +318,7 @@ struct FloorGridView: View {
 
     private var controlStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
+            HStack(spacing: isCompactLayout ? 8 : 12) {
                 if !collidingAthletes.isEmpty {
                     HStack(spacing: 4) {
                         Button {
@@ -241,11 +330,13 @@ struct FloorGridView: View {
                         .buttonStyle(.bordered)
 
                         Label(
-                            "\(collisionCycleIndex + 1)/\(collidingAthletes.count) collisions",
+                            isCompactLayout
+                                ? "\(collisionCycleIndex + 1)/\(collidingAthletes.count)"
+                                : "\(collisionCycleIndex + 1)/\(collidingAthletes.count) collisions",
                             systemImage: "exclamationmark.triangle.fill"
                         )
                         .foregroundColor(.red)
-                        .font(.subheadline.weight(.medium))
+                        .font((isCompactLayout ? Font.caption : .subheadline).weight(.medium))
 
                         Button {
                             collisionCycleIndex = (collisionCycleIndex + 1) % collidingAthletes.count
@@ -258,14 +349,38 @@ struct FloorGridView: View {
                 }
 
                 Button(action: addAthlete) {
-                    Label("Add Athlete", systemImage: "plus.circle.fill")
+                    Label(isCompactLayout ? "Add" : "Add Athlete", systemImage: "plus.circle.fill")
                 }
                 .buttonStyle(.borderedProminent)
 
-                Button(action: { showingRosterSheet = true }) {
-                    Label("Manage Roster", systemImage: "list.bullet.rectangle")
+                if isCompactLayout {
+                    Group {
+                        if selectedAthleteIDs.isEmpty {
+                            Button {
+                                showingInspectorSheet = true
+                            } label: {
+                                Label(compactInspectButtonTitle, systemImage: "slider.horizontal.3")
+                            }
+                            .buttonStyle(.bordered)
+                        } else {
+                            Button {
+                                showingInspectorSheet = true
+                            } label: {
+                                Label(compactInspectButtonTitle, systemImage: "slider.horizontal.3")
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                    }
                 }
-                .buttonStyle(.bordered)
+
+                if isCompactLayout, hasTransition, startFormationName != nil, endFormationName != nil {
+                    Button {
+                        showingTransportSheet = true
+                    } label: {
+                        Label("Preview", systemImage: "play.circle")
+                    }
+                    .buttonStyle(.bordered)
+                }
 
                 Button(action: beginSwapMode) {
                     Label("Swap", systemImage: "arrow.triangle.swap")
@@ -273,34 +388,83 @@ struct FloorGridView: View {
                 .buttonStyle(.bordered)
                 .disabled(selectedAthleteID == nil)
 
-                Button(action: resetView) {
-                    Label("Reset View", systemImage: "arrow.counterclockwise")
-                }
-                .buttonStyle(.bordered)
-
-                Button(action: { showingNotesSheet = true }) {
-                    Label("Notes", systemImage: "note.text")
-                }
-                .buttonStyle(.bordered)
-                .overlay(alignment: .topTrailing) {
-                    if formation?.notes.isEmpty == false {
-                        Circle()
-                            .fill(.orange)
-                            .frame(width: 8, height: 8)
-                            .offset(x: 2, y: -2)
+                if isCompactLayout {
+                    compactOverflowMenu
+                } else {
+                    Button(action: { showingRosterSheet = true }) {
+                        Label("Manage Roster", systemImage: "list.bullet.rectangle")
                     }
-                }
+                    .buttonStyle(.bordered)
 
-                Button(action: undoLastMove) {
-                    Label("Undo Move", systemImage: "arrow.uturn.backward")
+                    Button(action: resetView) {
+                        Label("Reset View", systemImage: "arrow.counterclockwise")
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button(action: { showingNotesSheet = true }) {
+                        Label("Notes", systemImage: "note.text")
+                    }
+                    .buttonStyle(.bordered)
+                    .overlay(alignment: .topTrailing) {
+                        if formation?.notes.isEmpty == false {
+                            Circle()
+                                .fill(.orange)
+                                .frame(width: 8, height: 8)
+                                .offset(x: 2, y: -2)
+                        }
+                    }
+
+                    Button(action: undoLastMove) {
+                        Label("Undo Move", systemImage: "arrow.uturn.backward")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(undoStack.isEmpty)
                 }
-                .buttonStyle(.bordered)
-                .disabled(undoStack.isEmpty)
             }
+            .controlSize(isCompactLayout ? .small : .regular)
             .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.vertical, isCompactLayout ? 10 : 12)
         }
         .background(.bar)
+    }
+
+    private var compactOverflowMenu: some View {
+        Menu {
+            Button(action: { showingRosterSheet = true }) {
+                Label("Roster", systemImage: "list.bullet.rectangle")
+            }
+
+            Button(action: { showingNotesSheet = true }) {
+                Label("Notes", systemImage: "note.text")
+            }
+
+            Button(action: resetView) {
+                Label("Reset View", systemImage: "arrow.counterclockwise")
+            }
+
+            Button(action: undoLastMove) {
+                Label("Undo Move", systemImage: "arrow.uturn.backward")
+            }
+            .disabled(undoStack.isEmpty)
+        } label: {
+            compactOverflowMenuLabel
+        }
+        .buttonStyle(.bordered)
+    }
+
+    private var compactOverflowMenuLabel: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "ellipsis.circle")
+            Text("More")
+        }
+        .overlay(alignment: .topTrailing) {
+            if formation?.notes.isEmpty == false {
+                Circle()
+                    .fill(.orange)
+                    .frame(width: 8, height: 8)
+                    .offset(x: 4, y: -4)
+            }
+        }
     }
 
     private var emptyState: some View {
@@ -318,30 +482,56 @@ struct FloorGridView: View {
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 460)
 
-                HStack(spacing: 12) {
-                    Button(action: addAthlete) {
-                        Label("Add Athlete", systemImage: "plus.circle.fill")
-                            .frame(minWidth: 180)
-                    }
-                    .buttonStyle(.borderedProminent)
+                Group {
+                    if isCompactLayout {
+                        VStack(spacing: 12) {
+                            Button(action: addAthlete) {
+                                Label("Add Athlete", systemImage: "plus.circle.fill")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.borderedProminent)
 
-                    Button(action: applyTemplate) {
-                        Label("Apply 10-Athlete Template", systemImage: "square.grid.3x3.fill")
-                            .frame(minWidth: 220)
-                    }
-                    .buttonStyle(.bordered)
+                            Button(action: applyTemplate) {
+                                Label("Apply 10-Athlete Template", systemImage: "square.grid.3x3.fill")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
 
-                    Button(action: onDuplicateAsNext) {
-                        Label("Duplicate as Next Formation", systemImage: "plus.square.on.square")
-                            .frame(minWidth: 220)
+                            Button(action: onDuplicateAsNext) {
+                                Label("Duplicate as Next Formation", systemImage: "plus.square.on.square")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(renderedAthletes.isEmpty)
+                        }
+                    } else {
+                        HStack(spacing: 12) {
+                            Button(action: addAthlete) {
+                                Label("Add Athlete", systemImage: "plus.circle.fill")
+                                    .frame(minWidth: 180)
+                            }
+                            .buttonStyle(.borderedProminent)
+
+                            Button(action: applyTemplate) {
+                                Label("Apply 10-Athlete Template", systemImage: "square.grid.3x3.fill")
+                                    .frame(minWidth: 220)
+                            }
+                            .buttonStyle(.bordered)
+
+                            Button(action: onDuplicateAsNext) {
+                                Label("Duplicate as Next Formation", systemImage: "plus.square.on.square")
+                                    .frame(minWidth: 220)
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(renderedAthletes.isEmpty)
+                        }
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(renderedAthletes.isEmpty)
                 }
             }
             .padding(32)
             .background(.thinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 24))
+            .padding(.horizontal, isCompactLayout ? 20 : 0)
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -357,9 +547,15 @@ struct FloorGridView: View {
             let cellSize = baseCellSize * zoomScale
             let canvasWidth = CourtConstants.width * cellSize
             let canvasHeight = CourtConstants.height * cellSize
+            let canvasSize = CGSize(width: canvasWidth, height: canvasHeight)
+            let displayPanOffset = clampedCanvasPanOffset(
+                canvasPanOffset,
+                viewportSize: geometry.size,
+                canvasSize: canvasSize
+            )
             let offset = CGPoint(
-                x: (geometry.size.width - canvasWidth) / 2,
-                y: (geometry.size.height - canvasHeight) / 2
+                x: (geometry.size.width - canvasWidth) / 2 + displayPanOffset.width,
+                y: (geometry.size.height - canvasHeight) / 2 + displayPanOffset.height
             )
 
             ZStack(alignment: .top) {
@@ -378,48 +574,130 @@ struct FloorGridView: View {
                     focusedEndpoint: focusedEndpoint,
                     hasTransition: hasTransition
                 )
-                .gesture(dragGesture(cellSize: cellSize, offset: offset))
+                .gesture(
+                    dragGesture(
+                        cellSize: cellSize,
+                        offset: offset,
+                        viewportSize: geometry.size,
+                        canvasSize: canvasSize
+                    )
+                )
                 .simultaneousGesture(waypointDoubleTapGesture(cellSize: cellSize, offset: offset))
                 .gesture(
                     MagnifyGesture()
                         .onChanged { value in
-                            zoomScale = max(0.65, min(3.0, lastZoomScale * value.magnification))
+                            let nextZoomScale = max(0.65, min(3.0, lastZoomScale * value.magnification))
+                            let nextCellSize = baseCellSize * nextZoomScale
+                            let nextCanvasSize = CGSize(
+                                width: CourtConstants.width * nextCellSize,
+                                height: CourtConstants.height * nextCellSize
+                            )
+
+                            zoomScale = nextZoomScale
+                            canvasPanOffset = clampedCanvasPanOffset(
+                                canvasPanOffset,
+                                viewportSize: geometry.size,
+                                canvasSize: nextCanvasSize
+                            )
                         }
                         .onEnded { _ in
                             lastZoomScale = zoomScale
+                            canvasPanOffset = clampedCanvasPanOffset(
+                                canvasPanOffset,
+                                viewportSize: geometry.size,
+                                canvasSize: CGSize(
+                                    width: CourtConstants.width * baseCellSize * zoomScale,
+                                    height: CourtConstants.height * baseCellSize * zoomScale
+                                )
+                            )
+                            lastCanvasPanOffset = canvasPanOffset
                         }
                 )
 
-                VStack(spacing: 10) {
-                    if let collisionMessage {
-                        banner(text: collisionMessage, color: .red)
-                    }
+                VStack(spacing: isCompactLayout ? 8 : 10) {
+                    if isCompactLayout {
+                        if let compactBannerConfiguration {
+                            banner(text: compactBannerConfiguration.text, color: compactBannerConfiguration.color)
+                        }
+                    } else {
+                        if let collisionMessage {
+                            banner(text: collisionMessage, color: .red)
+                        }
 
-                    if isSwapMode, let swapSourceAthleteID,
-                        let rosterAthlete = store.routine.roster.first(where: { $0.id == swapSourceAthleteID })
-                    {
-                        banner(
-                            text: "Tap another athlete to swap with \(rosterAthlete.label).",
-                            color: .blue
-                        )
-                    } else if !hasMadeFirstSelection {
-                        banner(
-                            text: "Tap an athlete to edit it. Drag on empty space to box-select.",
-                            color: .accentColor
-                        )
-                    }
+                        if isSwapMode, let swapSourceAthleteID,
+                            let rosterAthlete = store.routine.roster.first(where: { $0.id == swapSourceAthleteID })
+                        {
+                            banner(
+                                text: "Tap another athlete to swap with \(rosterAthlete.label).",
+                                color: .blue
+                            )
+                        } else if !hasMadeFirstSelection {
+                            banner(
+                                text: "Tap an athlete to edit it. Drag on empty space to box-select.",
+                                color: .accentColor
+                            )
+                        }
 
-                    if !pathCollisionIDs.isEmpty {
-                        banner(
-                            text: "\(pathCollisionIDs.count) athletes have crossing paths.",
-                            color: .red
-                        )
+                        if !pathCollisionIDs.isEmpty {
+                            banner(
+                                text: "\(pathCollisionIDs.count) athletes have crossing paths.",
+                                color: .red
+                            )
+                        }
                     }
                 }
+                .padding(.horizontal, isCompactLayout ? 12 : 0)
                 .padding(.top, 14)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var compactInspectorSheet: some View {
+        NavigationStack {
+            inspectorPanel
+                .navigationTitle(compactInspectorTitle)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Done") {
+                            showingInspectorSheet = false
+                        }
+                    }
+                }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private var compactTransportSheet: some View {
+        NavigationStack {
+            if let player, let startFormationName, let endFormationName {
+                TransitionTransportSidebarView(
+                    player: player,
+                    startFormationName: startFormationName,
+                    endFormationName: endFormationName
+                )
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Done") {
+                            showingTransportSheet = false
+                        }
+                    }
+                }
+            } else {
+                ContentUnavailableView("Transition unavailable", systemImage: "play.slash")
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button("Done") {
+                                showingTransportSheet = false
+                            }
+                        }
+                    }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 
     // MARK: - Inspector Panel
@@ -433,6 +711,7 @@ struct FloorGridView: View {
                         position: selectedPlacement.position,
                         isSwapMode: isSwapMode,
                         formationCount: store.routine.formations.count,
+                        compactLayout: isCompactLayout,
                         onUpdateLabel: { newLabel in
                             store.mutateRosterAthlete(id: selectedRosterAthlete.id) { athlete in
                                 athlete.label = newLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -468,12 +747,14 @@ struct FloorGridView: View {
                 } else if selectedAthleteIDs.count > 1 {
                     MultiSelectionInspectorView(
                         count: selectedAthleteIDs.count,
+                        compactLayout: isCompactLayout,
                         onClearSelection: { selectedAthleteIDs = [] }
                     )
                 } else {
                     EmptyInspectorView(
                         title: "Inspector",
-                        message: "Select one athlete to edit its label, role, and actions. Multi-select to move groups together."
+                        message: "Select one athlete to edit its label, role, and actions. Multi-select to move groups together.",
+                        compactLayout: isCompactLayout
                     )
                 }
             }
@@ -490,7 +771,7 @@ struct FloorGridView: View {
         startFormationID: UUID,
         endFormationID: UUID
     ) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: isCompactLayout ? 14 : 16) {
             HStack {
                 Text("Transition")
                     .font(.headline)
@@ -506,7 +787,7 @@ struct FloorGridView: View {
             }
 
             // Move delay
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: isCompactLayout ? 6 : 8) {
                 Text("Start Delay")
                     .font(.subheadline.weight(.semibold))
                 Slider(
@@ -533,19 +814,19 @@ struct FloorGridView: View {
             }
 
             // Path controls
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: isCompactLayout ? 8 : 10) {
                 Text("Path")
                     .font(.subheadline.weight(.semibold))
-                HStack(spacing: 10) {
-                    Button(action: clearPath) {
-                        Label("Straight", systemImage: "line.diagonal")
+                Group {
+                    if isCompactLayout {
+                        VStack(spacing: 8) {
+                            transitionPathButtons
+                        }
+                    } else {
+                        HStack(spacing: 10) {
+                            transitionPathButtons
+                        }
                     }
-                    .buttonStyle(.bordered)
-
-                    Button(action: ensureCurve) {
-                        Label("Curve", systemImage: "scribble")
-                    }
-                    .buttonStyle(.bordered)
                 }
 
                 Text("Double-tap the selected athlete to add a waypoint, then drag the handles.")
@@ -555,7 +836,7 @@ struct FloorGridView: View {
 
             // Waypoint list
             if !transition.pathWaypoints.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: isCompactLayout ? 8 : 10) {
                     Text("Waypoints")
                         .font(.subheadline.weight(.semibold))
                     ForEach(Array(transition.pathWaypoints.enumerated()), id: \.element.id) { waypointIndex, waypoint in
@@ -570,7 +851,22 @@ struct FloorGridView: View {
                 }
             }
         }
-        .padding(20)
+        .padding(isCompactLayout ? 16 : 20)
+    }
+
+    @ViewBuilder
+    private var transitionPathButtons: some View {
+        Button(action: clearPath) {
+            Label("Straight", systemImage: "line.diagonal")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+
+        Button(action: ensureCurve) {
+            Label("Curve", systemImage: "scribble")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
     }
 
     private func waypointCard(
@@ -580,7 +876,7 @@ struct FloorGridView: View {
         startFormationID: UUID,
         endFormationID: UUID
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: isCompactLayout ? 6 : 8) {
             HStack {
                 Text("Waypoint \(waypointIndex + 1)")
                     .font(.body.weight(.medium))
@@ -619,49 +915,99 @@ struct FloorGridView: View {
                 .buttonStyle(.bordered)
             }
 
-            HStack {
-                Text("Hold")
-                Spacer()
-                Button("- 0.5") {
-                    guard let selectedAthleteID else { return }
-                    store.mutateAthleteTransition(
-                        from: startFormationID,
-                        to: endFormationID,
-                        athleteID: selectedAthleteID
-                    ) { t in
-                        t.pathWaypoints[waypointIndex].holdCounts = max(
-                            0,
-                            t.pathWaypoints[waypointIndex].holdCounts - 0.5
+            if isCompactLayout {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Hold")
+                        Spacer()
+                        Text(TransitionCountFormatting.label(waypoint.holdCounts))
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+
+                    HStack(spacing: 8) {
+                        Button("- 0.5") {
+                            adjustWaypointHold(
+                                by: -0.5,
+                                waypointIndex: waypointIndex,
+                                player: player,
+                                startFormationID: startFormationID,
+                                endFormationID: endFormationID
+                            )
+                        }
+                        .buttonStyle(.bordered)
+                        .frame(maxWidth: .infinity)
+
+                        Button("+ 0.5") {
+                            adjustWaypointHold(
+                                by: 0.5,
+                                waypointIndex: waypointIndex,
+                                player: player,
+                                startFormationID: startFormationID,
+                                endFormationID: endFormationID
+                            )
+                        }
+                        .buttonStyle(.bordered)
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+            } else {
+                HStack {
+                    Text("Hold")
+                    Spacer()
+                    Button("- 0.5") {
+                        adjustWaypointHold(
+                            by: -0.5,
+                            waypointIndex: waypointIndex,
+                            player: player,
+                            startFormationID: startFormationID,
+                            endFormationID: endFormationID
                         )
                     }
-                    refreshTransitionFromStore()
-                }
-                .buttonStyle(.bordered)
+                    .buttonStyle(.bordered)
 
-                Text(TransitionCountFormatting.label(waypoint.holdCounts))
-                    .font(.system(.body, design: .monospaced))
-                    .frame(width: 84)
+                    Text(TransitionCountFormatting.label(waypoint.holdCounts))
+                        .font(.system(.body, design: .monospaced))
+                        .frame(width: 84)
 
-                Button("+ 0.5") {
-                    guard let selectedAthleteID else { return }
-                    store.mutateAthleteTransition(
-                        from: startFormationID,
-                        to: endFormationID,
-                        athleteID: selectedAthleteID
-                    ) { t in
-                        t.pathWaypoints[waypointIndex].holdCounts = min(
-                            CGFloat(player.counts),
-                            t.pathWaypoints[waypointIndex].holdCounts + 0.5
+                    Button("+ 0.5") {
+                        adjustWaypointHold(
+                            by: 0.5,
+                            waypointIndex: waypointIndex,
+                            player: player,
+                            startFormationID: startFormationID,
+                            endFormationID: endFormationID
                         )
                     }
-                    refreshTransitionFromStore()
+                    .buttonStyle(.bordered)
                 }
-                .buttonStyle(.bordered)
             }
         }
-        .padding(14)
+        .padding(isCompactLayout ? 12 : 14)
         .background(Color.secondary.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func adjustWaypointHold(
+        by delta: CGFloat,
+        waypointIndex: Int,
+        player: TransitionPlayer,
+        startFormationID: UUID,
+        endFormationID: UUID
+    ) {
+        guard let selectedAthleteID else { return }
+        store.mutateAthleteTransition(
+            from: startFormationID,
+            to: endFormationID,
+            athleteID: selectedAthleteID
+        ) { t in
+            let updatedValue = t.pathWaypoints[waypointIndex].holdCounts + delta
+            t.pathWaypoints[waypointIndex].holdCounts = min(
+                CGFloat(player.counts),
+                max(0, updatedValue)
+            )
+        }
+        refreshTransitionFromStore()
     }
 
     private var rosterSheet: some View {
@@ -742,22 +1088,38 @@ struct FloorGridView: View {
         HStack(spacing: 10) {
             Image(systemName: "info.circle.fill")
             Text(text)
-                .font(.subheadline.weight(.medium))
+                .font(isCompactLayout ? .caption.weight(.semibold) : .subheadline.weight(.medium))
+                .lineLimit(isCompactLayout ? 2 : nil)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(color.opacity(0.15))
+        .frame(maxWidth: isCompactLayout ? .infinity : nil, alignment: .leading)
+        .padding(.horizontal, isCompactLayout ? 12 : 14)
+        .padding(.vertical, isCompactLayout ? 8 : 10)
         .foregroundColor(color)
-        .clipShape(Capsule())
+        .background {
+            if isCompactLayout {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(color.opacity(0.15))
+            } else {
+                Capsule()
+                    .fill(color.opacity(0.15))
+            }
+        }
     }
 
     // MARK: - Unified Gesture Handler
 
-    private func dragGesture(cellSize: CGFloat, offset: CGPoint) -> some Gesture {
+    private func dragGesture(
+        cellSize: CGFloat,
+        offset: CGPoint,
+        viewportSize: CGSize,
+        canvasSize: CGSize
+    ) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
                 if isSwapMode { return }
 
+                let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize)
+                let dragDistance = hypot(value.translation.width, value.translation.height)
                 let startScaledPoint = CGPoint(
                     x: (value.startLocation.x - offset.x) / cellSize,
                     y: (value.startLocation.y - offset.y) / cellSize
@@ -776,6 +1138,14 @@ struct FloorGridView: View {
                     handleEndpointDragContinued(value, cellSize: cellSize, offset: offset)
                     return
                 }
+                if isPanningCanvas {
+                    handleCanvasPanContinued(
+                        value,
+                        viewportSize: viewportSize,
+                        canvasSize: canvasSize
+                    )
+                    return
+                }
                 if isDraggingAthletes {
                     handleFormationDragContinued(value, cellSize: cellSize)
                     return
@@ -786,7 +1156,26 @@ struct FloorGridView: View {
                 }
 
                 // Priority 2: Hit-test for new drag initiation
-                // 2a: Waypoint handles
+                // 2a: Main formation athletes (highest priority — always selectable)
+                if let hitAthlete = renderedAthletes.first(where: {
+                    PathCalculations.squaredDistance(from: startScaledPoint, to: $0.position) < hitRadiusSquared
+                }) {
+                    if !selectedAthleteIDs.contains(hitAthlete.id) {
+                        selectedAthleteIDs = [hitAthlete.id]
+                    }
+                    focusedEndpoint = nil
+                    guard dragDistance >= dragActivationDistance else { return }
+                    dragStartPositions = Dictionary(
+                        uniqueKeysWithValues: renderedAthletes
+                            .filter { selectedAthleteIDs.contains($0.id) }
+                            .map { ($0.id, $0.position) }
+                    )
+                    isDraggingAthletes = true
+                    handleFormationDragContinued(value, cellSize: cellSize)
+                    return
+                }
+
+                // 2b: Waypoint handles (only when no athlete was hit)
                 if hasTransition, let selectedAthleteID,
                    let startFormationID, let endFormationID,
                    let player
@@ -797,11 +1186,13 @@ struct FloorGridView: View {
                         // Check waypoint handles
                         for waypoint in transition.pathWaypoints {
                             if PathCalculations.squaredDistance(from: startScaledPoint, to: waypoint.position)
-                                < CourtConstants.hitRadiusSquared
+                                < hitRadiusSquared
                             {
+                                guard dragDistance >= dragActivationDistance else { return }
                                 draggingWaypointID = waypoint.id
                                 isDraggingPathHandle = true
                                 focusedEndpoint = nil
+                                handlePathDragContinued(scaledPoint: scaledPoint)
                                 return
                             }
                         }
@@ -821,8 +1212,9 @@ struct FloorGridView: View {
                                     y: (nodes[segmentIndex].y + nodes[segmentIndex + 1].y) / 2
                                 )
                                 if PathCalculations.squaredDistance(from: startScaledPoint, to: midpoint)
-                                    < CourtConstants.hitRadiusSquared
+                                    < hitRadiusSquared
                                 {
+                                    guard dragDistance >= dragActivationDistance else { return }
                                     let newWaypoint = PathWaypoint(position: midpoint, isSmooth: true)
                                     store.mutateAthleteTransition(
                                         from: startFormationID,
@@ -861,8 +1253,9 @@ struct FloorGridView: View {
                                 )
                             }
                             if PathCalculations.squaredDistance(from: startScaledPoint, to: midpoint)
-                                < CourtConstants.hitRadiusSquared
+                                < hitRadiusSquared
                             {
+                                guard dragDistance >= dragActivationDistance else { return }
                                 isDraggingPathHandle = true
                                 focusedEndpoint = nil
                                 handlePathDragContinued(scaledPoint: scaledPoint)
@@ -872,47 +1265,47 @@ struct FloorGridView: View {
                     }
                 }
 
-                // 2b: Endpoint markers (either side — tapping focuses that formation)
+                // 2c: Endpoint markers (other formation — tapping focuses that formation)
                 if hasTransition {
                     if let hitMarker = endpointMarkers.first(where: {
-                        PathCalculations.squaredDistance(from: startScaledPoint, to: $0.position) < CourtConstants.hitRadiusSquared
+                        PathCalculations.squaredDistance(from: startScaledPoint, to: $0.position) < hitRadiusSquared
                     }) {
                         selectedAthleteIDs = [hitMarker.athleteID]
                         focusedEndpoint = hitMarker.endpoint
                         endpointDragStartPosition = hitMarker.position
+                        guard dragDistance >= dragActivationDistance else { return }
                         isDraggingEndpoint = true
+                        handleEndpointDragContinued(value, cellSize: cellSize, offset: offset)
                         return
                     }
                 }
 
-                // 2c: Main formation athletes
-                if let hitAthlete = renderedAthletes.first(where: {
-                    PathCalculations.squaredDistance(from: startScaledPoint, to: $0.position) < CourtConstants.hitRadiusSquared
-                }) {
-                    if !selectedAthleteIDs.contains(hitAthlete.id) {
-                        selectedAthleteIDs = [hitAthlete.id]
-                    }
-                    focusedEndpoint = nil
-                    dragStartPositions = Dictionary(
-                        uniqueKeysWithValues: renderedAthletes
-                            .filter { selectedAthleteIDs.contains($0.id) }
-                            .map { ($0.id, $0.position) }
+                // 2d: Empty space → pan if zoomed on compact, otherwise selection box
+                focusedEndpoint = nil
+                guard dragDistance >= dragActivationDistance else { return }
+
+                if canPanCanvas(viewportSize: viewportSize, canvasSize: canvasSize) {
+                    isPanningCanvas = true
+                    handleCanvasPanContinued(
+                        value,
+                        viewportSize: viewportSize,
+                        canvasSize: canvasSize
                     )
-                    isDraggingAthletes = true
                     return
                 }
 
-                // 2d: Empty space → selection box
-                focusedEndpoint = nil
                 selectionStartPoint = value.startLocation
                 selectionRect = CGRect(origin: value.startLocation, size: .zero)
                 isDrawingSelectionBox = true
+                handleSelectionBoxContinued(value)
             }
             .onEnded { value in
+                let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize)
                 defer {
                     isDraggingAthletes = false
                     isDraggingEndpoint = false
                     isDraggingPathHandle = false
+                    isPanningCanvas = false
                     draggingWaypointID = nil
                     isDrawingSelectionBox = false
                     selectionRect = nil
@@ -934,7 +1327,7 @@ struct FloorGridView: View {
                             + player.endAthletes.map { ($0, endFormationID!) }
                         if let target = allEndpointAthletes.first(where: {
                             $0.athlete.id != swapSourceAthleteID
-                                && PathCalculations.squaredDistance(from: tapPoint, to: $0.athlete.position) < CourtConstants.hitRadiusSquared
+                                && PathCalculations.squaredDistance(from: tapPoint, to: $0.athlete.position) < hitRadiusSquared
                         }) {
                             store.swapPositions(in: target.formationID, id1: swapSourceAthleteID, id2: target.athlete.id)
                             selectedAthleteIDs = [target.athlete.id]
@@ -948,7 +1341,7 @@ struct FloorGridView: View {
                     // Try swapping in main formation
                     if let targetAthlete = renderedAthletes.first(where: {
                         $0.id != swapSourceAthleteID
-                            && PathCalculations.squaredDistance(from: tapPoint, to: $0.position) < CourtConstants.hitRadiusSquared
+                            && PathCalculations.squaredDistance(from: tapPoint, to: $0.position) < hitRadiusSquared
                     }) {
                         store.swapPositions(in: formationID, id1: swapSourceAthleteID, id2: targetAthlete.id)
                         selectedAthleteIDs = [targetAthlete.id]
@@ -966,6 +1359,11 @@ struct FloorGridView: View {
 
                 if isDraggingEndpoint {
                     refreshTransitionFromStore()
+                }
+
+                if isPanningCanvas {
+                    lastCanvasPanOffset = canvasPanOffset
+                    return
                 }
 
                 if isDrawingSelectionBox, let selectionRect {
@@ -987,7 +1385,7 @@ struct FloorGridView: View {
                         )
                         if hasTransition, let player {
                             if let athlete = player.currentAthletes.first(where: {
-                                PathCalculations.squaredDistance(from: tapPoint, to: $0.position) < CourtConstants.hitRadiusSquared
+                                PathCalculations.squaredDistance(from: tapPoint, to: $0.position) < hitRadiusSquared
                             }) {
                                 selectedAthleteIDs = [athlete.id]
                                 return
@@ -997,11 +1395,134 @@ struct FloorGridView: View {
                     } else {
                         selectedAthleteIDs = newSelection
                     }
+                    return
                 }
+
+                let tapPoint = CGPoint(
+                    x: (value.location.x - offset.x) / cellSize,
+                    y: (value.location.y - offset.y) / cellSize
+                )
+
+                if renderedAthletes.contains(where: {
+                    PathCalculations.squaredDistance(from: tapPoint, to: $0.position) < hitRadiusSquared
+                }) {
+                    return
+                }
+
+                if endpointMarkers.contains(where: {
+                    PathCalculations.squaredDistance(from: tapPoint, to: $0.position) < hitRadiusSquared
+                }) {
+                    return
+                }
+
+                if transitionHandleIsHit(at: tapPoint, hitRadiusSquared: hitRadiusSquared) {
+                    return
+                }
+
+                selectedAthleteIDs = []
+                focusedEndpoint = nil
             }
     }
 
     // MARK: - Drag Helpers
+
+    private func interactionHitRadiusSquared(for cellSize: CGFloat) -> CGFloat {
+        let minimumTouchRadius: CGFloat = isCompactLayout ? 22 : 18
+        let cellAdjustedRadius = minimumTouchRadius / max(cellSize, 1)
+        let defaultRadius = sqrt(CourtConstants.hitRadiusSquared)
+        let radius = max(defaultRadius, cellAdjustedRadius)
+        return radius * radius
+    }
+
+    private func canPanCanvas(viewportSize: CGSize, canvasSize: CGSize) -> Bool {
+        guard isCompactLayout else { return false }
+
+        let overflowWidth = canvasSize.width - viewportSize.width
+        let overflowHeight = canvasSize.height - viewportSize.height
+        return overflowWidth > 1 || overflowHeight > 1
+    }
+
+    private func clampedCanvasPanOffset(
+        _ proposedOffset: CGSize,
+        viewportSize: CGSize,
+        canvasSize: CGSize
+    ) -> CGSize {
+        let maxX = max(0, (canvasSize.width - viewportSize.width) / 2)
+        let maxY = max(0, (canvasSize.height - viewportSize.height) / 2)
+
+        return CGSize(
+            width: min(max(proposedOffset.width, -maxX), maxX),
+            height: min(max(proposedOffset.height, -maxY), maxY)
+        )
+    }
+
+    private func handleCanvasPanContinued(
+        _ value: DragGesture.Value,
+        viewportSize: CGSize,
+        canvasSize: CGSize
+    ) {
+        activeAlignmentGuides = []
+        canvasPanOffset = clampedCanvasPanOffset(
+            CGSize(
+                width: lastCanvasPanOffset.width + value.translation.width,
+                height: lastCanvasPanOffset.height + value.translation.height
+            ),
+            viewportSize: viewportSize,
+            canvasSize: canvasSize
+        )
+    }
+
+    private func transitionHandleIsHit(at point: CGPoint, hitRadiusSquared: CGFloat) -> Bool {
+        guard hasTransition, let selectedAthleteID, let player else { return false }
+
+        let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
+        let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID })
+        let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
+
+        if transition.pathWaypoints.contains(where: {
+            PathCalculations.squaredDistance(from: point, to: $0.position) < hitRadiusSquared
+        }) {
+            return true
+        }
+
+        if !transition.pathWaypoints.isEmpty, let startAthlete, let endAthlete {
+            let nodes = PathCalculations.waypointNodes(
+                from: startAthlete.position,
+                to: endAthlete.position,
+                waypoints: transition.pathWaypoints
+            )
+
+            for segmentIndex in 0..<(nodes.count - 1) {
+                let midpoint = CGPoint(
+                    x: (nodes[segmentIndex].x + nodes[segmentIndex + 1].x) / 2,
+                    y: (nodes[segmentIndex].y + nodes[segmentIndex + 1].y) / 2
+                )
+
+                if PathCalculations.squaredDistance(from: point, to: midpoint) < hitRadiusSquared {
+                    return true
+                }
+            }
+        }
+
+        guard transition.pathWaypoints.isEmpty, let startAthlete, let endAthlete else { return false }
+
+        let midpoint: CGPoint
+        if let controlPoint = transition.pathControlPoint {
+            midpoint = PathCalculations.quadraticBezierPoint(
+                from: startAthlete.position,
+                control: controlPoint,
+                to: endAthlete.position,
+                t: 0.5
+            )
+        } else {
+            midpoint = CGPoint(
+                x: (startAthlete.position.x + endAthlete.position.x) / 2,
+                y: (startAthlete.position.y + endAthlete.position.y) / 2
+            )
+        }
+
+        return PathCalculations.squaredDistance(from: point, to: midpoint) < hitRadiusSquared
+    }
 
     private func handlePathDragContinued(scaledPoint: CGPoint) {
         guard let selectedAthleteID, let player, let startFormationID, let endFormationID else { return }
@@ -1123,10 +1644,11 @@ struct FloorGridView: View {
                     x: (value.location.x - offset.x) / cellSize,
                     y: (value.location.y - offset.y) / cellSize
                 )
+                let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize)
 
                 guard
                     PathCalculations.squaredDistance(from: scaledPoint, to: selectedAthlete.position)
-                        < CourtConstants.hitRadiusSquared
+                        < hitRadiusSquared
                 else { return }
 
                 addWaypoint()
@@ -1282,6 +1804,8 @@ struct FloorGridView: View {
         withAnimation(.spring()) {
             zoomScale = 1.0
             lastZoomScale = 1.0
+            canvasPanOffset = .zero
+            lastCanvasPanOffset = .zero
         }
     }
 }

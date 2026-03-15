@@ -301,36 +301,20 @@ struct FloorCanvasView: View {
         for marker in endpointMarkers {
             let point = CGPoint(x: marker.position.x * cellSize, y: marker.position.y * cellSize)
             let isSelected = selectedAthleteIDs.contains(marker.athleteID)
-            let baseRadius = max(9, marker.role.markerRadius - (marker.style == .editable ? 2 : 4))
-            let radius = baseRadius + (isSelected ? 2 : 0)
-            let path = marker.role.markerPath(center: point, radius: radius)
+            let radius: CGFloat = isSelected ? 8 : 6
             let color = marker.formationColor
             let isDimmed = focusedEndpoint != nil && marker.endpoint != focusedEndpoint
             let opacityMultiplier: CGFloat = isDimmed ? 0.2 : 1.0
 
-            switch marker.style {
-            case .editable:
-                context.fill(path, with: .color(.white.opacity((isSelected ? 0.92 : 0.78) * opacityMultiplier)))
-                context.stroke(
-                    path,
-                    with: .color(color.opacity((isSelected ? 1.0 : 0.82) * opacityMultiplier)),
-                    style: StrokeStyle(lineWidth: isSelected ? 3 : 2.25)
-                )
+            var dot = Path()
+            dot.addEllipse(in: CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2))
 
-                let halo = marker.role.markerPath(center: point, radius: radius + 5)
-                context.stroke(
-                    halo,
-                    with: .color(color.opacity((isSelected ? 0.45 : 0.28) * opacityMultiplier)),
-                    style: StrokeStyle(lineWidth: isSelected ? 2 : 1.5, dash: [6, 3])
-                )
-            case .readOnly:
-                context.fill(path, with: .color(color.opacity(0.08 * opacityMultiplier)))
-                context.stroke(
-                    path,
-                    with: .color(color.opacity((isSelected ? 0.55 : 0.3) * opacityMultiplier)),
-                    style: StrokeStyle(lineWidth: isSelected ? 2 : 1.25, dash: [4, 4])
-                )
-            }
+            context.fill(dot, with: .color(color.opacity((isSelected ? 0.38 : 0.2) * opacityMultiplier)))
+            context.stroke(
+                dot,
+                with: .color(color.opacity((isSelected ? 0.7 : 0.45) * opacityMultiplier)),
+                style: StrokeStyle(lineWidth: isSelected ? 2 : 1.5, dash: [4, 3])
+            )
         }
     }
 
@@ -341,32 +325,30 @@ struct FloorCanvasView: View {
             let isColliding = collisionIDs.contains(athlete.id)
 
             if hasTransition {
-                // Transition mode: white + smaller for selected, grey for others
-                // Blue/red reserved for endpoint markers only
+                // Transition mode: white athletes moving between colored formation endpoints
                 let radius = isSelected ? athlete.role.markerRadius - 1 : athlete.role.markerRadius - 2
-                let fillColor: Color = isColliding ? .red : (isSelected ? .white : .gray)
-                let fillOpacity: CGFloat = isSelected ? 0.92 : 0.45
+                let fillColor: Color = isColliding ? .red : .white
+                let fillOpacity: CGFloat = isSelected ? 0.92 : 0.78
                 let marker = athlete.role.markerPath(center: point, radius: radius)
                 context.fill(marker, with: .color(fillColor.opacity(fillOpacity)))
 
                 if isSelected {
-                    context.stroke(marker, with: .color(.white.opacity(0.6)), lineWidth: 1.5)
+                    context.stroke(marker, with: .color(.accentColor.opacity(0.7)), lineWidth: 2)
                 }
 
-                let labelColor: Color = isSelected ? .black : .white
                 let label = Text(athlete.label)
                     .font(.system(.caption2, design: .monospaced))
-                    .foregroundColor(labelColor.opacity(isSelected ? 0.8 : 0.7))
+                    .foregroundColor(.black.opacity(isSelected ? 0.8 : 0.6))
                 context.draw(label, at: point, anchor: .center)
             } else {
-                // Formation-only mode: normal role-colored rendering
-                let fillColor: Color = isColliding ? .red : (isSelected ? .white : athlete.role.color)
+                // Formation-only mode: white fill, role conveyed by shape
+                let fillColor: Color = isColliding ? .red : .white
                 let radius = isSelected ? athlete.role.selectedMarkerRadius : athlete.role.markerRadius
                 let marker = athlete.role.markerPath(center: point, radius: radius)
-                context.fill(marker, with: .color(fillColor.opacity(0.86)))
+                context.fill(marker, with: .color(fillColor.opacity(isSelected ? 0.92 : 0.86)))
 
                 if isSelected {
-                    context.stroke(marker, with: .color(athlete.role.color), lineWidth: 3)
+                    context.stroke(marker, with: .color(.accentColor.opacity(0.7)), lineWidth: 3)
                 }
 
                 if isColliding {
@@ -383,10 +365,9 @@ struct FloorCanvasView: View {
                     )
                 }
 
-                let labelColor: Color = isSelected ? athlete.role.color : .white
                 let label = Text(athlete.label)
                     .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(labelColor)
+                    .foregroundColor(.black.opacity(isSelected ? 0.8 : 0.6))
                 context.draw(label, at: point, anchor: .center)
             }
         }
