@@ -1480,11 +1480,86 @@ struct FloorGridView: View {
         cellSize: CGFloat,
         excluding excludedID: UUID? = nil
     ) -> RenderedAthlete? {
-        athletes.first { athlete in
-            athlete.id != excludedID
-                && PathCalculations.squaredDistance(from: point, to: athlete.position)
-                    < athleteHitRadiusSquared(for: athlete, cellSize: cellSize)
+        athleteHits(
+            at: point,
+            within: athletes,
+            cellSize: cellSize,
+            excluding: excludedID
+        ).first
+    }
+
+    private func athleteHits(
+        at point: CGPoint,
+        within athletes: [RenderedAthlete],
+        cellSize: CGFloat,
+        excluding excludedID: UUID? = nil
+    ) -> [RenderedAthlete] {
+        athletes
+            .compactMap { athlete -> (athlete: RenderedAthlete, distance: CGFloat)? in
+                guard athlete.id != excludedID else { return nil }
+
+                let distance = PathCalculations.squaredDistance(from: point, to: athlete.position)
+                guard distance < athleteHitRadiusSquared(for: athlete, cellSize: cellSize) else { return nil }
+                return (athlete, distance)
+            }
+            .sorted {
+                if abs($0.distance - $1.distance) > 0.0001 {
+                    return $0.distance < $1.distance
+                }
+                if $0.athlete.label != $1.athlete.label {
+                    return $0.athlete.label.localizedStandardCompare($1.athlete.label) == .orderedAscending
+                }
+                return $0.athlete.id.uuidString < $1.athlete.id.uuidString
+            }
+            .map(\.athlete)
+    }
+
+    private func preferredAthleteHit(
+        at point: CGPoint,
+        within athletes: [RenderedAthlete],
+        cellSize: CGFloat,
+        preferredID: UUID? = nil,
+        excluding excludedID: UUID? = nil
+    ) -> RenderedAthlete? {
+        let candidates = athleteHits(
+            at: point,
+            within: athletes,
+            cellSize: cellSize,
+            excluding: excludedID
+        )
+
+        guard !candidates.isEmpty else { return nil }
+
+        if let preferredID,
+           let preferredAthlete = candidates.first(where: { $0.id == preferredID })
+        {
+            return preferredAthlete
         }
+
+        return candidates.first
+    }
+
+    private func cycledAthleteHit(
+        at point: CGPoint,
+        within athletes: [RenderedAthlete],
+        cellSize: CGFloat,
+        excluding excludedID: UUID? = nil
+    ) -> RenderedAthlete? {
+        let candidates = athleteHits(
+            at: point,
+            within: athletes,
+            cellSize: cellSize,
+            excluding: excludedID
+        )
+
+        guard !candidates.isEmpty else { return nil }
+        guard candidates.count > 1, let selectedAthleteID else { return candidates.first }
+
+        guard let selectedIndex = candidates.firstIndex(where: { $0.id == selectedAthleteID }) else {
+            return candidates.first
+        }
+
+        return candidates[(selectedIndex + 1) % candidates.count]
     }
 
     private func endpointMarkerHit(
@@ -1677,10 +1752,11 @@ struct FloorGridView: View {
                     }
                 } else {
                     // Not in transition mode: athletes have highest priority
-                    if let hitAthlete = athleteHit(
+                    if let hitAthlete = preferredAthleteHit(
                         at: startScaledPoint,
                         within: renderedAthletes,
-                        cellSize: cellSize
+                        cellSize: cellSize,
+                        preferredID: selectedAthleteID
                     ) {
                         if !selectedAthleteIDs.contains(hitAthlete.id) {
                             selectedAthleteIDs = [hitAthlete.id]
@@ -1823,7 +1899,7 @@ struct FloorGridView: View {
                             y: (value.location.y - offset.y) / cellSize
                         )
                         if showTransitionPaths, hasTransition, let player {
-                            if let athlete = athleteHit(
+                            if let athlete = cycledAthleteHit(
                                 at: tapPoint,
                                 within: player.currentAthletes,
                                 cellSize: cellSize
@@ -1848,9 +1924,17 @@ struct FloorGridView: View {
                     y: (value.startLocation.y - offset.y) / cellSize
                 )
 
-                if athleteHit(at: tapPoint, within: renderedAthletes, cellSize: cellSize) != nil
-                    || athleteHit(at: startScaledPoint, within: renderedAthletes, cellSize: cellSize) != nil
-                {
+                if let athlete = cycledAthleteHit(
+                    at: tapPoint,
+                    within: renderedAthletes,
+                    cellSize: cellSize
+                ) ?? cycledAthleteHit(
+                    at: startScaledPoint,
+                    within: renderedAthletes,
+                    cellSize: cellSize
+                ) {
+                    selectedAthleteIDs = [athlete.id]
+                    focusedEndpoint = nil
                     return
                 }
 

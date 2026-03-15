@@ -761,7 +761,7 @@ enum AlignmentSnapEngine {
     private static func linearAlignmentGuides(
         movingPositions: [CGPoint],
         otherAthletePositions: [CGPoint],
-        distanceThreshold: CGFloat = 0.35
+        distanceThreshold: CGFloat = 0.001
     ) -> [AlignmentGuideRenderItem] {
         let allPositions = movingPositions + otherAthletePositions
         guard movingPositions.count + otherAthletePositions.count >= 3 else { return [] }
