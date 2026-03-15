@@ -264,3 +264,136 @@ struct CompactTransitionPlaybackOverlayView: View {
         return String(format: "%.1fx", value)
     }
 }
+
+struct CompactTransitionPlaybackRailView: View {
+    @ObservedObject var player: TransitionPlayer
+    let startFormationName: String
+    let endFormationName: String
+
+    private let countOptions = [4, 8, 16, 32]
+    private let speedOptions: [CGFloat] = [0.5, 1.0, 1.5, 2.0]
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Text("\(startFormationName) \u{2192} \(endFormationName)")
+                .font(.caption2.weight(.semibold))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
+
+            settingsMenu
+
+            Button(action: player.reset) {
+                Image(systemName: "backward.end.fill")
+                    .frame(width: 30, height: 30)
+            }
+            .buttonStyle(.bordered)
+
+            Button {
+                player.isPlaying ? player.pause() : player.play()
+            } label: {
+                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.borderedProminent)
+
+            Button {
+                player.isLooping.toggle()
+            } label: {
+                Image(systemName: "repeat")
+                    .frame(width: 30, height: 30)
+            }
+            .buttonStyle(.bordered)
+            .tint(player.isLooping ? .accentColor : .secondary)
+
+            Spacer(minLength: 0)
+
+            VStack(spacing: 8) {
+                Text(String(format: "%.0f%%", player.progress * 100))
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(.secondary)
+
+                Slider(
+                    value: Binding(
+                        get: { player.progress },
+                        set: { player.seek(to: $0) }
+                    ),
+                    in: 0...1
+                )
+                .frame(width: 170)
+                .rotationEffect(.degrees(-90))
+                .frame(width: 36, height: 170)
+
+                HStack(spacing: 6) {
+                    Text("0")
+                    Spacer(minLength: 0)
+                    Text("100")
+                }
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundColor(.secondary)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 12)
+        .frame(width: 94)
+        .frame(maxHeight: .infinity)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(.white.opacity(0.08))
+        }
+        .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
+        .controlSize(.small)
+    }
+
+    private var settingsMenu: some View {
+        Menu {
+            Section("Counts") {
+                ForEach(countOptions, id: \.self) { count in
+                    Button {
+                        player.counts = Double(count)
+                    } label: {
+                        if Int(player.counts.rounded()) == count {
+                            Label("\(count) counts", systemImage: "checkmark")
+                        } else {
+                            Text("\(count) counts")
+                        }
+                    }
+                }
+            }
+
+            Section("Speed") {
+                ForEach(speedOptions, id: \.self) { speed in
+                    Button {
+                        player.speed = speed
+                    } label: {
+                        if abs(player.speed - speed) < 0.01 {
+                            Label(speedLabel(for: speed), systemImage: "checkmark")
+                        } else {
+                            Text(speedLabel(for: speed))
+                        }
+                    }
+                }
+            }
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: "slider.horizontal.3")
+                Text("\(TransitionCountFormatting.value(player.counts)) ct")
+                Text(speedLabel(for: player.speed))
+            }
+            .font(.caption2.weight(.semibold))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
+
+    private func speedLabel(for value: CGFloat) -> String {
+        if abs(value.rounded() - value) < 0.001 {
+            return "\(Int(value.rounded()))x"
+        }
+        return String(format: "%.1fx", value)
+    }
+}
