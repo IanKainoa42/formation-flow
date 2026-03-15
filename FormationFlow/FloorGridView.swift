@@ -96,6 +96,16 @@ struct FloorGridView: View {
         player != nil && startFormationID != nil && endFormationID != nil
     }
 
+    private var transitionStartColor: Color {
+        let index = startFormationID.flatMap { store.formationIndex(id: $0) } ?? 0
+        return TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: index)
+    }
+
+    private var transitionEndColor: Color {
+        let index = endFormationID.flatMap { store.formationIndex(id: $0) } ?? 0
+        return TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: index)
+    }
+
     private var transitionPaths: [TransitionPathRenderItem] {
         guard let player else { return [] }
         let endLookup = Dictionary(uniqueKeysWithValues: player.endAthletes.map { ($0.id, $0) })
@@ -572,7 +582,10 @@ struct FloorGridView: View {
                     swapSourceID: swapSourceAthleteID,
                     selectionRect: selectionRect,
                     focusedEndpoint: focusedEndpoint,
-                    hasTransition: hasTransition
+                    hasTransition: hasTransition,
+                    startFormationColor: transitionStartColor,
+                    endFormationColor: transitionEndColor,
+                    transitionProgress: player?.progress ?? 0
                 )
                 .gesture(
                     dragGesture(
@@ -1015,14 +1028,20 @@ struct FloorGridView: View {
             List {
                 ForEach(store.routine.roster) { athlete in
                     HStack(spacing: 12) {
-                        Circle()
-                            .fill(athlete.role.color)
-                            .frame(width: 12, height: 12)
-                        Text(athlete.label)
+                        AthleteRoleMarkerShape(role: athlete.role)
+                            .fill(.primary)
+                            .frame(width: 14, height: 14)
+                            .frame(width: 26, height: 26)
+                            .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(athlete.label)
+                            Text(athlete.role.displayName)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+
                         Spacer()
-                        Text(athlete.role.displayName)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
                     }
                 }
                 .onMove { from, to in
@@ -1156,112 +1175,149 @@ struct FloorGridView: View {
                 }
 
                 // Priority 2: Hit-test for new drag initiation
-                // 2a: Main formation athletes (highest priority — always selectable)
-                if let hitAthlete = renderedAthletes.first(where: {
-                    PathCalculations.squaredDistance(from: startScaledPoint, to: $0.position) < hitRadiusSquared
-                }) {
-                    if !selectedAthleteIDs.contains(hitAthlete.id) {
-                        selectedAthleteIDs = [hitAthlete.id]
+                if hasTransition {
+                    // In transition mode: path handles take priority over non-selected athletes
+                    // 2a: Currently selected athlete (allow dragging)
+                    if let hitAthlete = renderedAthletes.first(where: {
+                        selectedAthleteIDs.contains($0.id)
+                            && PathCalculations.squaredDistance(from: startScaledPoint, to: $0.position) < hitRadiusSquared
+                    }) {
+                        focusedEndpoint = nil
+                        guard dragDistance >= dragActivationDistance else { return }
+                        dragStartPositions = Dictionary(
+                            uniqueKeysWithValues: renderedAthletes
+                                .filter { selectedAthleteIDs.contains($0.id) }
+                                .map { ($0.id, $0.position) }
+                        )
+                        isDraggingAthletes = true
+                        handleFormationDragContinued(value, cellSize: cellSize)
+                        return
                     }
-                    focusedEndpoint = nil
-                    guard dragDistance >= dragActivationDistance else { return }
-                    dragStartPositions = Dictionary(
-                        uniqueKeysWithValues: renderedAthletes
-                            .filter { selectedAthleteIDs.contains($0.id) }
-                            .map { ($0.id, $0.position) }
-                    )
-                    isDraggingAthletes = true
-                    handleFormationDragContinued(value, cellSize: cellSize)
-                    return
-                }
 
-                // 2b: Waypoint handles (only when no athlete was hit)
-                if hasTransition, let selectedAthleteID,
-                   let startFormationID, let endFormationID,
-                   let player
-                {
-                    let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
+                    // 2b: Waypoint/path handles (prioritized over non-selected athletes)
+                    if let selectedAthleteID,
+                       let startFormationID, let endFormationID,
+                       let player
+                    {
+                        let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
 
-                    if !transition.pathWaypoints.isEmpty {
-                        // Check waypoint handles
-                        for waypoint in transition.pathWaypoints {
-                            if PathCalculations.squaredDistance(from: startScaledPoint, to: waypoint.position)
-                                < hitRadiusSquared
-                            {
-                                guard dragDistance >= dragActivationDistance else { return }
-                                draggingWaypointID = waypoint.id
-                                isDraggingPathHandle = true
-                                focusedEndpoint = nil
-                                handlePathDragContinued(scaledPoint: scaledPoint)
-                                return
+                        if !transition.pathWaypoints.isEmpty {
+                            // Check waypoint handles
+                            for waypoint in transition.pathWaypoints {
+                                if PathCalculations.squaredDistance(from: startScaledPoint, to: waypoint.position)
+                                    < hitRadiusSquared
+                                {
+                                    guard dragDistance >= dragActivationDistance else { return }
+                                    draggingWaypointID = waypoint.id
+                                    isDraggingPathHandle = true
+                                    focusedEndpoint = nil
+                                    handlePathDragContinued(scaledPoint: scaledPoint)
+                                    return
+                                }
                             }
-                        }
 
-                        // Check "+" midpoint handles for inserting new waypoints
-                        let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID })
-                        let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
-                        if let startAthlete, let endAthlete {
-                            let nodes = PathCalculations.waypointNodes(
-                                from: startAthlete.position,
-                                to: endAthlete.position,
-                                waypoints: transition.pathWaypoints
-                            )
-                            for segmentIndex in 0..<(nodes.count - 1) {
-                                let midpoint = CGPoint(
-                                    x: (nodes[segmentIndex].x + nodes[segmentIndex + 1].x) / 2,
-                                    y: (nodes[segmentIndex].y + nodes[segmentIndex + 1].y) / 2
+                            // Check "+" midpoint handles for inserting new waypoints
+                            let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID })
+                            let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
+                            if let startAthlete, let endAthlete {
+                                let nodes = PathCalculations.waypointNodes(
+                                    from: startAthlete.position,
+                                    to: endAthlete.position,
+                                    waypoints: transition.pathWaypoints
                                 )
+                                for segmentIndex in 0..<(nodes.count - 1) {
+                                    let midpoint = CGPoint(
+                                        x: (nodes[segmentIndex].x + nodes[segmentIndex + 1].x) / 2,
+                                        y: (nodes[segmentIndex].y + nodes[segmentIndex + 1].y) / 2
+                                    )
+                                    if PathCalculations.squaredDistance(from: startScaledPoint, to: midpoint)
+                                        < hitRadiusSquared
+                                    {
+                                        guard dragDistance >= dragActivationDistance else { return }
+                                        let newWaypoint = PathWaypoint(position: midpoint, isSmooth: true)
+                                        store.mutateAthleteTransition(
+                                            from: startFormationID,
+                                            to: endFormationID,
+                                            athleteID: selectedAthleteID
+                                        ) { t in
+                                            let insertIndex = min(segmentIndex, t.pathWaypoints.count)
+                                            t.pathWaypoints.insert(newWaypoint, at: insertIndex)
+                                            t.pathControlPoint = nil
+                                        }
+                                        draggingWaypointID = newWaypoint.id
+                                        isDraggingPathHandle = true
+                                        focusedEndpoint = nil
+                                        refreshTransitionFromStore()
+                                        return
+                                    }
+                                }
+                            }
+                        } else {
+                            // Legacy control point handle
+                            let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID })
+                            let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
+                            if let startAthlete, let endAthlete {
+                                let midpoint: CGPoint
+                                if let controlPoint = transition.pathControlPoint {
+                                    midpoint = PathCalculations.quadraticBezierPoint(
+                                        from: startAthlete.position,
+                                        control: controlPoint,
+                                        to: endAthlete.position,
+                                        t: 0.5
+                                    )
+                                } else {
+                                    midpoint = CGPoint(
+                                        x: (startAthlete.position.x + endAthlete.position.x) / 2,
+                                        y: (startAthlete.position.y + endAthlete.position.y) / 2
+                                    )
+                                }
                                 if PathCalculations.squaredDistance(from: startScaledPoint, to: midpoint)
                                     < hitRadiusSquared
                                 {
                                     guard dragDistance >= dragActivationDistance else { return }
-                                    let newWaypoint = PathWaypoint(position: midpoint, isSmooth: true)
-                                    store.mutateAthleteTransition(
-                                        from: startFormationID,
-                                        to: endFormationID,
-                                        athleteID: selectedAthleteID
-                                    ) { t in
-                                        let insertIndex = min(segmentIndex, t.pathWaypoints.count)
-                                        t.pathWaypoints.insert(newWaypoint, at: insertIndex)
-                                        t.pathControlPoint = nil
-                                    }
-                                    draggingWaypointID = newWaypoint.id
                                     isDraggingPathHandle = true
                                     focusedEndpoint = nil
-                                    refreshTransitionFromStore()
+                                    handlePathDragContinued(scaledPoint: scaledPoint)
                                     return
                                 }
                             }
                         }
-                    } else {
-                        // Legacy control point handle
-                        let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID })
-                        let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
-                        if let startAthlete, let endAthlete {
-                            let midpoint: CGPoint
-                            if let controlPoint = transition.pathControlPoint {
-                                midpoint = PathCalculations.quadraticBezierPoint(
-                                    from: startAthlete.position,
-                                    control: controlPoint,
-                                    to: endAthlete.position,
-                                    t: 0.5
-                                )
-                            } else {
-                                midpoint = CGPoint(
-                                    x: (startAthlete.position.x + endAthlete.position.x) / 2,
-                                    y: (startAthlete.position.y + endAthlete.position.y) / 2
-                                )
-                            }
-                            if PathCalculations.squaredDistance(from: startScaledPoint, to: midpoint)
-                                < hitRadiusSquared
-                            {
-                                guard dragDistance >= dragActivationDistance else { return }
-                                isDraggingPathHandle = true
-                                focusedEndpoint = nil
-                                handlePathDragContinued(scaledPoint: scaledPoint)
-                                return
-                            }
+                    }
+
+                    // 2c: Non-selected athletes
+                    if let hitAthlete = renderedAthletes.first(where: {
+                        PathCalculations.squaredDistance(from: startScaledPoint, to: $0.position) < hitRadiusSquared
+                    }) {
+                        selectedAthleteIDs = [hitAthlete.id]
+                        focusedEndpoint = nil
+                        guard dragDistance >= dragActivationDistance else { return }
+                        dragStartPositions = Dictionary(
+                            uniqueKeysWithValues: renderedAthletes
+                                .filter { selectedAthleteIDs.contains($0.id) }
+                                .map { ($0.id, $0.position) }
+                        )
+                        isDraggingAthletes = true
+                        handleFormationDragContinued(value, cellSize: cellSize)
+                        return
+                    }
+                } else {
+                    // Not in transition mode: athletes have highest priority
+                    if let hitAthlete = renderedAthletes.first(where: {
+                        PathCalculations.squaredDistance(from: startScaledPoint, to: $0.position) < hitRadiusSquared
+                    }) {
+                        if !selectedAthleteIDs.contains(hitAthlete.id) {
+                            selectedAthleteIDs = [hitAthlete.id]
                         }
+                        focusedEndpoint = nil
+                        guard dragDistance >= dragActivationDistance else { return }
+                        dragStartPositions = Dictionary(
+                            uniqueKeysWithValues: renderedAthletes
+                                .filter { selectedAthleteIDs.contains($0.id) }
+                                .map { ($0.id, $0.position) }
+                        )
+                        isDraggingAthletes = true
+                        handleFormationDragContinued(value, cellSize: cellSize)
+                        return
                     }
                 }
 

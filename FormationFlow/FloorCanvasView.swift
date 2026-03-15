@@ -16,6 +16,9 @@ struct FloorCanvasView: View {
     var selectionRect: CGRect? = nil
     var focusedEndpoint: PreviewEditableEndpoint? = nil
     var hasTransition: Bool = false
+    var startFormationColor: Color = .clear
+    var endFormationColor: Color = .clear
+    var transitionProgress: CGFloat = 0
 
     var body: some View {
         Canvas { context, _ in
@@ -151,7 +154,21 @@ struct FloorCanvasView: View {
                             x: waypoint.position.x * cellSize,
                             y: waypoint.position.y * cellSize
                         )
-                        let size: CGFloat = waypoint.isSmooth ? 10 : 8
+                        let size: CGFloat = waypoint.isSmooth ? 14 : 12
+
+                        // Outer glow for visibility
+                        var glow = Path()
+                        let glowSize = size + 6
+                        glow.addEllipse(
+                            in: CGRect(
+                                x: point.x - glowSize / 2,
+                                y: point.y - glowSize / 2,
+                                width: glowSize,
+                                height: glowSize
+                            )
+                        )
+                        context.fill(glow, with: .color(pathColor.opacity(0.15)))
+
                         var handle = Path()
                         if waypoint.isSmooth {
                             handle.addEllipse(
@@ -169,8 +186,8 @@ struct FloorCanvasView: View {
                             handle.addLine(to: CGPoint(x: point.x - size / 2, y: point.y))
                             handle.closeSubpath()
                         }
-                        context.fill(handle, with: .color(.white))
-                        context.stroke(handle, with: .color(pathColor), lineWidth: 2)
+                        context.fill(handle, with: .color(pathColor.opacity(0.18)))
+                        context.stroke(handle, with: .color(pathColor), lineWidth: 2.5)
 
                         if waypoint.holdDuration > 0 {
                             let ringSize = size + 6
@@ -325,9 +342,10 @@ struct FloorCanvasView: View {
             let isColliding = collisionIDs.contains(athlete.id)
 
             if hasTransition {
-                // Transition mode: white athletes moving between colored formation endpoints
+                // Transition mode: athletes colored by formation, blending start→end
                 let radius = isSelected ? athlete.role.markerRadius - 1 : athlete.role.markerRadius - 2
-                let fillColor: Color = isColliding ? .red : .white
+                let formationColor = blendedFormationColor(progress: transitionProgress)
+                let fillColor: Color = isColliding ? .red : formationColor
                 let fillOpacity: CGFloat = isSelected ? 0.92 : 0.78
                 let marker = athlete.role.markerPath(center: point, radius: radius)
                 context.fill(marker, with: .color(fillColor.opacity(fillOpacity)))
@@ -338,7 +356,7 @@ struct FloorCanvasView: View {
 
                 let label = Text(athlete.label)
                     .font(.system(.caption2, design: .monospaced))
-                    .foregroundColor(.black.opacity(isSelected ? 0.8 : 0.6))
+                    .foregroundColor(.white.opacity(isSelected ? 0.95 : 0.85))
                 context.draw(label, at: point, anchor: .center)
             } else {
                 // Formation-only mode: white fill, role conveyed by shape
@@ -371,5 +389,20 @@ struct FloorCanvasView: View {
                 context.draw(label, at: point, anchor: .center)
             }
         }
+    }
+
+    private func blendedFormationColor(progress: CGFloat) -> Color {
+        let resolved1 = UIColor(startFormationColor)
+        let resolved2 = UIColor(endFormationColor)
+        var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
+        var r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
+        resolved1.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+        resolved2.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        let t = min(max(progress, 0), 1)
+        return Color(
+            red: r1 + (r2 - r1) * t,
+            green: g1 + (g2 - g1) * t,
+            blue: b1 + (b2 - b1) * t
+        )
     }
 }

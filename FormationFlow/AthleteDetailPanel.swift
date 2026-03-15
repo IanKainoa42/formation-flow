@@ -177,21 +177,25 @@ private struct AthleteRoleSwatch: View {
     let role: AthleteRole
     let isSelected: Bool
 
+    private var fillColor: Color {
+        isSelected ? .primary : .gray.opacity(0.75)
+    }
+
     var body: some View {
         ZStack {
-            RoleShape(role: role)
-                .fill(role.color)
+            AthleteRoleMarkerShape(role: role)
+                .fill(fillColor)
 
             if isSelected {
                 Image(systemName: "checkmark")
                     .font(.caption.bold())
-                    .foregroundColor(.white)
+                    .foregroundColor(Color(uiColor: .systemBackground))
             }
         }
     }
 }
 
-private struct RoleShape: Shape {
+struct AthleteRoleMarkerShape: Shape {
     let role: AthleteRole
 
     func path(in rect: CGRect) -> Path {
