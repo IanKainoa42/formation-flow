@@ -68,6 +68,10 @@ struct FloorGridView: View {
         UIDevice.current.userInterfaceIdiom == .phone
     }
 
+    private var isPhoneLandscape: Bool {
+        isPhoneLayout && isHeightConstrained
+    }
+
     private var isHeightConstrained: Bool {
         verticalSizeClass == .compact
     }
@@ -100,6 +104,19 @@ struct FloorGridView: View {
     private var selectedPlacement: FormationPlacement? {
         guard let selectedAthleteID, let formation else { return nil }
         return formation.placements.first(where: { $0.athleteID == selectedAthleteID })
+    }
+
+    // MARK: - Formation Display
+
+    private var currentFormationColor: Color {
+        let index = formationIndex ?? 0
+        return TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: index)
+    }
+
+    private var previousFormationAthletes: [RenderedAthlete] {
+        guard let formationIndex, formationIndex > 0 else { return [] }
+        let prevFormation = store.routine.formations[formationIndex - 1]
+        return store.renderedAthletes(for: prevFormation)
     }
 
     // MARK: - Transition Computed Properties
@@ -608,8 +625,10 @@ struct FloorGridView: View {
                 x: (geometry.size.width - canvasWidth) / 2 + displayPanOffset.width,
                 y: (geometry.size.height - canvasHeight) / 2 + displayPanOffset.height
             )
+            let phoneUsesPlaybackRail =
+                isPhoneLandscape && player != nil && startFormationName != nil && endFormationName != nil
 
-            ZStack(alignment: .top) {
+            let canvasContent = ZStack(alignment: .top) {
                 FloorCanvasView(
                     athletes: renderedAthletes,
                     selectedAthleteIDs: selectedAthleteIDs,
@@ -626,7 +645,9 @@ struct FloorGridView: View {
                     hasTransition: hasTransition,
                     startFormationColor: transitionStartColor,
                     endFormationColor: transitionEndColor,
-                    transitionProgress: player?.progress ?? 0
+                    transitionProgress: player?.progress ?? 0,
+                    formationColor: currentFormationColor,
+                    ghostAthletes: previousFormationAthletes
                 )
                 .gesture(
                     dragGesture(
@@ -683,7 +704,11 @@ struct FloorGridView: View {
                                 phoneSelectionOverlay
                             }
 
-                            if let player, let startFormationName, let endFormationName {
+                            if !phoneUsesPlaybackRail,
+                                let player,
+                                let startFormationName,
+                                let endFormationName
+                            {
                                 CompactTransitionPlaybackOverlayView(
                                     player: player,
                                     startFormationName: startFormationName,
@@ -730,6 +755,25 @@ struct FloorGridView: View {
                     .padding(.horizontal, isCompactLayout ? 12 : 0)
                     .padding(.top, isHeightConstrained ? 4 : 8)
                 }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if phoneUsesPlaybackRail,
+                let player,
+                let startFormationName,
+                let endFormationName
+            {
+                HStack(spacing: 10) {
+                    canvasContent
+
+                    CompactTransitionPlaybackRailView(
+                        player: player,
+                        startFormationName: startFormationName,
+                        endFormationName: endFormationName
+                    )
+                }
+            } else {
+                canvasContent
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -19,12 +19,15 @@ struct FloorCanvasView: View {
     var startFormationColor: Color = .clear
     var endFormationColor: Color = .clear
     var transitionProgress: CGFloat = 0
+    var formationColor: Color = .white
+    var ghostAthletes: [RenderedAthlete] = []
 
     var body: some View {
         Canvas { context, _ in
             var context = context
             context.translateBy(x: offset.x, y: offset.y)
             drawGrid(in: &context)
+            drawGhostAthletes(in: &context)
             drawAlignmentGuides(in: &context)
             drawTransitionPaths(in: &context)
             drawEndpointMarkers(in: &context)
@@ -324,6 +327,16 @@ struct FloorCanvasView: View {
         context.stroke(border, with: .color(.white.opacity(0.25)), lineWidth: 2)
     }
 
+    private func drawGhostAthletes(in context: inout GraphicsContext) {
+        guard !ghostAthletes.isEmpty else { return }
+        for athlete in ghostAthletes {
+            let point = CGPoint(x: athlete.position.x * cellSize, y: athlete.position.y * cellSize)
+            let radius = athlete.role.markerRadius - 3
+            let marker = athlete.role.markerPath(center: point, radius: radius)
+            context.fill(marker, with: .color(.white.opacity(0.07)))
+        }
+    }
+
     private func drawGhostCircle(in context: inout GraphicsContext, center: CGPoint) {
         var ghost = Path()
         ghost.addEllipse(in: CGRect(x: center.x - 10, y: center.y - 10, width: 20, height: 20))
@@ -379,8 +392,8 @@ struct FloorCanvasView: View {
                     .foregroundColor(.white.opacity(isSelected ? 0.95 : 0.85))
                 context.draw(label, at: point, anchor: .center)
             } else {
-                // Formation-only mode: white fill, role conveyed by shape
-                let fillColor: Color = isColliding ? .red : .white
+                // Formation-only mode: colored by formation, role conveyed by shape
+                let fillColor: Color = isColliding ? .red : formationColor
                 let radius = isSelected ? athlete.role.selectedMarkerRadius : athlete.role.markerRadius
                 let marker = athlete.role.markerPath(center: point, radius: radius)
                 context.fill(marker, with: .color(fillColor.opacity(isSelected ? 0.92 : 0.86)))
