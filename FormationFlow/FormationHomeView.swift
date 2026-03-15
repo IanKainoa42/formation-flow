@@ -273,12 +273,6 @@ struct RoutineWorkspaceView: View {
                 .navigationTitle(formation.name)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button(action: toggleSidebar) {
-                            Image(systemName: splitViewVisibility == .detailOnly ? "sidebar.left" : "sidebar.leading")
-                        }
-                    }
-
                     ToolbarItemGroup(placement: .navigationBarTrailing) {
                         Button(action: duplicateSelectedFormation) {
                             Label("Duplicate", systemImage: "plus.square.on.square")

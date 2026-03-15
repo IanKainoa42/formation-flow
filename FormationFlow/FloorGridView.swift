@@ -366,10 +366,10 @@ struct FloorGridView: View {
                             canvasArea
                             if !selectedAthleteIDs.isEmpty {
                                 Divider()
-                                inspectorPanel
-                                    .frame(width: 320)
-                                    .transition(.move(edge: .trailing))
                             }
+                            inspectorPanel
+                                .frame(width: selectedAthleteIDs.isEmpty ? 0 : 320)
+                                .clipped()
                         }
                         .animation(.easeInOut(duration: 0.2), value: selectedAthleteIDs.isEmpty)
                     }
