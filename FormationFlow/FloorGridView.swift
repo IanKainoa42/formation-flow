@@ -5,6 +5,7 @@ import SwiftUI
 
 struct FloorGridView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @ObservedObject var store: RoutineStore
     let formationID: UUID
     var onDuplicateAsNext: () -> Void
@@ -19,6 +20,9 @@ struct FloorGridView: View {
     @State private var showingNotesSheet = false
     @State private var showingInspectorSheet = false
     @State private var showingTransportSheet = false
+    @State private var showingAthleteRenamePrompt = false
+    @State private var athleteLabelDraft = ""
+    @State private var showingAthleteDeleteConfirmation = false
     @State private var isDraggingAthletes = false
     @State private var isPanningCanvas = false
     @State private var isDrawingSelectionBox = false
@@ -57,7 +61,15 @@ struct FloorGridView: View {
     }
 
     private var isCompactLayout: Bool {
-        horizontalSizeClass == .compact
+        horizontalSizeClass == .compact || UIDevice.current.userInterfaceIdiom == .phone
+    }
+
+    private var isPhoneLayout: Bool {
+        UIDevice.current.userInterfaceIdiom == .phone
+    }
+
+    private var isHeightConstrained: Bool {
+        verticalSizeClass == .compact
     }
 
     private var renderedAthletes: [RenderedAthlete] {
@@ -266,6 +278,29 @@ struct FloorGridView: View {
         .sheet(isPresented: $showingTransportSheet) {
             compactTransportSheet
         }
+        .alert("Rename Athlete", isPresented: $showingAthleteRenamePrompt) {
+            TextField("Label", text: $athleteLabelDraft)
+
+            Button("Save") {
+                commitAthleteRename()
+            }
+            .disabled(athleteLabelDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Athlete labels are shared across every formation.")
+        }
+        .confirmationDialog(
+            "Delete athlete?",
+            isPresented: $showingAthleteDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Athlete", role: .destructive) {
+                deleteSelectedAthlete()
+            }
+        } message: {
+            Text("This removes the athlete from the roster, every formation, and all transitions.")
+        }
         .onChange(of: formationID) { _, _ in
             selectedAthleteIDs = []
             isSwapMode = false
@@ -276,6 +311,9 @@ struct FloorGridView: View {
             focusedEndpoint = nil
             showingInspectorSheet = false
             showingTransportSheet = false
+            showingAthleteRenamePrompt = false
+            showingAthleteDeleteConfirmation = false
+            athleteLabelDraft = ""
             canvasPanOffset = .zero
             lastCanvasPanOffset = .zero
             clearTransitionDragState()
@@ -307,20 +345,30 @@ struct FloorGridView: View {
     }
 
     private var editorBody: some View {
-        VStack(spacing: 0) {
-            controlStrip
-            Divider()
-
-            if renderedAthletes.isEmpty {
-                emptyState
-            } else if isCompactLayout {
-                canvasArea
-            } else {
-                HStack(spacing: 0) {
+        Group {
+            if isPhoneLayout {
+                if renderedAthletes.isEmpty {
+                    emptyState
+                } else {
                     canvasArea
+                }
+            } else {
+                VStack(spacing: 0) {
+                    controlStrip
                     Divider()
-                    inspectorPanel
-                        .frame(width: 320)
+
+                    if renderedAthletes.isEmpty {
+                        emptyState
+                    } else if isCompactLayout {
+                        canvasArea
+                    } else {
+                        HStack(spacing: 0) {
+                            canvasArea
+                            Divider()
+                            inspectorPanel
+                                .frame(width: 320)
+                        }
+                    }
                 }
             }
         }
@@ -383,7 +431,7 @@ struct FloorGridView: View {
                     }
                 }
 
-                if isCompactLayout, hasTransition, startFormationName != nil, endFormationName != nil {
+                if isCompactLayout, !isPhoneLayout, hasTransition, startFormationName != nil, endFormationName != nil {
                     Button {
                         showingTransportSheet = true
                     } label: {
@@ -431,9 +479,9 @@ struct FloorGridView: View {
                     .disabled(undoStack.isEmpty)
                 }
             }
-            .controlSize(isCompactLayout ? .small : .regular)
+            .controlSize(isCompactLayout || isHeightConstrained ? .small : .regular)
             .padding(.horizontal, 16)
-            .padding(.vertical, isCompactLayout ? 10 : 12)
+            .padding(.vertical, isHeightConstrained ? 8 : (isCompactLayout ? 10 : 12))
         }
         .background(.bar)
     }
@@ -627,40 +675,68 @@ struct FloorGridView: View {
                         }
                 )
 
-                VStack(spacing: isCompactLayout ? 8 : 10) {
-                    if isCompactLayout {
+                if isPhoneLayout {
+                    VStack(spacing: 10) {
+                        phoneTopOverlay
+
                         if let compactBannerConfiguration {
                             banner(text: compactBannerConfiguration.text, color: compactBannerConfiguration.color)
                         }
-                    } else {
-                        if let collisionMessage {
-                            banner(text: collisionMessage, color: .red)
-                        }
 
-                        if isSwapMode, let swapSourceAthleteID,
-                            let rosterAthlete = store.routine.roster.first(where: { $0.id == swapSourceAthleteID })
-                        {
-                            banner(
-                                text: "Tap another athlete to swap with \(rosterAthlete.label).",
-                                color: .blue
-                            )
-                        } else if !hasMadeFirstSelection {
-                            banner(
-                                text: "Tap an athlete to edit it. Drag on empty space to box-select.",
-                                color: .accentColor
-                            )
-                        }
+                        Spacer(minLength: 0)
 
-                        if !pathCollisionIDs.isEmpty {
-                            banner(
-                                text: "\(pathCollisionIDs.count) athletes have crossing paths.",
-                                color: .red
-                            )
+                        VStack(spacing: 10) {
+                            if selectedRosterAthlete != nil || selectedAthleteIDs.count > 1 {
+                                phoneSelectionOverlay
+                            }
+
+                            if let player, let startFormationName, let endFormationName {
+                                CompactTransitionPlaybackOverlayView(
+                                    player: player,
+                                    startFormationName: startFormationName,
+                                    endFormationName: endFormationName
+                                )
+                            }
                         }
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 12)
+                } else {
+                    VStack(spacing: isCompactLayout ? 8 : 10) {
+                        if isCompactLayout {
+                            if let compactBannerConfiguration {
+                                banner(text: compactBannerConfiguration.text, color: compactBannerConfiguration.color)
+                            }
+                        } else {
+                            if let collisionMessage {
+                                banner(text: collisionMessage, color: .red)
+                            }
+
+                            if isSwapMode, let swapSourceAthleteID,
+                                let rosterAthlete = store.routine.roster.first(where: { $0.id == swapSourceAthleteID })
+                            {
+                                banner(
+                                    text: "Tap another athlete to swap with \(rosterAthlete.label).",
+                                    color: .blue
+                                )
+                            } else if !hasMadeFirstSelection {
+                                banner(
+                                    text: "Tap an athlete to edit it. Drag on empty space to box-select.",
+                                    color: .accentColor
+                                )
+                            }
+
+                            if !pathCollisionIDs.isEmpty {
+                                banner(
+                                    text: "\(pathCollisionIDs.count) athletes have crossing paths.",
+                                    color: .red
+                                )
+                            }
+                        }
+                    }
+                    .padding(.horizontal, isCompactLayout ? 12 : 0)
+                    .padding(.top, isHeightConstrained ? 8 : 14)
                 }
-                .padding(.horizontal, isCompactLayout ? 12 : 0)
-                .padding(.top, 14)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -679,7 +755,7 @@ struct FloorGridView: View {
                     }
                 }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents(isPhoneLayout ? [.large] : [.medium, .large])
         .presentationDragIndicator(.visible)
     }
 
@@ -709,8 +785,180 @@ struct FloorGridView: View {
                     }
             }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents(isPhoneLayout ? [.large] : [.medium, .large])
         .presentationDragIndicator(.visible)
+    }
+
+    private var phoneTopOverlay: some View {
+        HStack(spacing: 8) {
+            Button(action: addAthlete) {
+                Label("Add", systemImage: "plus.circle.fill")
+            }
+            .buttonStyle(.borderedProminent)
+
+            if selectedAthleteID != nil {
+                Button(action: beginSwapMode) {
+                    Image(systemName: "arrow.triangle.swap")
+                        .frame(width: 30, height: 30)
+                }
+                .buttonStyle(.bordered)
+            }
+
+            Spacer(minLength: 0)
+
+            phoneOverflowMenu
+        }
+        .controlSize(.small)
+    }
+
+    private var phoneOverflowMenu: some View {
+        Menu {
+            Button(action: { showingRosterSheet = true }) {
+                Label("Roster", systemImage: "list.bullet.rectangle")
+            }
+
+            Button(action: { showingNotesSheet = true }) {
+                Label("Notes", systemImage: "note.text")
+            }
+
+            Button(action: resetView) {
+                Label("Reset View", systemImage: "arrow.counterclockwise")
+            }
+
+            Button(action: undoLastMove) {
+                Label("Undo Move", systemImage: "arrow.uturn.backward")
+            }
+            .disabled(undoStack.isEmpty)
+        } label: {
+            Image(systemName: "ellipsis.circle.fill")
+                .frame(width: 30, height: 30)
+                .overlay(alignment: .topTrailing) {
+                    if formation?.notes.isEmpty == false {
+                        Circle()
+                            .fill(.orange)
+                            .frame(width: 7, height: 7)
+                            .offset(x: 3, y: -3)
+                    }
+                }
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+    }
+
+    @ViewBuilder
+    private var phoneSelectionOverlay: some View {
+        if let selectedRosterAthlete, let selectedPlacement {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(selectedRosterAthlete.label)
+                        .font(.headline)
+                    Text(
+                        "\(selectedRosterAthlete.role.displayName) - x \(String(format: "%.1f", selectedPlacement.position.x))  y \(String(format: "%.1f", selectedPlacement.position.y))"
+                    )
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
+
+                if hasTransition {
+                    Button("Path") {
+                        showingInspectorSheet = true
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+
+                Menu {
+                    Button {
+                        beginAthleteRename()
+                    } label: {
+                        Label("Rename", systemImage: "pencil")
+                    }
+
+                    Menu("Role") {
+                        ForEach(AthleteRole.allCases, id: \.self) { role in
+                            Button {
+                                store.mutateRosterAthlete(id: selectedRosterAthlete.id) { athlete in
+                                    athlete.role = role
+                                }
+                            } label: {
+                                if selectedRosterAthlete.role == role {
+                                    Label(role.displayName, systemImage: "checkmark")
+                                } else {
+                                    Text(role.displayName)
+                                }
+                            }
+                        }
+                    }
+
+                    Button(action: beginSwapMode) {
+                        Label("Swap Position", systemImage: "arrow.triangle.swap")
+                    }
+
+                    if hasTransition {
+                        Button {
+                            showingInspectorSheet = true
+                        } label: {
+                            Label("Path & Timing", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
+                        }
+                    }
+
+                    Button {
+                        selectedAthleteIDs = []
+                    } label: {
+                        Label("Clear Selection", systemImage: "xmark.circle")
+                    }
+
+                    Button(role: .destructive) {
+                        showingAthleteDeleteConfirmation = true
+                    } label: {
+                        Label("Delete Athlete", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .frame(width: 30, height: 30)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(.white.opacity(0.08))
+            }
+            .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
+        } else if selectedAthleteIDs.count > 1 {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("\(selectedAthleteIDs.count) athletes selected")
+                        .font(.headline)
+                    Text("Drag them together on the floor. Use swap for one athlete at a time.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 0)
+
+                Button("Clear") {
+                    selectedAthleteIDs = []
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(.white.opacity(0.08))
+            }
+            .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
+        }
     }
 
     // MARK: - Inspector Panel
@@ -1819,6 +2067,24 @@ struct FloorGridView: View {
     private func addAthlete() {
         let newID = store.addAthlete()
         selectedAthleteIDs = [newID]
+    }
+
+    private func beginAthleteRename() {
+        guard let selectedRosterAthlete else { return }
+        athleteLabelDraft = selectedRosterAthlete.label
+        showingAthleteRenamePrompt = true
+    }
+
+    private func commitAthleteRename() {
+        guard let selectedAthleteID else { return }
+        let trimmedLabel = athleteLabelDraft
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !trimmedLabel.isEmpty else { return }
+
+        store.mutateRosterAthlete(id: selectedAthleteID) { athlete in
+            athlete.label = String(trimmedLabel.prefix(4))
+        }
     }
 
     private func applyTemplate() {

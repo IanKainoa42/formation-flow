@@ -145,3 +145,122 @@ struct TransitionTransportSidebarView: View {
             .min(by: { abs($0 - value) < abs($1 - value) }) ?? 1.0
     }
 }
+
+struct CompactTransitionPlaybackOverlayView: View {
+    @ObservedObject var player: TransitionPlayer
+    let startFormationName: String
+    let endFormationName: String
+
+    private let countOptions = [4, 8, 16, 32]
+    private let speedOptions: [CGFloat] = [0.5, 1.0, 1.5, 2.0]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Text("\(startFormationName) \u{2192} \(endFormationName)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+
+                settingsMenu
+            }
+
+            HStack(spacing: 10) {
+                Button(action: player.reset) {
+                    Image(systemName: "backward.end.fill")
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    player.isPlaying ? player.pause() : player.play()
+                } label: {
+                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                        .frame(width: 32, height: 32)
+                }
+                .buttonStyle(.borderedProminent)
+
+                Slider(
+                    value: Binding(
+                        get: { player.progress },
+                        set: { player.seek(to: $0) }
+                    ),
+                    in: 0...1
+                )
+
+                Button {
+                    player.isLooping.toggle()
+                } label: {
+                    Image(systemName: "repeat")
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.bordered)
+                .tint(player.isLooping ? .accentColor : .secondary)
+
+                Text(String(format: "%.0f%%", player.progress * 100))
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .frame(minWidth: 42, alignment: .trailing)
+            }
+        }
+        .padding(12)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(.white.opacity(0.08))
+        }
+        .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
+        .controlSize(.small)
+    }
+
+    private var settingsMenu: some View {
+        Menu {
+            Section("Counts") {
+                ForEach(countOptions, id: \.self) { count in
+                    Button {
+                        player.counts = Double(count)
+                    } label: {
+                        if Int(player.counts.rounded()) == count {
+                            Label("\(count) counts", systemImage: "checkmark")
+                        } else {
+                            Text("\(count) counts")
+                        }
+                    }
+                }
+            }
+
+            Section("Speed") {
+                ForEach(speedOptions, id: \.self) { speed in
+                    Button {
+                        player.speed = speed
+                    } label: {
+                        if abs(player.speed - speed) < 0.01 {
+                            Label(speedLabel(for: speed), systemImage: "checkmark")
+                        } else {
+                            Text(speedLabel(for: speed))
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "slider.horizontal.3")
+                Text("\(TransitionCountFormatting.value(player.counts)) ct")
+                Text(speedLabel(for: player.speed))
+            }
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(Color.primary.opacity(0.08), in: Capsule())
+        }
+    }
+
+    private func speedLabel(for value: CGFloat) -> String {
+        if abs(value.rounded() - value) < 0.001 {
+            return "\(Int(value.rounded()))x"
+        }
+        return String(format: "%.1fx", value)
+    }
+}

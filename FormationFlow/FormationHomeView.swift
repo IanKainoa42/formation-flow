@@ -9,14 +9,20 @@ struct RoutineWorkspaceView: View {
 
     @State private var selectedFormationID: UUID?
     @State private var compactNavigationPath: [UUID] = []
+    @State private var splitViewVisibility: NavigationSplitViewVisibility = .all
     @State private var previewReferenceMode: PreviewReferenceMode = .outOfSelected
     @State private var showingResetConfirmation = false
     @State private var showingDeleteConfirmation = false
+    @State private var showingCompactFormationPicker = false
     @State private var renamingFormationID: UUID?
     @State private var formationNameDraft = ""
 
     private var isCompactLayout: Bool {
-        horizontalSizeClass == .compact
+        horizontalSizeClass == .compact || UIDevice.current.userInterfaceIdiom == .phone
+    }
+
+    private var isPhoneLayout: Bool {
+        UIDevice.current.userInterfaceIdiom == .phone
     }
 
     private var selectedFormationIndex: Int? {
@@ -113,7 +119,7 @@ struct RoutineWorkspaceView: View {
     // MARK: - Workspace Shell
 
     private var regularWorkspace: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $splitViewVisibility) {
             regularSidebar
         } detail: {
             regularDetailView
@@ -196,7 +202,7 @@ struct RoutineWorkspaceView: View {
                 }
             }
 
-            if let previewTransitionPair, let player = previewSession.player {
+            if !isPhoneLayout, let previewTransitionPair, let player = previewSession.player {
                 Divider()
                 SidebarTransportView(
                     player: player,
@@ -254,8 +260,11 @@ struct RoutineWorkspaceView: View {
 
         if compact {
             editor
-                .navigationTitle(formation.name)
+                .navigationTitle(isPhoneLayout ? "" : formation.name)
                 .navigationBarTitleDisplayMode(.inline)
+                .sheet(isPresented: $showingCompactFormationPicker) {
+                    compactFormationPickerSheet
+                }
                 .toolbar {
                     compactDetailToolbar(for: formation)
                 }
@@ -271,6 +280,12 @@ struct RoutineWorkspaceView: View {
 
     private func detailToolbar(for formation: Formation) -> some View {
         HStack(spacing: 12) {
+            Button(action: toggleSidebar) {
+                Image(systemName: splitViewVisibility == .detailOnly ? "sidebar.left" : "sidebar.leading")
+            }
+            .buttonStyle(.bordered)
+            .accessibilityLabel(splitViewVisibility == .detailOnly ? "Show formations" : "Hide formations")
+
             Spacer(minLength: 0)
             detailToolbarActions(for: formation)
         }
@@ -284,17 +299,82 @@ struct RoutineWorkspaceView: View {
 
     @ToolbarContentBuilder
     private func compactDetailToolbar(for formation: Formation) -> some ToolbarContent {
-        ToolbarItemGroup(placement: .navigationBarTrailing) {
-            Button(action: duplicateSelectedFormation) {
-                Image(systemName: "plus.square.on.square")
+        ToolbarItem(placement: .navigationBarLeading) {
+            Button {
+                showingCompactFormationPicker = true
+            } label: {
+                Image(systemName: "sidebar.leading")
             }
+            .accessibilityLabel("Show formations")
+        }
 
+        ToolbarItem(placement: .navigationBarTrailing) {
             Menu {
+                Button(action: duplicateSelectedFormation) {
+                    Label("Duplicate as Next", systemImage: "plus.square.on.square")
+                }
+
+                Divider()
+
                 formationOverflowMenu(for: formation)
             } label: {
-                Image(systemName: "ellipsis.circle")
+                Image(systemName: isPhoneLayout ? "ellipsis.circle.fill" : "ellipsis.circle")
             }
         }
+    }
+
+    private var compactFormationPickerSheet: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(store.routine.formations) { formation in
+                        Button {
+                            showingCompactFormationPicker = false
+                            showFormation(formation.id)
+                        } label: {
+                            HStack(spacing: 12) {
+                                formationRow(for: formation)
+
+                                if selectedFormationID == formation.id {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(.tint)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            formationContextMenu(for: formation)
+                        }
+                    }
+                    .onMove { from, to in
+                        store.moveFormations(fromOffsets: from, toOffset: to)
+                    }
+                } header: {
+                    Text(store.routine.name)
+                }
+            }
+            .navigationTitle("Formations")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    EditButton()
+                }
+
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    Button(action: {
+                        addFormation()
+                        showingCompactFormationPicker = false
+                    }) {
+                        Image(systemName: "plus")
+                    }
+
+                    Button("Done") {
+                        showingCompactFormationPicker = false
+                    }
+                }
+            }
+        }
+        .presentationDetents(isPhoneLayout ? [.large] : [.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 
     private func detailToolbarActions(for formation: Formation) -> some View {
@@ -491,6 +571,12 @@ struct RoutineWorkspaceView: View {
             startFormationID: previewTransitionPair.start.id,
             endFormationID: previewTransitionPair.end.id
         )
+    }
+
+    private func toggleSidebar() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            splitViewVisibility = splitViewVisibility == .detailOnly ? .all : .detailOnly
+        }
     }
 }
 

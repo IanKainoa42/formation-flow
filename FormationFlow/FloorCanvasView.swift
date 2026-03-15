@@ -39,10 +39,10 @@ struct FloorCanvasView: View {
                 )
                 var path = Path()
                 path.addRect(adjustedRect)
-                context.fill(path, with: .color(.blue.opacity(0.1)))
+                context.fill(path, with: .color(.orange.opacity(0.1)))
                 context.stroke(
                     path,
-                    with: .color(.blue.opacity(0.45)),
+                    with: .color(.orange.opacity(0.45)),
                     style: StrokeStyle(lineWidth: 1.5, dash: [6, 3])
                 )
             }
@@ -56,7 +56,7 @@ struct FloorCanvasView: View {
 
         for guide in alignmentGuides {
             var path = Path()
-            let color = Color.accentColor.opacity(guide.emphasis == .strong ? 0.72 : 0.38)
+            let color = Color.orange.opacity(guide.emphasis == .strong ? 0.72 : 0.38)
             let lineWidth: CGFloat = guide.emphasis == .strong ? 2.5 : 1.5
 
             switch guide.geometry {
@@ -90,7 +90,7 @@ struct FloorCanvasView: View {
             let end = CGPoint(x: item.endPosition.x * cellSize, y: item.endPosition.y * cellSize)
             let isSelected = selectedAthleteIDs.contains(item.athleteID)
             let isColliding = pathCollisionIDs.contains(item.athleteID)
-            let pathColor: Color = isColliding ? .red : (isSelected ? .blue : .green)
+            let pathColor: Color = isColliding ? .red : (isSelected ? .orange : .green)
             let lineWidth: CGFloat = isSelected ? 3 : 1.5
 
             if !item.waypoints.isEmpty {
@@ -274,7 +274,21 @@ struct FloorCanvasView: View {
     private func drawGrid(in context: inout GraphicsContext) {
         let width = CourtConstants.width * cellSize
         let height = CourtConstants.height * cellSize
+        let panelWidth = 8 * cellSize
+        let numCols = Int(CourtConstants.width / 8)
 
+        // Alternating vertical panel fills
+        let panelLight = Color(white: 0.17)
+        let panelDark = Color(white: 0.13)
+        for col in 0..<numCols {
+            let x = CGFloat(col) * panelWidth
+            let color = col % 2 == 0 ? panelLight : panelDark
+            var rect = Path()
+            rect.addRect(CGRect(x: x, y: 0, width: panelWidth, height: height))
+            context.fill(rect, with: .color(color))
+        }
+
+        // Fine 1ft grid (very subtle)
         var fine = Path()
         for x in stride(from: 0, through: width, by: cellSize) {
             fine.move(to: CGPoint(x: x, y: 0))
@@ -284,24 +298,30 @@ struct FloorCanvasView: View {
             fine.move(to: CGPoint(x: 0, y: y))
             fine.addLine(to: CGPoint(x: width, y: y))
         }
-        context.stroke(fine, with: .color(.gray.opacity(0.14)), lineWidth: 0.5)
+        context.stroke(fine, with: .color(.white.opacity(0.04)), lineWidth: 0.5)
 
-        var panels = Path()
+        // Vertical panel dividers
+        var verticalPanels = Path()
         for col in stride(from: 8, through: Int(CourtConstants.width) - 1, by: 8) {
             let x = CGFloat(col) * cellSize
-            panels.move(to: CGPoint(x: x, y: 0))
-            panels.addLine(to: CGPoint(x: x, y: height))
+            verticalPanels.move(to: CGPoint(x: x, y: 0))
+            verticalPanels.addLine(to: CGPoint(x: x, y: height))
         }
+        context.stroke(verticalPanels, with: .color(.white.opacity(0.12)), lineWidth: 1)
+
+        // Horizontal panel lines (low opacity — like floor seams)
+        var horizontalPanels = Path()
         for row in stride(from: 8, through: Int(CourtConstants.height) - 1, by: 8) {
             let y = CGFloat(row) * cellSize
-            panels.move(to: CGPoint(x: 0, y: y))
-            panels.addLine(to: CGPoint(x: width, y: y))
+            horizontalPanels.move(to: CGPoint(x: 0, y: y))
+            horizontalPanels.addLine(to: CGPoint(x: width, y: y))
         }
-        context.stroke(panels, with: .color(.gray.opacity(0.58)), lineWidth: 2)
+        context.stroke(horizontalPanels, with: .color(.white.opacity(0.08)), lineWidth: 1)
 
+        // Border
         var border = Path()
         border.addRect(CGRect(x: 0, y: 0, width: width, height: height))
-        context.stroke(border, with: .color(.gray.opacity(0.58)), lineWidth: 2)
+        context.stroke(border, with: .color(.white.opacity(0.25)), lineWidth: 2)
     }
 
     private func drawGhostCircle(in context: inout GraphicsContext, center: CGPoint) {
@@ -351,7 +371,7 @@ struct FloorCanvasView: View {
                 context.fill(marker, with: .color(fillColor.opacity(fillOpacity)))
 
                 if isSelected {
-                    context.stroke(marker, with: .color(.accentColor.opacity(0.7)), lineWidth: 2)
+                    context.stroke(marker, with: .color(.orange.opacity(0.7)), lineWidth: 2)
                 }
 
                 let label = Text(athlete.label)
@@ -366,7 +386,7 @@ struct FloorCanvasView: View {
                 context.fill(marker, with: .color(fillColor.opacity(isSelected ? 0.92 : 0.86)))
 
                 if isSelected {
-                    context.stroke(marker, with: .color(.accentColor.opacity(0.7)), lineWidth: 3)
+                    context.stroke(marker, with: .color(.orange.opacity(0.7)), lineWidth: 3)
                 }
 
                 if isColliding {
@@ -378,7 +398,7 @@ struct FloorCanvasView: View {
                     let ring = athlete.role.markerPath(center: point, radius: radius + 6)
                     context.stroke(
                         ring,
-                        with: .color(.blue),
+                        with: .color(.orange),
                         style: StrokeStyle(lineWidth: 3, dash: [6, 3])
                     )
                 }
