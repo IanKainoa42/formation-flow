@@ -9,7 +9,7 @@ struct RoutineWorkspaceView: View {
 
     @State private var selectedFormationID: UUID?
     @State private var compactNavigationPath: [UUID] = []
-    @State private var previewReferenceMode: PreviewReferenceMode = .intoSelected
+    @State private var previewReferenceMode: PreviewReferenceMode = .outOfSelected
     @State private var showingResetConfirmation = false
     @State private var showingDeleteConfirmation = false
     @State private var renamingFormationID: UUID?
@@ -29,14 +29,7 @@ struct RoutineWorkspaceView: View {
     }
 
     private func smartPickReferenceMode() -> PreviewReferenceMode {
-        guard let selectedFormationIndex else { return .intoSelected }
-        if selectedFormationIndex > 0 {
-            return .intoSelected
-        }
-        if selectedFormationIndex < store.routine.formations.count - 1 {
-            return .outOfSelected
-        }
-        return .intoSelected
+        .outOfSelected
     }
 
     private var previewTransitionPair: (start: Formation, end: Formation)? {
