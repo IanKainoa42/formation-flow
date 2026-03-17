@@ -2342,6 +2342,11 @@ struct FloorGridView: View {
     private func addAthlete() {
         let newID = store.addAthlete()
         selectedAthleteIDs = [newID]
+        
+        if let newAthlete = store.routine.roster.first(where: { $0.id == newID }) {
+            athleteLabelDraft = newAthlete.label
+            showingAthleteRenamePrompt = true
+        }
     }
 
     private func beginAthleteRename() {

@@ -409,6 +409,26 @@ struct RoutineWorkspaceView: View {
         } label: {
             Label("Duplicate as Next", systemImage: "plus.square.on.square")
         }
+        
+        Divider()
+        
+        let index = store.formationIndex(id: formation.id) ?? 0
+        
+        Button {
+            store.moveFormationEarlier(id: formation.id)
+        } label: {
+            Label("Move Earlier", systemImage: "arrow.up")
+        }
+        .disabled(index == 0)
+        
+        Button {
+            store.moveFormationLater(id: formation.id)
+        } label: {
+            Label("Move Later", systemImage: "arrow.down")
+        }
+        .disabled(index >= store.routine.formations.count - 1)
+
+        Divider()
 
         Button(role: .destructive) {
             selectedFormationID = formation.id
@@ -425,6 +445,26 @@ struct RoutineWorkspaceView: View {
         } label: {
             Label("Rename", systemImage: "pencil")
         }
+        
+        Divider()
+        
+        let index = store.formationIndex(id: formation.id) ?? 0
+
+        Button {
+            store.moveFormationEarlier(id: formation.id)
+        } label: {
+            Label("Move Earlier", systemImage: "arrow.up")
+        }
+        .disabled(index == 0)
+        
+        Button {
+            store.moveFormationLater(id: formation.id)
+        } label: {
+            Label("Move Later", systemImage: "arrow.down")
+        }
+        .disabled(index >= store.routine.formations.count - 1)
+
+        Divider()
 
         Button(role: .destructive) {
             showingDeleteConfirmation = true

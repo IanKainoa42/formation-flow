@@ -1209,6 +1209,18 @@ final class RoutineStore: ObservableObject {
         reconcileTransitionSpecs()
     }
 
+    func moveFormationEarlier(id: UUID) {
+        guard let index = formationIndex(id: id), index > 0 else { return }
+        routine.formations.swapAt(index, index - 1)
+        reconcileTransitionSpecs()
+    }
+
+    func moveFormationLater(id: UUID) {
+        guard let index = formationIndex(id: id), index < routine.formations.count - 1 else { return }
+        routine.formations.swapAt(index, index + 1)
+        reconcileTransitionSpecs()
+    }
+
     @discardableResult
     func addAthlete() -> UUID {
         let newAthlete = RosterAthlete(label: nextRosterLabel())
