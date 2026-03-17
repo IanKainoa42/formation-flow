@@ -61,6 +61,7 @@ struct TransitionTransportSidebarView: View {
                         .frame(width: 34, height: 34)
                 }
                 .buttonStyle(.bordered)
+                .accessibilityLabel("Reset transition")
 
                 Button {
                     player.isPlaying ? player.pause() : player.play()
@@ -69,6 +70,7 @@ struct TransitionTransportSidebarView: View {
                         .frame(width: 34, height: 34)
                 }
                 .buttonStyle(.borderedProminent)
+                .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
 
                 Button {
                     player.isLooping.toggle()
@@ -78,6 +80,8 @@ struct TransitionTransportSidebarView: View {
                 }
                 .buttonStyle(.bordered)
                 .tint(player.isLooping ? .accentColor : .secondary)
+                .accessibilityLabel("Toggle loop")
+                .accessibilityValue(player.isLooping ? "On" : "Off")
             }
 
             Slider(
@@ -174,6 +178,7 @@ struct CompactTransitionPlaybackOverlayView: View {
                         .frame(width: 28, height: 28)
                 }
                 .buttonStyle(.bordered)
+                .accessibilityLabel("Reset transition")
 
                 Button {
                     player.isPlaying ? player.pause() : player.play()
@@ -182,6 +187,7 @@ struct CompactTransitionPlaybackOverlayView: View {
                         .frame(width: 32, height: 32)
                 }
                 .buttonStyle(.borderedProminent)
+                .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
 
                 Slider(
                     value: Binding(
@@ -199,6 +205,8 @@ struct CompactTransitionPlaybackOverlayView: View {
                 }
                 .buttonStyle(.bordered)
                 .tint(player.isLooping ? .accentColor : .secondary)
+                .accessibilityLabel("Toggle loop")
+                .accessibilityValue(player.isLooping ? "On" : "Off")
 
                 Text(String(format: "%.0f%%", player.progress * 100))
                     .font(.system(.caption, design: .monospaced))
@@ -290,6 +298,7 @@ struct CompactTransitionPlaybackRailView: View {
                         .frame(width: 30, height: 30)
                 }
                 .buttonStyle(.bordered)
+                .accessibilityLabel("Reset transition")
 
                 Button {
                     player.isPlaying ? player.pause() : player.play()
@@ -298,6 +307,7 @@ struct CompactTransitionPlaybackRailView: View {
                         .frame(width: 36, height: 36)
                 }
                 .buttonStyle(.borderedProminent)
+                .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
 
                 Button {
                     player.isLooping.toggle()
@@ -307,6 +317,8 @@ struct CompactTransitionPlaybackRailView: View {
                 }
                 .buttonStyle(.bordered)
                 .tint(player.isLooping ? .accentColor : .secondary)
+                .accessibilityLabel("Toggle loop")
+                .accessibilityValue(player.isLooping ? "On" : "Off")
             }
 
             VStack(alignment: .leading, spacing: 8) {
