@@ -614,6 +614,7 @@ private struct SidebarTransportView: View {
                         .frame(width: 34, height: 34)
                 }
                 .buttonStyle(.bordered)
+                .accessibilityLabel("Reset transition")
 
                 Button {
                     player.isPlaying ? player.pause() : player.play()
@@ -622,6 +623,7 @@ private struct SidebarTransportView: View {
                         .frame(width: 34, height: 34)
                 }
                 .buttonStyle(.borderedProminent)
+                .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
 
                 Button {
                     player.isLooping.toggle()
@@ -631,6 +633,8 @@ private struct SidebarTransportView: View {
                 }
                 .buttonStyle(.bordered)
                 .tint(player.isLooping ? .accentColor : .secondary)
+                .accessibilityLabel("Toggle loop")
+                .accessibilityValue(player.isLooping ? "On" : "Off")
             }
 
             Slider(
