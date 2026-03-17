@@ -1,5 +1,6 @@
 import Combine
 import SwiftUI
+import UIKit
 
 // MARK: - Floor Grid View
 
@@ -52,6 +53,9 @@ struct FloorGridView: View {
     @State private var endpointDragStartPosition: CGPoint?
     @State private var showingResetAllPathsConfirmation = false
     @State private var playerTick: UInt = 0
+    @State private var sharePayload: TransitionSharePayload?
+    @State private var shareResultMessage = ""
+    @State private var showingShareResult = false
 
     private var formationIndex: Int? {
         store.formationIndex(id: formationID)
@@ -258,6 +262,10 @@ struct FloorGridView: View {
         renderedAthletes.filter { pathCollisionIDs.contains($0.id) }
     }
 
+    private var canShareTransition: Bool {
+        hasTransition && startFormationName != nil && endFormationName != nil
+    }
+
     private var swapButtonSymbolName: String {
         "arrow.triangle.2.circlepath"
     }
@@ -309,6 +317,19 @@ struct FloorGridView: View {
         .sheet(isPresented: $showingTransportSheet) {
             compactTransportSheet
         }
+        .sheet(item: $sharePayload) { payload in
+            ShareSheetView(items: [payload.message, payload.image]) { completed, activityType in
+                if completed {
+                    RoutineMetrics.record(
+                        .transitionShareCompleted,
+                        metadata: shareMetricMetadata(activityType: activityType?.rawValue)
+                    )
+                    shareResultMessage = payload.completionMessage
+                    showingShareResult = true
+                }
+                sharePayload = nil
+            }
+        }
         .alert("Rename Athlete", isPresented: $showingAthleteRenamePrompt) {
             TextField("Label", text: $athleteLabelDraft)
 
@@ -320,6 +341,11 @@ struct FloorGridView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Athlete labels are shared across every formation.")
+        }
+        .alert("Transition Shared", isPresented: $showingShareResult) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(shareResultMessage)
         }
         .confirmationDialog(
             "Delete athlete?",
@@ -501,6 +527,11 @@ struct FloorGridView: View {
                         )
                     }
                     .buttonStyle(.bordered)
+
+                    Button(action: shareTransitionPreview) {
+                        Label("Share Preview", systemImage: "square.and.arrow.up")
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
 
                 Button(action: toggleSwapMode) {
@@ -917,6 +948,12 @@ struct FloorGridView: View {
 
     private var phoneOverflowMenu: some View {
         Menu {
+            if canShareTransition {
+                Button(action: shareTransitionPreview) {
+                    Label("Share Preview", systemImage: "square.and.arrow.up")
+                }
+            }
+
             Button(action: { showingRosterSheet = true }) {
                 Label("Roster", systemImage: "list.bullet.rectangle")
             }
@@ -2385,6 +2422,78 @@ struct FloorGridView: View {
         guard !pathCollidingAthletes.isEmpty else { return }
         let safeIndex = index % pathCollidingAthletes.count
         selectedAthleteIDs = [pathCollidingAthletes[safeIndex].id]
+    }
+
+    private func shareTransitionPreview() {
+        guard let payload = makeSharePayload() else {
+            shareResultMessage = "Couldn’t prepare the transition preview."
+            showingShareResult = true
+            return
+        }
+
+        RoutineMetrics.record(.transitionShareTapped, metadata: shareMetricMetadata())
+        sharePayload = payload
+    }
+
+    private func makeSharePayload() -> TransitionSharePayload? {
+        guard
+            let startFormationName,
+            let endFormationName
+        else {
+            return nil
+        }
+
+        let shareCard = TransitionShareCardView(
+            routineName: store.routine.name,
+            startFormationName: startFormationName,
+            endFormationName: endFormationName,
+            athleteCount: renderedAthletes.count,
+            counts: CGFloat(player?.counts ?? 0),
+            spacingAlerts: collidingAthletes.count,
+            pathAlerts: pathCollidingAthletes.count,
+            athletes: renderedAthletes,
+            transitionPaths: transitionPaths,
+            endpointMarkers: endpointMarkers,
+            collisionIDs: collisionSummary.ids,
+            pathCollisionIDs: pathCollisionIDs,
+            startFormationColor: transitionStartColor,
+            endFormationColor: transitionEndColor,
+            transitionProgress: player?.progress ?? 0
+        )
+
+        let renderer = ImageRenderer(content: shareCard)
+        renderer.proposedSize = ProposedViewSize(width: 1200, height: 1400)
+        renderer.scale = UIScreen.main.scale
+
+        guard let image = renderer.uiImage else { return nil }
+
+        let message = [
+            "\(store.routine.name): \(startFormationName) \u{2192} \(endFormationName)",
+            "\(TransitionCountFormatting.label(CGFloat(player?.counts ?? 0)))",
+            "Shared from FormationFlow"
+        ].joined(separator: "\n")
+
+        return TransitionSharePayload(
+            image: image,
+            message: message,
+            completionMessage: "Shared \(startFormationName) \u{2192} \(endFormationName)."
+        )
+    }
+
+    private func shareMetricMetadata(activityType: String? = nil) -> [String: String] {
+        var metadata: [String: String] = [
+            "routine": store.routine.name,
+            "formation": formation?.name ?? "unknown",
+            "start": startFormationName ?? "unknown",
+            "end": endFormationName ?? "unknown",
+            "athletes": "\(renderedAthletes.count)"
+        ]
+
+        if let activityType {
+            metadata["channel"] = activityType
+        }
+
+        return metadata
     }
 
     private func resetView() {

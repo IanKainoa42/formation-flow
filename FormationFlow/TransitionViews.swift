@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum TransitionCountFormatting {
     static func value(_ value: Double) -> String {
@@ -400,5 +401,159 @@ struct CompactTransitionPlaybackRailView: View {
             return "\(Int(value.rounded()))x"
         }
         return String(format: "%.1fx", value)
+    }
+}
+
+struct TransitionSharePayload: Identifiable {
+    let id = UUID()
+    let image: UIImage
+    let message: String
+    let completionMessage: String
+}
+
+struct ShareSheetView: UIViewControllerRepresentable {
+    let items: [Any]
+    var onComplete: (Bool, UIActivity.ActivityType?) -> Void
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        controller.completionWithItemsHandler = { activityType, completed, _, _ in
+            onComplete(completed, activityType)
+        }
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+struct TransitionShareCardView: View {
+    let routineName: String
+    let startFormationName: String
+    let endFormationName: String
+    let athleteCount: Int
+    let counts: CGFloat
+    let spacingAlerts: Int
+    let pathAlerts: Int
+    let athletes: [RenderedAthlete]
+    let transitionPaths: [TransitionPathRenderItem]
+    let endpointMarkers: [TransitionEndpointMarkerRenderItem]
+    let collisionIDs: Set<UUID>
+    let pathCollisionIDs: Set<UUID>
+    let startFormationColor: Color
+    let endFormationColor: Color
+    let transitionProgress: CGFloat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(routineName)
+                    .font(.system(size: 52, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+
+                Text("\(startFormationName) \u{2192} \(endFormationName)")
+                    .font(.system(size: 34, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.orange)
+
+                Text("Share the move path, counts, and spacing checks with your team.")
+                    .font(.system(size: 24, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.72))
+            }
+
+            HStack(spacing: 14) {
+                ShareStatPill(title: "Athletes", value: "\(athleteCount)")
+                ShareStatPill(title: "Counts", value: TransitionCountFormatting.value(counts))
+                ShareStatPill(title: "Spacing", value: "\(spacingAlerts)")
+                ShareStatPill(title: "Path Crossings", value: "\(pathAlerts)")
+            }
+
+            GeometryReader { geometry in
+                let cardPadding: CGFloat = 24
+                let width = max(0, geometry.size.width - (cardPadding * 2))
+                let height = max(0, geometry.size.height - (cardPadding * 2))
+                let cellSize = min(width / CourtConstants.width, height / CourtConstants.height)
+                let offset = CGPoint(
+                    x: (width - (CourtConstants.width * cellSize)) / 2,
+                    y: (height - (CourtConstants.height * cellSize)) / 2
+                )
+
+                FloorCanvasView(
+                    athletes: athletes,
+                    transitionPaths: transitionPaths,
+                    endpointMarkers: endpointMarkers,
+                    collisionIDs: collisionIDs,
+                    pathCollisionIDs: pathCollisionIDs,
+                    cellSize: cellSize,
+                    offset: offset,
+                    hasTransition: true,
+                    startFormationColor: startFormationColor,
+                    endFormationColor: endFormationColor,
+                    transitionProgress: transitionProgress,
+                    formationColor: startFormationColor
+                )
+                .padding(cardPadding)
+                .background(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.06), Color.white.opacity(0.02)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 30, style: .continuous)
+                        .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+                }
+            }
+
+            HStack {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("FormationFlow")
+                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                    Text("Transition preview generated in-app")
+                        .font(.system(size: 20, weight: .medium, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.64))
+                }
+
+                Spacer()
+
+                Image(systemName: "square.and.arrow.up.circle.fill")
+                    .font(.system(size: 42))
+                    .foregroundStyle(.orange)
+            }
+        }
+        .padding(36)
+        .frame(width: 1200, height: 1400, alignment: .topLeading)
+        .background(
+            LinearGradient(
+                colors: [
+                    Color(red: 0.07, green: 0.08, blue: 0.11),
+                    Color(red: 0.12, green: 0.10, blue: 0.08),
+                    Color(red: 0.16, green: 0.09, blue: 0.05)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+    }
+}
+
+private struct ShareStatPill: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title.uppercased())
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.54))
+            Text(value)
+                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+        .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }

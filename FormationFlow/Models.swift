@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import SwiftUI
 
 // MARK: - Constants
@@ -976,6 +977,60 @@ enum AlignmentSnapEngine {
         func projection(of point: CGPoint) -> CGFloat {
             direction.x * point.x + direction.y * point.y
         }
+    }
+}
+
+// MARK: - Lightweight Measurement
+
+enum RoutineMetricEvent: String {
+    case transitionShareTapped = "transition_share_tapped"
+    case transitionShareCompleted = "transition_share_completed"
+}
+
+@MainActor
+enum RoutineMetrics {
+    private static let storageKey = "routine.metrics.v1"
+    private static let logger = Logger(subsystem: "FormationFlow", category: "Metrics")
+
+    private struct Snapshot: Codable {
+        var counters: [String: Int] = [:]
+    }
+
+    static func record(_ event: RoutineMetricEvent, metadata: [String: String] = [:]) {
+        var snapshot = load()
+        snapshot.counters[event.rawValue, default: 0] += 1
+        save(snapshot)
+
+        let metadataSummary = metadata
+            .sorted { $0.key < $1.key }
+            .map { "\($0.key)=\($0.value)" }
+            .joined(separator: " ")
+
+        if metadataSummary.isEmpty {
+            logger.log("metric=\(event.rawValue, privacy: .public)")
+        } else {
+            logger.log("metric=\(event.rawValue, privacy: .public) \(metadataSummary, privacy: .public)")
+        }
+    }
+
+    static func count(for event: RoutineMetricEvent) -> Int {
+        load().counters[event.rawValue, default: 0]
+    }
+
+    private static func load() -> Snapshot {
+        guard
+            let data = UserDefaults.standard.data(forKey: storageKey),
+            let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data)
+        else {
+            return Snapshot()
+        }
+
+        return snapshot
+    }
+
+    private static func save(_ snapshot: Snapshot) {
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        UserDefaults.standard.set(data, forKey: storageKey)
     }
 }
 

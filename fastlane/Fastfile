@@ -1,0 +1,74 @@
+# This file contains the fastlane.tools configuration
+# You can find the documentation at https://docs.fastlane.tools
+
+# Uncomment the line if you want fastlane to automatically update itself
+# update_fastlane
+
+default_platform(:ios)
+
+# Load App Store Connect API key
+api_key = app_store_connect_api_key(
+  key_id: "8C642247AP",
+  issuer_id: "7642a25e-aca7-402d-8b7d-de18dfef1756",
+  key_filepath: "fastlane/AuthKey.json",
+  duration: 1200,
+  in_house: false
+)
+
+platform :ios do
+  desc "Build and upload to TestFlight"
+  lane :beta do
+    # Sync code signing
+    sync_code_signing(type: "appstore")
+    
+    # Build the app
+    build_app(
+      scheme: "FormationFlow",
+      export_method: "app-store"
+    )
+    
+    # Upload to TestFlight
+    upload_to_testflight(
+      api_key: api_key,
+      skip_waiting_for_build_processing: true,
+      notify_external_testers: false
+    )
+  end
+
+  desc "Build and upload to App Store"
+  lane :release do
+    # Sync code signing
+    sync_code_signing(type: "appstore")
+    
+    # Build the app
+    build_app(
+      scheme: "FormationFlow",
+      export_method: "app-store"
+    )
+    
+    # Upload to App Store
+    upload_to_app_store(
+      api_key: api_key,
+      force: true,
+      skip_metadata: false,
+      skip_screenshots: false,
+      submit_for_review: false
+    )
+  end
+
+  desc "Generate screenshots"
+  lane :screenshots do
+    capture_screenshots(scheme: "FormationFlow")
+    frame_screenshots(white: true)
+  end
+
+  desc "Register devices"
+  lane :register_devices do
+    register_devices(
+      api_key: api_key,
+      devices: {
+        "iPhone Test" => "00008030-0000000000000000"
+      }
+    )
+  end
+end

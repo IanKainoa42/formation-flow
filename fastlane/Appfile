@@ -1,0 +1,8 @@
+app_identifier("com.ianrichardson.formationflow") # The bundle identifier of your app
+apple_id("iankainoa42@gmail.com") # Your Apple Developer Portal username
+
+itc_team_id("WC46K49VFA") # App Store Connect Team ID
+team_id("WC46K49VFA") # Developer Portal Team ID
+
+# For more information about the Appfile, see:
+#     https://docs.fastlane.tools/advanced/#appfile
