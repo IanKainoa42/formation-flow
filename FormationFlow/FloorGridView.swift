@@ -615,6 +615,7 @@ struct FloorGridView: View {
             compactOverflowMenuLabel
         }
         .buttonStyle(.bordered)
+        .accessibilityLabel("More actions")
     }
 
     private var compactOverflowMenuLabel: some View {
@@ -983,6 +984,7 @@ struct FloorGridView: View {
                 }
         }
         .buttonStyle(.bordered)
+        .accessibilityLabel("More actions")
         .controlSize(.small)
     }
 
@@ -1062,6 +1064,7 @@ struct FloorGridView: View {
                         .frame(width: 30, height: 30)
                 }
                 .buttonStyle(.bordered)
+                .accessibilityLabel("More actions")
                 .controlSize(.small)
             }
             .padding(.horizontal, 14)
@@ -1298,6 +1301,7 @@ struct FloorGridView: View {
                         .foregroundColor(.red)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Delete waypoint")
             }
 
             HStack {

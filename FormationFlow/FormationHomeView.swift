@@ -175,6 +175,7 @@ struct RoutineWorkspaceView: View {
                 Button(action: addFormation) {
                     Image(systemName: "plus")
                 }
+                .accessibilityLabel("Add formation")
             }
         }
     }
@@ -220,6 +221,7 @@ struct RoutineWorkspaceView: View {
                 Button(action: addFormation) {
                     Image(systemName: "plus")
                 }
+                .accessibilityLabel("Add formation")
             }
         }
     }
@@ -311,6 +313,7 @@ struct RoutineWorkspaceView: View {
             } label: {
                 Image(systemName: isPhoneLayout ? "ellipsis.circle.fill" : "ellipsis.circle")
             }
+            .accessibilityLabel("More actions")
         }
     }
 
@@ -357,6 +360,7 @@ struct RoutineWorkspaceView: View {
                     }) {
                         Image(systemName: "plus")
                     }
+                    .accessibilityLabel("Add formation")
 
                     Button("Done") {
                         showingCompactFormationPicker = false

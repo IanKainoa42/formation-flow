@@ -35,6 +35,7 @@ struct AthleteInspectorView: View {
                         .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Clear selection")
             }
 
             VStack(alignment: .leading, spacing: 8) {
