@@ -416,9 +416,10 @@ struct FloorCanvasView: View {
                     )
                 }
 
+                let labelColor = contrastingLabelColor(for: fillColor)
                 let label = Text(athlete.label)
                     .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(.black.opacity(isSelected ? 0.8 : 0.6))
+                    .foregroundColor(labelColor.opacity(isSelected ? 0.95 : 0.85))
                 context.draw(label, at: point, anchor: .center)
             }
         }
@@ -437,5 +438,15 @@ struct FloorCanvasView: View {
             green: g1 + (g2 - g1) * t,
             blue: b1 + (b2 - b1) * t
         )
+    }
+
+    /// Returns white or black depending on the perceived brightness of the fill color.
+    /// Uses relative luminance formula: 0.299*R + 0.587*G + 0.114*B
+    private func contrastingLabelColor(for fillColor: Color) -> Color {
+        let uiColor = UIColor(fillColor)
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        uiColor.getRed(&r, green: &g, blue: &b, alpha: &a)
+        let luminance = 0.299 * r + 0.587 * g + 0.114 * b
+        return luminance > 0.5 ? .black : .white
     }
 }
