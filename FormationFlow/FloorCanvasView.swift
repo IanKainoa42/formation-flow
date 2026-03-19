@@ -52,6 +52,20 @@ struct FloorCanvasView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.background)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Formation court grid")
+        .accessibilityValue("\(athletes.count) athletes on the court")
+        .overlay {
+            ForEach(athletes) { athlete in
+                AthleteAccessibilityElement(
+                    athlete: athlete,
+                    cellSize: cellSize,
+                    offset: offset,
+                    isSelected: selectedAthleteIDs.contains(athlete.id),
+                    isColliding: collisionIDs.contains(athlete.id)
+                )
+            }
+        }
     }
 
     private func drawAlignmentGuides(in context: inout GraphicsContext) {
@@ -437,5 +451,35 @@ struct FloorCanvasView: View {
             green: g1 + (g2 - g1) * t,
             blue: b1 + (b2 - b1) * t
         )
+    }
+}
+
+// MARK: - Athlete Accessibility Element
+
+private struct AthleteAccessibilityElement: View {
+    let athlete: RenderedAthlete
+    let cellSize: CGFloat
+    let offset: CGPoint
+    let isSelected: Bool
+    let isColliding: Bool
+
+    private var accessibilityValue: String {
+        var value = "Position: \(Int(athlete.position.x)) feet, \(Int(athlete.position.y)) feet"
+        if isSelected { value += ", selected" }
+        if isColliding { value += ", spacing alert" }
+        return value
+    }
+
+    var body: some View {
+        Color.clear
+            .frame(width: 44, height: 44)
+            .position(
+                x: athlete.position.x * cellSize + offset.x,
+                y: athlete.position.y * cellSize + offset.y
+            )
+            .allowsHitTesting(false)
+            .accessibilityElement()
+            .accessibilityLabel("\(athlete.label), \(athlete.role.displayName)")
+            .accessibilityValue(accessibilityValue)
     }
 }
