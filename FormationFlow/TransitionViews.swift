@@ -91,6 +91,7 @@ struct TransitionTransportSidebarView: View {
                 ),
                 in: 0...1
             )
+            .accessibilityLabel("Transition progress")
 
             Text(String(format: "%.0f%%", player.progress * 100))
                 .font(.system(.caption, design: .monospaced))
@@ -196,6 +197,7 @@ struct CompactTransitionPlaybackOverlayView: View {
                     ),
                     in: 0...1
                 )
+                .accessibilityLabel("Transition progress")
 
                 Button {
                     player.isLooping.toggle()
@@ -339,6 +341,7 @@ struct CompactTransitionPlaybackRailView: View {
                     ),
                     in: 0...1
                 )
+                .accessibilityLabel("Transition progress")
 
                 HStack(spacing: 6) {
                     Text("0%")

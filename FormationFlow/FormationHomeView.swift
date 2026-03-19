@@ -648,6 +648,7 @@ private struct SidebarTransportView: View {
                 ),
                 in: 0...1
             )
+            .accessibilityLabel("Transition progress")
 
             HStack {
                 Text("Counts")

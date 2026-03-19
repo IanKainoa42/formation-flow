@@ -1288,6 +1288,7 @@ struct FloorGridView: View {
                     in: 0...CGFloat(player.counts),
                     step: 0.5
                 )
+                .accessibilityLabel("Start Delay")
                 Text(TransitionCountFormatting.label(transition.moveDelayCounts))
                     .font(.system(.body, design: .monospaced))
                     .foregroundColor(.secondary)
