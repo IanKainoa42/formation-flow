@@ -9,6 +9,7 @@ struct AthleteInspectorView: View {
     let position: CGPoint
     let isSwapMode: Bool
     let formationCount: Int
+    var formationName: String = "Formation"
     var compactLayout: Bool = false
     var onUpdateLabel: (String) -> Void
     var onUpdateRole: (AthleteRole) -> Void
@@ -61,7 +62,7 @@ struct AthleteInspectorView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Position")
+                Text("Position in \(formationName)")
                     .font(.subheadline.weight(.semibold))
                 Text(String(format: "x %.1fft   y %.1fft", position.x, position.y))
                     .font(.system(.body, design: .monospaced))

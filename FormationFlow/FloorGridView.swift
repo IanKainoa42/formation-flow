@@ -114,6 +114,18 @@ struct FloorGridView: View {
 
     // MARK: - Formation Display
 
+    private var formationContextLabel: String {
+        let index = (formationIndex ?? 0) + 1
+        let total = store.routine.formations.count
+        let name = formation?.name ?? "Formation"
+        return "\(index)/\(total): \(name)"
+    }
+
+    private var previousFormationName: String? {
+        guard let formationIndex, formationIndex > 0 else { return nil }
+        return store.routine.formations[formationIndex - 1].name
+    }
+
     private var currentFormationColor: Color {
         let index = formationIndex ?? 0
         return TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: index)
@@ -870,8 +882,63 @@ struct FloorGridView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             canvasContent
+                .overlay(alignment: isPhoneLayout ? .topLeading : .bottomLeading) {
+                    formationContextBadge
+                        .padding(isPhoneLayout ? .init(top: isPhoneLandscape ? 4 : 52, leading: 12, bottom: 0, trailing: 0) : .init(top: 0, leading: 12, bottom: 12, trailing: 0))
+                }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Formation Context Badge
+
+    private var formationContextBadge: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(currentFormationColor)
+                    .frame(width: 8, height: 8)
+                Text(formationContextLabel)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.primary)
+            }
+
+            if hasTransition, showTransitionPaths, let startFormationName, let endFormationName {
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(transitionStartColor)
+                        .frame(width: 6, height: 6)
+                    Text(startFormationName)
+                        .font(.caption2)
+                    Text("\u{2192}")
+                        .font(.caption2)
+                    Circle()
+                        .fill(transitionEndColor)
+                        .frame(width: 6, height: 6)
+                    Text(endFormationName)
+                        .font(.caption2)
+                }
+                .foregroundColor(.secondary)
+            }
+
+            if !previousFormationAthletes.isEmpty, let previousFormationName {
+                HStack(spacing: 4) {
+                    Circle()
+                        .stroke(.white.opacity(0.3), lineWidth: 1)
+                        .frame(width: 6, height: 6)
+                    Text("Ghost: \(previousFormationName)")
+                        .font(.caption2)
+                        .foregroundColor(.secondary.opacity(0.7))
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(.white.opacity(0.08))
+        }
     }
 
     private var compactInspectorSheet: some View {
@@ -1113,6 +1180,7 @@ struct FloorGridView: View {
                         position: selectedPlacement.position,
                         isSwapMode: isSwapMode,
                         formationCount: store.routine.formations.count,
+                        formationName: formation?.name ?? "Formation",
                         compactLayout: isCompactLayout,
                         onUpdateLabel: { newLabel in
                             store.mutateRosterAthlete(id: selectedRosterAthlete.id) { athlete in
@@ -1174,18 +1242,25 @@ struct FloorGridView: View {
         endFormationID: UUID
     ) -> some View {
         VStack(alignment: .leading, spacing: isCompactLayout ? 14 : 16) {
-            HStack {
-                Text("Transition")
-                    .font(.headline)
-                Spacer()
-                Button(role: .destructive) {
-                    showingResetAllPathsConfirmation = true
-                } label: {
-                    Label("Reset All", systemImage: "arrow.uturn.backward.circle")
-                        .font(.caption)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Transition")
+                        .font(.headline)
+                    Spacer()
+                    Button(role: .destructive) {
+                        showingResetAllPathsConfirmation = true
+                    } label: {
+                        Label("Reset All", systemImage: "arrow.uturn.backward.circle")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!hasCustomPaths)
                 }
-                .buttonStyle(.bordered)
-                .disabled(!hasCustomPaths)
+                if let startFormationName, let endFormationName {
+                    Text("\(startFormationName) \u{2192} \(endFormationName)")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
             }
 
             // Move delay
