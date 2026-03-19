@@ -260,7 +260,7 @@ struct RoutineWorkspaceView: View {
 
         if compact {
             editor
-                .navigationTitle(isPhoneLayout ? "" : formation.name)
+                .navigationTitle(formation.name)
                 .navigationBarTitleDisplayMode(.inline)
                 .sheet(isPresented: $showingCompactFormationPicker) {
                     compactFormationPickerSheet
