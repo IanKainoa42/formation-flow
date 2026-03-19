@@ -12,7 +12,7 @@ struct RoutineWorkspaceView: View {
     @State private var splitViewVisibility: NavigationSplitViewVisibility = .all
     @State private var previewReferenceMode: PreviewReferenceMode = .outOfSelected
     @State private var showingResetConfirmation = false
-    @State private var showingDeleteConfirmation = false
+    @State private var pendingFormationDeleteIDs: [UUID] = []
     @State private var showingCompactFormationPicker = false
     @State private var renamingFormationID: UUID?
     @State private var formationNameDraft = ""
@@ -57,6 +57,17 @@ struct RoutineWorkspaceView: View {
         )
     }
 
+    private var showingFormationDeleteConfirmation: Binding<Bool> {
+        Binding(
+            get: { !pendingFormationDeleteIDs.isEmpty },
+            set: { isPresented in
+                if !isPresented {
+                    pendingFormationDeleteIDs = []
+                }
+            }
+        )
+    }
+
     var body: some View {
         Group {
             if isCompactLayout {
@@ -88,19 +99,28 @@ struct RoutineWorkspaceView: View {
             Button("Reset Routine", role: .destructive) {
                 resetRoutine()
             }
+            Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This clears the current routine and starts over with one empty formation.")
+            Text("This clears the roster, formations, notes, and transition data, then starts over with one empty formation.")
         }
         .confirmationDialog(
-            "Delete this formation?",
-            isPresented: $showingDeleteConfirmation,
+            "Delete \(pendingFormationDeleteIDs.count == 1 ? "this formation" : "these formations")?",
+            isPresented: showingFormationDeleteConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Delete Formation", role: .destructive) {
-                deleteSelectedFormation()
+            Button(
+                pendingFormationDeleteIDs.count == 1 ? "Delete Formation" : "Delete Formations",
+                role: .destructive
+            ) {
+                deletePendingFormations()
             }
+            Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This removes the formation and updates adjacent transition previews.")
+            Text(
+                pendingFormationDeleteIDs.count == 1
+                ? "This removes the formation and any transition data connected to it. This cannot be undone."
+                : "This removes the selected formations and any transition data connected to them. This cannot be undone."
+            )
         }
         .alert("Rename Formation", isPresented: showingRenamePrompt) {
             TextField("Formation name", text: $formationNameDraft)
@@ -149,6 +169,9 @@ struct RoutineWorkspaceView: View {
                             formationContextMenu(for: formation)
                         }
                     }
+                    .onDelete { offsets in
+                        requestFormationDeletion(offsets.map { store.routine.formations[$0].id })
+                    }
                     .onMove { from, to in
                         store.moveFormations(fromOffsets: from, toOffset: to)
                     }
@@ -194,6 +217,9 @@ struct RoutineWorkspaceView: View {
                         .contextMenu {
                             formationContextMenu(for: formation)
                         }
+                    }
+                    .onDelete { offsets in
+                        requestFormationDeletion(offsets.map { store.routine.formations[$0].id })
                     }
                     .onMove { from, to in
                         store.moveFormations(fromOffsets: from, toOffset: to)
@@ -340,6 +366,9 @@ struct RoutineWorkspaceView: View {
                             formationContextMenu(for: formation)
                         }
                     }
+                    .onDelete { offsets in
+                        requestFormationDeletion(offsets.map { store.routine.formations[$0].id })
+                    }
                     .onMove { from, to in
                         store.moveFormations(fromOffsets: from, toOffset: to)
                     }
@@ -436,7 +465,7 @@ struct RoutineWorkspaceView: View {
 
         Button(role: .destructive) {
             selectedFormationID = formation.id
-            showingDeleteConfirmation = true
+            requestFormationDeletion([formation.id])
         } label: {
             Label("Delete Formation", systemImage: "trash")
         }
@@ -471,7 +500,8 @@ struct RoutineWorkspaceView: View {
         Divider()
 
         Button(role: .destructive) {
-            showingDeleteConfirmation = true
+            selectedFormationID = formation.id
+            requestFormationDeletion([formation.id])
         } label: {
             Label("Delete Formation", systemImage: "trash")
         }
@@ -502,16 +532,48 @@ struct RoutineWorkspaceView: View {
         duplicateFormation(after: selectedFormationID)
     }
 
+    private func requestFormationDeletion(_ formationIDs: [UUID]) {
+        pendingFormationDeleteIDs = formationIDs.reduce(into: [UUID]()) { result, formationID in
+            guard store.formationIndex(id: formationID) != nil else { return }
+            guard !result.contains(formationID) else { return }
+            result.append(formationID)
+        }
+    }
+
+    private func deletePendingFormations() {
+        let formationIDs = pendingFormationDeleteIDs
+        pendingFormationDeleteIDs = []
+        deleteFormations(ids: formationIDs)
+    }
+
     private func deleteSelectedFormation() {
         guard let selectedFormationID else { return }
+        deleteFormations(ids: [selectedFormationID])
+    }
+
+    private func deleteFormations(ids: [UUID]) {
+        let validFormationIDs = ids.reduce(into: [UUID]()) { result, formationID in
+            guard store.formationIndex(id: formationID) != nil else { return }
+            guard !result.contains(formationID) else { return }
+            result.append(formationID)
+        }
+        guard !validFormationIDs.isEmpty else { return }
 
         let shouldStayInEditor = isCompactLayout && !compactNavigationPath.isEmpty
-        store.deleteFormation(id: selectedFormationID)
+        let currentSelection = selectedFormationID
+
+        for formationID in validFormationIDs {
+            store.deleteFormation(id: formationID)
+        }
+
+        if let currentSelection, store.formationIndex(id: currentSelection) != nil {
+            return
+        }
 
         if let nextFormationID = store.routine.formations.first?.id {
             showFormation(nextFormationID, pushOnCompact: shouldStayInEditor)
         } else {
-            self.selectedFormationID = nil
+            selectedFormationID = nil
             compactNavigationPath.removeAll()
         }
     }

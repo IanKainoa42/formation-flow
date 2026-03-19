@@ -50,6 +50,7 @@ struct FloorGridView: View {
     @State private var isDraggingEndpoint = false
     @State private var isDraggingPathHandle = false
     @State private var draggingWaypointID: UUID?
+    @State private var pendingWaypointDeletionID: UUID?
     @State private var endpointDragStartPosition: CGPoint?
     @State private var showingResetAllPathsConfirmation = false
     @State private var playerTick: UInt = 0
@@ -367,8 +368,24 @@ struct FloorGridView: View {
             Button("Delete Athlete", role: .destructive) {
                 deleteSelectedAthlete()
             }
+            Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This removes the athlete from the roster, every formation, and all transitions.")
+            Text("This removes the athlete from the roster, every formation, and all transitions. This cannot be undone.")
+        }
+        .confirmationDialog(
+            "Delete waypoint?",
+            isPresented: Binding(
+                get: { pendingWaypointDeletionID != nil },
+                set: { if !$0 { pendingWaypointDeletionID = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete Waypoint", role: .destructive) {
+                deletePendingWaypoint()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the waypoint and its timing hold from the selected athlete's path. This cannot be undone.")
         }
         .onChange(of: formationID) { _, _ in
             selectedAthleteIDs = []
@@ -382,12 +399,14 @@ struct FloorGridView: View {
             showingTransportSheet = false
             showingAthleteRenamePrompt = false
             showingAthleteDeleteConfirmation = false
+            pendingWaypointDeletionID = nil
             athleteLabelDraft = ""
             canvasPanOffset = .zero
             lastCanvasPanOffset = .zero
             clearTransitionDragState()
         }
         .onChange(of: selectedAthleteIDs) { _, newSelection in
+            pendingWaypointDeletionID = nil
             if !newSelection.isEmpty {
                 hasMadeFirstSelection = true
             }
@@ -404,8 +423,9 @@ struct FloorGridView: View {
             Button("Reset All Paths", role: .destructive) {
                 resetAllPaths()
             }
+            Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This removes every custom curve and waypoint and returns all athletes to straight-line travel.")
+            Text("This removes every custom curve and waypoint and returns all athletes to straight-line travel. This cannot be undone.")
         }
         .onReceive(player?.objectWillChange.eraseToAnyPublisher() ?? Empty().eraseToAnyPublisher()) { _ in
             playerTick &+= 1
@@ -1363,16 +1383,8 @@ struct FloorGridView: View {
                 Text("Waypoint \(waypointIndex + 1)")
                     .font(.body.weight(.medium))
                 Spacer()
-                Button {
-                    guard let selectedAthleteID else { return }
-                    store.mutateAthleteTransition(
-                        from: startFormationID,
-                        to: endFormationID,
-                        athleteID: selectedAthleteID
-                    ) { t in
-                        t.pathWaypoints.remove(at: waypointIndex)
-                    }
-                    refreshTransitionFromStore()
+                Button(role: .destructive) {
+                    pendingWaypointDeletionID = waypoint.id
                 } label: {
                     Image(systemName: "trash")
                         .foregroundColor(.red)
@@ -1536,8 +1548,11 @@ struct FloorGridView: View {
                     selectedAthleteIDs.subtract(rosterDeleteIDs)
                     rosterDeleteIDs = []
                 }
+                Button("Cancel", role: .cancel) {
+                    rosterDeleteIDs = []
+                }
             } message: {
-                Text("This will remove them from all \(store.routine.formations.count) formations and their transitions.")
+                Text("This will remove them from all \(store.routine.formations.count) formations and their transitions. This cannot be undone.")
             }
             .navigationTitle("Manage Roster")
             .toolbar {
@@ -2366,6 +2381,25 @@ struct FloorGridView: View {
                 )
                 t.pathWaypoints.append(PathWaypoint(position: point, isSmooth: true))
             }
+        }
+        refreshTransitionFromStore()
+    }
+
+    private func deletePendingWaypoint() {
+        guard
+            let waypointID = pendingWaypointDeletionID,
+            let selectedAthleteID,
+            let startFormationID,
+            let endFormationID
+        else {
+            pendingWaypointDeletionID = nil
+            return
+        }
+
+        pendingWaypointDeletionID = nil
+        store.mutateAthleteTransition(from: startFormationID, to: endFormationID, athleteID: selectedAthleteID) { t in
+            guard let waypointIndex = t.pathWaypoints.firstIndex(where: { $0.id == waypointID }) else { return }
+            t.pathWaypoints.remove(at: waypointIndex)
         }
         refreshTransitionFromStore()
     }
