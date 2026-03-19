@@ -1126,7 +1126,7 @@ final class RoutineStore: ObservableObject {
     }
 
     func renderedAthletes(for formation: Formation) -> [RenderedAthlete] {
-        let rosterLookup = Dictionary(uniqueKeysWithValues: routine.roster.map { ($0.id, $0) })
+        let rosterLookup = Dictionary(routine.roster.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         return formation.placements.compactMap { placement in
             guard let rosterAthlete = rosterLookup[placement.athleteID] else { return nil }
             return RenderedAthlete(
@@ -1146,12 +1146,19 @@ final class RoutineStore: ObservableObject {
 
         let spec = transitionSpec(for: fromID, to: toID)
         let endLookup = Dictionary(
-            uniqueKeysWithValues: routine.formations[toIndex].placements.map { ($0.athleteID, $0.position) }
+            routine.formations[toIndex].placements.map { ($0.athleteID, $0.position) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        // ⚡ Bolt: Optimize O(N^2) transition lookup to O(N) by pre-computing a dictionary.
+        let transitionLookup = Dictionary(
+            spec.athleteTransitions.map { ($0.athleteID, $0) },
+            uniquingKeysWith: { first, _ in first }
         )
 
         return routine.formations[fromIndex].placements.compactMap { placement in
             guard let endPosition = endLookup[placement.athleteID] else { return nil }
-            let athleteTransition = spec.athleteTransition(for: placement.athleteID)
+            // ⚡ Bolt: Replace O(N) lookup with O(1) dictionary access
+            let athleteTransition = transitionLookup[placement.athleteID] ?? AthleteTransition(athleteID: placement.athleteID)
             return TransitionPathRenderItem(
                 athleteID: placement.athleteID,
                 startPosition: placement.position,
@@ -1287,7 +1294,8 @@ final class RoutineStore: ObservableObject {
 
         for formationIndex in routine.formations.indices {
             var placementLookup = Dictionary(
-                uniqueKeysWithValues: routine.formations[formationIndex].placements.map { ($0.athleteID, $0) }
+                routine.formations[formationIndex].placements.map { ($0.athleteID, $0) },
+                uniquingKeysWith: { first, _ in first }
             )
             routine.formations[formationIndex].placements = orderedIDs.compactMap { placementLookup.removeValue(forKey: $0) }
         }
@@ -1386,7 +1394,8 @@ final class RoutineStore: ObservableObject {
         let rosterIDs = routine.roster.map(\.id)
         for index in routine.formations.indices {
             var placementLookup = Dictionary(
-                uniqueKeysWithValues: routine.formations[index].placements.map { ($0.athleteID, $0) }
+                routine.formations[index].placements.map { ($0.athleteID, $0) },
+                uniquingKeysWith: { first, _ in first }
             )
             routine.formations[index].placements = rosterIDs.enumerated().map { offset, athleteID in
                 placementLookup.removeValue(forKey: athleteID)
@@ -1402,9 +1411,10 @@ final class RoutineStore: ObservableObject {
 
     private func reconcileTransitionSpecs() {
         let existing = Dictionary(
-            uniqueKeysWithValues: routine.transitionSpecs.map {
+            routine.transitionSpecs.map {
                 (TransitionEdge(fromID: $0.fromFormationID, toID: $0.toFormationID), $0)
-            }
+            },
+            uniquingKeysWith: { first, _ in first }
         )
 
         routine.transitionSpecs = routine.formations.indices.dropLast().map { index in
@@ -1938,9 +1948,10 @@ final class TransitionPlayer: ObservableObject {
     }
 
     private func updateAthletesForProgress() {
-        let endLookup = Dictionary(uniqueKeysWithValues: endAthletes.map { ($0.id, $0) })
+        let endLookup = Dictionary(endAthletes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let transitionLookup = Dictionary(
-            uniqueKeysWithValues: transitionSpec.athleteTransitions.map { ($0.athleteID, $0) }
+            transitionSpec.athleteTransitions.map { ($0.athleteID, $0) },
+            uniquingKeysWith: { first, _ in first }
         )
 
         let maxEffectiveTime = startAthletes.compactMap { athlete -> CGFloat? in
