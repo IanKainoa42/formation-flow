@@ -437,9 +437,15 @@ struct TransitionSpec: Codable, Identifiable, Equatable, Hashable {
     }
 
     mutating func synchronize(athleteIDs: [UUID]) {
+        // ⚡ Bolt: Optimize O(N^2) lookup to O(N) by pre-computing a dictionary.
+        // `uniquingKeysWith: { first, _ in first }` perfectly matches the behavior
+        // of `first(where:)` while protecting against runtime crashes from duplicate IDs.
+        let lookup = Dictionary(
+            athleteTransitions.map { ($0.athleteID, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
         athleteTransitions = athleteIDs.map { athleteID in
-            athleteTransitions.first(where: { $0.athleteID == athleteID })
-                ?? AthleteTransition(athleteID: athleteID)
+            lookup[athleteID] ?? AthleteTransition(athleteID: athleteID)
         }
     }
 }
@@ -1009,7 +1015,7 @@ enum RoutineMetrics {
         if metadataSummary.isEmpty {
             logger.log("metric=\(event.rawValue, privacy: .public)")
         } else {
-            logger.log("metric=\(event.rawValue, privacy: .public) \(metadataSummary, privacy: .public)")
+            logger.log("metric=\(event.rawValue, privacy: .public) \(metadataSummary, privacy: .private)")
         }
     }
 
