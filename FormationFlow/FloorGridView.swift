@@ -1495,30 +1495,48 @@ struct FloorGridView: View {
 
     private var rosterSheet: some View {
         NavigationStack {
-            List {
-                ForEach(store.routine.roster) { athlete in
-                    HStack(spacing: 12) {
-                        AthleteRoleMarkerShape(role: athlete.role)
-                            .fill(.primary)
-                            .frame(width: 14, height: 14)
-                            .frame(width: 26, height: 26)
-                            .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(athlete.label)
-                            Text(athlete.role.displayName)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+            Group {
+                if store.routine.roster.isEmpty {
+                    ContentUnavailableView {
+                        Label("No Athletes", systemImage: "person.3")
+                    } description: {
+                        Text("Add athletes to your roster to start building formations.")
+                    } actions: {
+                        Button {
+                            showingRosterSheet = false
+                            addAthlete()
+                        } label: {
+                            Text("Add Athlete")
                         }
-
-                        Spacer()
+                        .buttonStyle(.borderedProminent)
                     }
-                }
-                .onMove { from, to in
-                    store.moveRoster(fromOffsets: from, toOffset: to)
-                }
-                .onDelete { offsets in
-                    rosterDeleteIDs = offsets.map { store.routine.roster[$0].id }
+                } else {
+                    List {
+                        ForEach(store.routine.roster) { athlete in
+                            HStack(spacing: 12) {
+                                AthleteRoleMarkerShape(role: athlete.role)
+                                    .fill(.primary)
+                                    .frame(width: 14, height: 14)
+                                    .frame(width: 26, height: 26)
+                                    .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(athlete.label)
+                                    Text(athlete.role.displayName)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+
+                                Spacer()
+                            }
+                        }
+                        .onMove { from, to in
+                            store.moveRoster(fromOffsets: from, toOffset: to)
+                        }
+                        .onDelete { offsets in
+                            rosterDeleteIDs = offsets.map { store.routine.roster[$0].id }
+                        }
+                    }
                 }
             }
             .confirmationDialog(

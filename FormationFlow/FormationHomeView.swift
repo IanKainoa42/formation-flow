@@ -140,20 +140,24 @@ struct RoutineWorkspaceView: View {
 
     private var regularSidebar: some View {
         VStack(spacing: 0) {
-            List(selection: $selectedFormationID) {
-                Section {
-                    ForEach(store.routine.formations) { formation in
-                        formationRow(for: formation)
-                        .tag(formation.id)
-                        .contextMenu {
-                            formationContextMenu(for: formation)
+            if store.routine.formations.isEmpty {
+                emptyFormationListView
+            } else {
+                List(selection: $selectedFormationID) {
+                    Section {
+                        ForEach(store.routine.formations) { formation in
+                            formationRow(for: formation)
+                            .tag(formation.id)
+                            .contextMenu {
+                                formationContextMenu(for: formation)
+                            }
                         }
+                        .onMove { from, to in
+                            store.moveFormations(fromOffsets: from, toOffset: to)
+                        }
+                    } header: {
+                        Text(store.routine.name)
                     }
-                    .onMove { from, to in
-                        store.moveFormations(fromOffsets: from, toOffset: to)
-                    }
-                } header: {
-                    Text(store.routine.name)
                 }
             }
 
@@ -166,6 +170,11 @@ struct RoutineWorkspaceView: View {
                 )
                 .padding(16)
                 .background(.thinMaterial)
+            } else if store.routine.formations.count == 1 {
+                Divider()
+                singleFormationTransitionHint
+                    .padding(16)
+                    .background(.thinMaterial)
             }
         }
         .navigationTitle("Routine")
@@ -182,24 +191,28 @@ struct RoutineWorkspaceView: View {
 
     private var compactFormationList: some View {
         VStack(spacing: 0) {
-            List {
-                Section {
-                    ForEach(store.routine.formations) { formation in
-                        Button {
-                            showFormation(formation.id)
-                        } label: {
-                            formationRow(for: formation, showsDisclosure: true)
+            if store.routine.formations.isEmpty {
+                emptyFormationListView
+            } else {
+                List {
+                    Section {
+                        ForEach(store.routine.formations) { formation in
+                            Button {
+                                showFormation(formation.id)
+                            } label: {
+                                formationRow(for: formation, showsDisclosure: true)
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                formationContextMenu(for: formation)
+                            }
                         }
-                        .buttonStyle(.plain)
-                        .contextMenu {
-                            formationContextMenu(for: formation)
+                        .onMove { from, to in
+                            store.moveFormations(fromOffsets: from, toOffset: to)
                         }
+                    } header: {
+                        Text(store.routine.name)
                     }
-                    .onMove { from, to in
-                        store.moveFormations(fromOffsets: from, toOffset: to)
-                    }
-                } header: {
-                    Text(store.routine.name)
                 }
             }
 
@@ -212,6 +225,11 @@ struct RoutineWorkspaceView: View {
                 )
                 .padding(16)
                 .background(.thinMaterial)
+            } else if !isPhoneLayout, store.routine.formations.count == 1 {
+                Divider()
+                singleFormationTransitionHint
+                    .padding(16)
+                    .background(.thinMaterial)
             }
         }
         .navigationTitle("Routine")
@@ -482,6 +500,42 @@ struct RoutineWorkspaceView: View {
             showingResetConfirmation = true
         } label: {
             Label("Reset Routine", systemImage: "arrow.counterclockwise")
+        }
+    }
+
+
+    // MARK: - Empty State Views
+
+    private var emptyFormationListView: some View {
+        ContentUnavailableView {
+            Label("No Formations", systemImage: "square.stack")
+        } description: {
+            Text("Tap + to create your first formation.")
+        } actions: {
+            Button(action: addFormation) {
+                Text("Add Formation")
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var singleFormationTransitionHint: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Transitions", systemImage: "arrow.right.arrow.left")
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(.secondary)
+
+            Text("Add a second formation to preview transitions between them.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            Button(action: addFormation) {
+                Label("Add Formation", systemImage: "plus")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
         }
     }
 
