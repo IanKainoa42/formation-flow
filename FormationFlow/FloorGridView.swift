@@ -57,6 +57,9 @@ struct FloorGridView: View {
     @State private var sharePayload: TransitionSharePayload?
     @State private var shareResultMessage = ""
     @State private var showingShareResult = false
+    @State private var inspectorScrollOffset: CGFloat = 0
+    @State private var inspectorContentHeight: CGFloat = 1
+    @State private var inspectorViewportHeight: CGFloat = 1
 
     private var formationIndex: Int? {
         store.formationIndex(id: formationID)
@@ -1202,6 +1205,15 @@ struct FloorGridView: View {
 
     private var inspectorPanel: some View {
         ScrollView {
+            GeometryReader { proxy in
+                Color.clear
+                    .preference(
+                        key: InspectorScrollOffsetPreferenceKey.self,
+                        value: -proxy.frame(in: .named("InspectorPanelScroll")).minY
+                    )
+            }
+            .frame(height: 0)
+
             VStack(alignment: .leading, spacing: 0) {
                 if let selectedRosterAthlete, let selectedPlacement {
                     AthleteInspectorView(
@@ -1257,9 +1269,58 @@ struct FloorGridView: View {
                     )
                 }
             }
+            .background(
+                GeometryReader { proxy in
+                    Color.clear
+                        .preference(key: InspectorContentHeightPreferenceKey.self, value: proxy.size.height)
+                }
+            )
+        }
+        .coordinateSpace(name: "InspectorPanelScroll")
+        .background(
+            GeometryReader { proxy in
+                Color.clear
+                    .preference(key: InspectorViewportHeightPreferenceKey.self, value: proxy.size.height)
+            }
+        )
+        .onPreferenceChange(InspectorScrollOffsetPreferenceKey.self) { inspectorScrollOffset = $0 }
+        .onPreferenceChange(InspectorContentHeightPreferenceKey.self) { inspectorContentHeight = $0 }
+        .onPreferenceChange(InspectorViewportHeightPreferenceKey.self) { inspectorViewportHeight = $0 }
+        .overlay(alignment: .trailing) {
+            inspectorScrollIndicator
         }
         .background(.thinMaterial)
         .frame(maxHeight: .infinity)
+    }
+
+    private var inspectorScrollIndicator: some View {
+        let viewport = max(1, inspectorViewportHeight)
+        let content = max(viewport, inspectorContentHeight)
+        let canScroll = content > viewport + 1
+        let scrollRange = max(1, content - viewport)
+        let clampedOffset = min(max(inspectorScrollOffset, 0), scrollRange)
+        let progress = clampedOffset / scrollRange
+        let thumbHeight = max(58, (viewport / content) * viewport)
+        let trackTravel = max(0, viewport - thumbHeight)
+        let thumbYOffset = progress * trackTravel
+
+        return Group {
+            if canScroll {
+                ZStack(alignment: .top) {
+                    Capsule(style: .continuous)
+                        .fill(.white.opacity(0.2))
+                        .frame(width: 8)
+                    Capsule(style: .continuous)
+                        .fill(.white.opacity(0.82))
+                        .frame(width: 10, height: thumbHeight)
+                        .offset(y: thumbYOffset)
+                }
+                .padding(.trailing, 8)
+                .padding(.vertical, 10)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
+        }
     }
 
     // MARK: - Transition Inspector
@@ -2647,6 +2708,30 @@ struct FloorGridView: View {
             canvasPanOffset = .zero
             lastCanvasPanOffset = .zero
         }
+    }
+}
+
+private struct InspectorScrollOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+private struct InspectorContentHeightPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 1
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+private struct InspectorViewportHeightPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 1
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 
