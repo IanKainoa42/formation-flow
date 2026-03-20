@@ -8,6 +8,7 @@ struct FloorGridView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @ObservedObject var store: RoutineStore
+    @Binding var selectedAthleteIDs: Set<UUID>
     let formationID: UUID
     var onDuplicateAsNext: () -> Void
 
@@ -16,7 +17,8 @@ struct FloorGridView: View {
     var startFormationID: UUID?
     var endFormationID: UUID?
 
-    @State private var selectedAthleteIDs: Set<UUID> = []
+    @EnvironmentObject private var entitlementManager: EntitlementManager
+    @State private var showingUpgradeSheet = false
     @State private var showingRosterSheet = false
     @State private var showingNotesSheet = false
     @State private var showingInspectorSheet = false
@@ -338,6 +340,9 @@ struct FloorGridView: View {
         }
         .sheet(isPresented: $showingTransportSheet) {
             compactTransportSheet
+        }
+        .sheet(isPresented: $showingUpgradeSheet) {
+            ProUpgradeSheet()
         }
         .sheet(item: $sharePayload) { payload in
             ShareSheetView(items: [payload.message, payload.image]) { completed, activityType in
@@ -1357,26 +1362,39 @@ struct FloorGridView: View {
             VStack(alignment: .leading, spacing: isCompactLayout ? 6 : 8) {
                 Text("Start Delay")
                     .font(.subheadline.weight(.semibold))
-                Slider(
-                    value: Binding(
-                        get: { transition.moveDelayCounts },
-                        set: { newValue in
-                            guard let selectedAthleteID else { return }
-                            store.mutateAthleteTransition(
-                                from: startFormationID,
-                                to: endFormationID,
-                                athleteID: selectedAthleteID
-                            ) { t in
-                                t.moveDelayCounts = min(CGFloat(player.counts), max(0, newValue))
+                if entitlementManager.isPro {
+                    Slider(
+                        value: Binding(
+                            get: { transition.moveDelayCounts },
+                            set: { newValue in
+                                guard let selectedAthleteID else { return }
+                                store.mutateAthleteTransition(
+                                    from: startFormationID,
+                                    to: endFormationID,
+                                    athleteID: selectedAthleteID
+                                ) { t in
+                                    t.moveDelayCounts = min(CGFloat(player.counts), max(0, newValue))
+                                }
+                                refreshTransitionFromStore()
                             }
-                            refreshTransitionFromStore()
+                        ),
+                        in: 0...CGFloat(player.counts),
+                        step: 0.5
+                    )
+                    .accessibilityLabel("Start Delay")
+                    .accessibilityValue(TransitionCountFormatting.label(transition.moveDelayCounts))
+                } else {
+                    HStack {
+                        Slider(value: .constant(0), in: 0...CGFloat(player.counts))
+                            .disabled(true)
+                        Button {
+                            showingUpgradeSheet = true
+                        } label: {
+                            Image(systemName: "lock.fill")
+                                .foregroundColor(.secondary)
                         }
-                    ),
-                    in: 0...CGFloat(player.counts),
-                    step: 0.5
-                )
-                .accessibilityLabel("Start Delay")
-                .accessibilityValue(TransitionCountFormatting.label(transition.moveDelayCounts))
+                    }
+                }
                 Text(TransitionCountFormatting.label(transition.moveDelayCounts))
                     .font(.system(.body, design: .monospaced))
                     .foregroundColor(.secondary)
@@ -1464,6 +1482,10 @@ struct FloorGridView: View {
                 Text(waypoint.isSmooth ? "Smooth" : "Sharp")
                 Spacer()
                 Button(waypoint.isSmooth ? "Make Sharp" : "Make Smooth") {
+                    guard entitlementManager.isPro else {
+                        showingUpgradeSheet = true
+                        return
+                    }
                     guard let selectedAthleteID else { return }
                     store.mutateAthleteTransition(
                         from: startFormationID,
@@ -1557,6 +1579,10 @@ struct FloorGridView: View {
         startFormationID: UUID,
         endFormationID: UUID
     ) {
+        guard entitlementManager.isPro else {
+            showingUpgradeSheet = true
+            return
+        }
         guard let selectedAthleteID else { return }
         store.mutateAthleteTransition(
             from: startFormationID,
@@ -1905,6 +1931,10 @@ struct FloorGridView: View {
                                         < hitRadiusSquared
                                     {
                                         guard dragDistance >= dragActivationDistance else { return }
+                                        guard entitlementManager.isPro else {
+                                            showingUpgradeSheet = true
+                                            return
+                                        }
                                         let newWaypoint = PathWaypoint(position: midpoint, isSmooth: true)
                                         store.mutateAthleteTransition(
                                             from: startFormationID,
@@ -2444,6 +2474,10 @@ struct FloorGridView: View {
     }
 
     private func addWaypoint() {
+        guard entitlementManager.isPro else {
+            showingUpgradeSheet = true
+            return
+        }
         guard let selectedAthleteID, let startFormationID, let endFormationID, let player else { return }
         let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID })
         let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
@@ -2745,11 +2779,13 @@ private struct SnapResult {
 #Preview {
     struct PreviewWrapper: View {
         @StateObject private var store = RoutineStore()
+        @State private var selectedAthleteIDs: Set<UUID> = []
 
         var body: some View {
             NavigationStack {
                 FloorGridView(
                     store: store,
+                    selectedAthleteIDs: $selectedAthleteIDs,
                     formationID: store.routine.formations.first?.id ?? UUID()
                 ) {}
             }

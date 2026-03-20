@@ -96,6 +96,7 @@ struct RoutineWorkspaceView: View {
             refreshPreviewSession()
         }
         .onChange(of: selectedFormationID) { _, _ in
+            selectedAthleteIDs = []
             previewReferenceMode = smartPickReferenceMode()
             refreshPreviewSession()
         }
