@@ -1228,6 +1228,10 @@ struct FloorGridView: View {
                         formationCount: store.routine.formations.count,
                         formationName: formation?.name ?? "Formation",
                         compactLayout: isCompactLayout,
+                        isPro: entitlementManager.isPro,
+                        onUpgrade: {
+                            showingUpgradeSheet = true
+                        },
                         onUpdateLabel: { newLabel in
                             store.mutateRosterAthlete(id: selectedRosterAthlete.id) { athlete in
                                 athlete.label = newLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -1244,12 +1248,8 @@ struct FloorGridView: View {
                         onDelete: {
                             deleteSelectedAthlete()
                         },
-                        isPro: entitlementManager.isPro,
                         onClearSelection: {
                             selectedAthleteIDs = []
-                        },
-                        onUpgrade: {
-                            showingUpgradeSheet = true
                         }
                     )
 

@@ -61,8 +61,8 @@ struct AthleteInspectorView: View {
                     selectedRole: athlete.role,
                     compactLayout: compactLayout,
                     isPro: isPro,
-                    onSelect: onUpdateRole,
-                    onUpgrade: onUpgrade
+                    onUpgrade: onUpgrade,
+                    onSelect: onUpdateRole
                 )
             }
 
