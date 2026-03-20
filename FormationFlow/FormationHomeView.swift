@@ -231,6 +231,16 @@ struct RoutineWorkspaceView: View {
                     .padding(16)
                     .background(.thinMaterial)
             }
+
+            if !selectedAthleteIDs.isEmpty, let selectedFormationID {
+                Divider()
+                SidebarInspectorView(
+                    store: store,
+                    formationID: selectedFormationID,
+                    selectedAthleteIDs: $selectedAthleteIDs
+                )
+                .frame(maxHeight: 400)
+            }
         }
         .navigationTitle("Routine")
         .toolbar {
