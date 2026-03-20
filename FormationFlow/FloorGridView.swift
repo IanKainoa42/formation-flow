@@ -23,7 +23,6 @@ struct FloorGridView: View {
     @State private var showingNotesSheet = false
     @State private var showingInspectorSheet = false
     @State private var showingTransportSheet = false
-    @State private var showingPinnedInspector = false
     @State private var showingAthleteRenamePrompt = false
     @State private var athleteLabelDraft = ""
     @State private var showingAthleteDeleteConfirmation = false
@@ -59,9 +58,6 @@ struct FloorGridView: View {
     @State private var sharePayload: TransitionSharePayload?
     @State private var shareResultMessage = ""
     @State private var showingShareResult = false
-    @State private var inspectorScrollOffset: CGFloat = 0
-    @State private var inspectorContentHeight: CGFloat = 1
-    @State private var inspectorViewportHeight: CGFloat = 1
 
     private var formationIndex: Int? {
         store.formationIndex(id: formationID)
@@ -278,10 +274,6 @@ struct FloorGridView: View {
         return "Inspect"
     }
 
-    private var regularInspectButtonTitle: String {
-        showingPinnedInspector ? "Hide Inspector" : "Inspect"
-    }
-
     private var pathCollidingAthletes: [RenderedAthlete] {
         renderedAthletes.filter { pathCollisionIDs.contains($0.id) }
     }
@@ -409,7 +401,6 @@ struct FloorGridView: View {
             pathCollisionCycleIndex = 0
             focusedEndpoint = nil
             showingInspectorSheet = false
-            showingPinnedInspector = false
             showingTransportSheet = false
             showingAthleteRenamePrompt = false
             showingAthleteDeleteConfirmation = false
@@ -461,27 +452,8 @@ struct FloorGridView: View {
 
                     if renderedAthletes.isEmpty {
                         emptyState
-                    } else if isCompactLayout {
-                        canvasArea
                     } else {
                         canvasArea
-                            .overlay(alignment: .trailing) {
-                                if showingPinnedInspector {
-                                    HStack(spacing: 0) {
-                                        Rectangle()
-                                            .fill(Color(uiColor: .separator).opacity(0.35))
-                                            .frame(width: 1)
-
-                                        inspectorPanel
-                                            .frame(width: 320)
-                                            .frame(maxHeight: .infinity)
-                                    }
-                                    .background(.thinMaterial)
-                                    .shadow(color: .black.opacity(0.12), radius: 14, x: -4, y: 0)
-                                    .transition(.move(edge: .trailing).combined(with: .opacity))
-                                }
-                            }
-                            .animation(.easeInOut(duration: 0.22), value: selectedAthleteIDs.isEmpty)
                     }
                 }
             }
@@ -589,19 +561,6 @@ struct FloorGridView: View {
                 if isCompactLayout {
                     compactOverflowMenu
                 } else {
-                    if showingPinnedInspector {
-                        Button(action: togglePinnedInspector) {
-                            Label(regularInspectButtonTitle, systemImage: "slider.horizontal.3")
-                        }
-                        .buttonStyle(.borderedProminent)
-                    } else {
-                        Button(action: togglePinnedInspector) {
-                            Label(regularInspectButtonTitle, systemImage: "slider.horizontal.3")
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(selectedAthleteIDs.isEmpty)
-                    }
-
                     Button(action: { showingRosterSheet = true }) {
                         Label("Manage Roster", systemImage: "list.bullet.rectangle")
                     }
@@ -978,16 +937,24 @@ struct FloorGridView: View {
 
     private var compactInspectorSheet: some View {
         NavigationStack {
-            inspectorPanel
-                .navigationTitle(compactInspectorTitle)
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Done") {
-                            showingInspectorSheet = false
-                        }
+            SidebarInspectorView(
+                store: store,
+                formationID: formationID,
+                selectedAthleteIDs: $selectedAthleteIDs,
+                isCompactLayout: true,
+                onSwap: toggleSwapMode,
+                onDeleteAthlete: { deleteSelectedAthlete() },
+                isSwapMode: isSwapMode
+            )
+            .navigationTitle(compactInspectorTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        showingInspectorSheet = false
                     }
                 }
+            }
         }
         .presentationDetents(isPhoneLayout ? [.large] : [.medium, .large])
         .presentationDragIndicator(.visible)
@@ -1203,132 +1170,6 @@ struct FloorGridView: View {
                     .strokeBorder(.white.opacity(0.08))
             }
             .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
-        }
-    }
-
-    // MARK: - Inspector Panel
-
-    private var inspectorPanel: some View {
-        ScrollView {
-            GeometryReader { proxy in
-                Color.clear
-                    .preference(
-                        key: InspectorScrollOffsetPreferenceKey.self,
-                        value: -proxy.frame(in: .named("InspectorPanelScroll")).minY
-                    )
-            }
-            .frame(height: 0)
-
-            VStack(alignment: .leading, spacing: 0) {
-                if let selectedRosterAthlete, let selectedPlacement {
-                    AthleteInspectorView(
-                        athlete: selectedRosterAthlete,
-                        position: selectedPlacement.position,
-                        isSwapMode: isSwapMode,
-                        formationCount: store.routine.formations.count,
-                        formationName: formation?.name ?? "Formation",
-                        compactLayout: isCompactLayout,
-                        isPro: entitlementManager.isPro,
-                        onUpgrade: {
-                            showingUpgradeSheet = true
-                        },
-                        onUpdateLabel: { newLabel in
-                            store.mutateRosterAthlete(id: selectedRosterAthlete.id) { athlete in
-                                athlete.label = newLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                    ? athlete.label
-                                    : newLabel.trimmingCharacters(in: .whitespacesAndNewlines)
-                            }
-                        },
-                        onUpdateRole: { newRole in
-                            store.mutateRosterAthlete(id: selectedRosterAthlete.id) { athlete in
-                                athlete.role = newRole
-                            }
-                        },
-                        onSwap: toggleSwapMode,
-                        onDelete: {
-                            deleteSelectedAthlete()
-                        },
-                        onClearSelection: {
-                            selectedAthleteIDs = []
-                        }
-                    )
-
-                    if hasTransition, let selectedTransition, let player,
-                       let startFormationID, let endFormationID
-                    {
-                        Divider()
-                        transitionInspectorSection(
-                            transition: selectedTransition,
-                            player: player,
-                            startFormationID: startFormationID,
-                            endFormationID: endFormationID
-                        )
-                    }
-                } else if selectedAthleteIDs.count > 1 {
-                    MultiSelectionInspectorView(
-                        count: selectedAthleteIDs.count,
-                        compactLayout: isCompactLayout,
-                        onClearSelection: { selectedAthleteIDs = [] }
-                    )
-                } else {
-                    EmptyInspectorView(
-                        title: "Inspector",
-                        message: "Select one athlete to edit its label, role, and actions. Multi-select to move groups together.",
-                        compactLayout: isCompactLayout
-                    )
-                }
-            }
-            .background(
-                GeometryReader { proxy in
-                    Color.clear
-                        .preference(key: InspectorContentHeightPreferenceKey.self, value: proxy.size.height)
-                }
-            )
-        }
-        .coordinateSpace(name: "InspectorPanelScroll")
-        .background(
-            GeometryReader { proxy in
-                Color.clear
-                    .preference(key: InspectorViewportHeightPreferenceKey.self, value: proxy.size.height)
-            }
-        )
-        .onPreferenceChange(InspectorScrollOffsetPreferenceKey.self) { inspectorScrollOffset = $0 }
-        .onPreferenceChange(InspectorContentHeightPreferenceKey.self) { inspectorContentHeight = $0 }
-        .onPreferenceChange(InspectorViewportHeightPreferenceKey.self) { inspectorViewportHeight = $0 }
-        .overlay(alignment: .trailing) {
-            inspectorScrollIndicator
-        }
-        .background(.thinMaterial)
-        .frame(maxHeight: .infinity)
-    }
-
-    private var inspectorScrollIndicator: some View {
-        let viewport = max(1, inspectorViewportHeight)
-        let content = max(viewport, inspectorContentHeight)
-        let canScroll = content > viewport + 1
-        let scrollRange = max(1, content - viewport)
-        let clampedOffset = min(max(inspectorScrollOffset, 0), scrollRange)
-        let progress = clampedOffset / scrollRange
-        let thumbHeight = max(58, (viewport / content) * viewport)
-        let trackTravel = max(0, viewport - thumbHeight)
-        let thumbYOffset = progress * trackTravel
-
-        return Group {
-            if canScroll {
-                ZStack(alignment: .top) {
-                    Capsule(style: .continuous)
-                        .fill(.white.opacity(0.2))
-                        .frame(width: 8)
-                    Capsule(style: .continuous)
-                        .fill(.white.opacity(0.82))
-                        .frame(width: 10, height: thumbHeight)
-                        .offset(y: thumbYOffset)
-                }
-                .padding(.trailing, 8)
-                .padding(.vertical, 10)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-            }
         }
     }
 
@@ -2610,14 +2451,6 @@ struct FloorGridView: View {
         selectedAthleteIDs = []
     }
 
-    private func togglePinnedInspector() {
-        if showingPinnedInspector {
-            showingPinnedInspector = false
-        } else if !selectedAthleteIDs.isEmpty {
-            showingPinnedInspector = true
-        }
-    }
-
     private func toggleSwapMode() {
         guard let selectedAthleteID else {
             endSwapMode()
@@ -2746,30 +2579,6 @@ struct FloorGridView: View {
             canvasPanOffset = .zero
             lastCanvasPanOffset = .zero
         }
-    }
-}
-
-private struct InspectorScrollOffsetPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
-private struct InspectorContentHeightPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 1
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
-private struct InspectorViewportHeightPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 1
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
     }
 }
 
