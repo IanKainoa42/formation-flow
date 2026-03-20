@@ -230,3 +230,81 @@ struct AthleteRoleMarkerShape: Shape {
         role.markerPath(in: rect)
     }
 }
+
+// MARK: - Sidebar Inspector (Reusable)
+
+struct SidebarInspectorView: View {
+    @ObservedObject var store: RoutineStore
+    let formationID: UUID
+    @Binding var selectedAthleteIDs: Set<UUID>
+    var isCompactLayout: Bool = false
+    var onSwap: () -> Void = {}
+    var onDeleteAthlete: () -> Void = {}
+    var isSwapMode: Bool = false
+
+    private var selectedAthleteID: UUID? {
+        selectedAthleteIDs.count == 1 ? selectedAthleteIDs.first : nil
+    }
+
+    private var selectedRosterAthlete: RosterAthlete? {
+        guard let selectedAthleteID else { return nil }
+        return store.routine.roster.first(where: { $0.id == selectedAthleteID })
+    }
+
+    private var formation: Formation? {
+        guard let idx = store.formationIndex(id: formationID) else { return nil }
+        return store.routine.formations[idx]
+    }
+
+    private var selectedPlacement: FormationPlacement? {
+        guard let selectedAthleteID, let formation else { return nil }
+        return formation.placements.first(where: { $0.athleteID == selectedAthleteID })
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                if let selectedRosterAthlete, let selectedPlacement {
+                    AthleteInspectorView(
+                        athlete: selectedRosterAthlete,
+                        position: selectedPlacement.position,
+                        isSwapMode: isSwapMode,
+                        formationCount: store.routine.formations.count,
+                        formationName: formation?.name ?? "Formation",
+                        compactLayout: isCompactLayout,
+                        onUpdateLabel: { newLabel in
+                            store.mutateRosterAthlete(id: selectedRosterAthlete.id) { athlete in
+                                athlete.label = newLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    ? athlete.label
+                                    : newLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+                            }
+                        },
+                        onUpdateRole: { newRole in
+                            store.mutateRosterAthlete(id: selectedRosterAthlete.id) { athlete in
+                                athlete.role = newRole
+                            }
+                        },
+                        onSwap: onSwap,
+                        onDelete: onDeleteAthlete,
+                        onClearSelection: {
+                            selectedAthleteIDs = []
+                        }
+                    )
+                } else if selectedAthleteIDs.count > 1 {
+                    MultiSelectionInspectorView(
+                        count: selectedAthleteIDs.count,
+                        compactLayout: isCompactLayout,
+                        onClearSelection: { selectedAthleteIDs = [] }
+                    )
+                } else {
+                    EmptyInspectorView(
+                        title: "Inspector",
+                        message: "Select one athlete to edit its label, role, and actions. Multi-select to move groups together.",
+                        compactLayout: isCompactLayout
+                    )
+                }
+            }
+        }
+        .background(.thinMaterial)
+    }
+}
