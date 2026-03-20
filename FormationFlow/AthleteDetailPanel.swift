@@ -11,6 +11,8 @@ struct AthleteInspectorView: View {
     let formationCount: Int
     var formationName: String = "Formation"
     var compactLayout: Bool = false
+    var isPro: Bool = true
+    var onUpgrade: () -> Void = {}
     var onUpdateLabel: (String) -> Void
     var onUpdateRole: (AthleteRole) -> Void
     var onSwap: () -> Void
@@ -58,7 +60,9 @@ struct AthleteInspectorView: View {
                 AthleteRolePicker(
                     selectedRole: athlete.role,
                     compactLayout: compactLayout,
-                    onSelect: onUpdateRole
+                    isPro: isPro,
+                    onSelect: onUpdateRole,
+                    onUpgrade: onUpgrade
                 )
             }
 
@@ -148,6 +152,8 @@ struct EmptyInspectorView: View {
 struct AthleteRolePicker: View {
     let selectedRole: AthleteRole
     var compactLayout: Bool = false
+    var isPro: Bool = true
+    var onUpgrade: () -> Void = {}
     var onSelect: (AthleteRole) -> Void
 
     var body: some View {
@@ -157,11 +163,23 @@ struct AthleteRolePicker: View {
         ) {
             ForEach(AthleteRole.allCases, id: \.self) { role in
                 Button {
-                    onSelect(role)
+                    if isPro || role == .base {
+                        onSelect(role)
+                    } else {
+                        onUpgrade()
+                    }
                 } label: {
                     VStack(spacing: compactLayout ? 4 : 6) {
-                        AthleteRoleSwatch(role: role, isSelected: role == selectedRole)
-                            .frame(width: compactLayout ? 24 : 28, height: compactLayout ? 24 : 28)
+                        ZStack {
+                            AthleteRoleSwatch(role: role, isSelected: role == selectedRole)
+                                .frame(width: compactLayout ? 24 : 28, height: compactLayout ? 24 : 28)
+                            if !isPro && role != .base {
+                                Image(systemName: "lock.fill")
+                                    .font(.caption2)
+                                    .foregroundColor(.white)
+                                    .shadow(radius: 2)
+                            }
+                        }
                         Text(role.displayName)
                             .font(.caption2)
                             .foregroundColor(role == selectedRole ? .primary : .secondary)
