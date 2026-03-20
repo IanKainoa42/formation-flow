@@ -249,9 +249,11 @@ struct RoutineWorkspaceView: View {
                     },
                     isSwapMode: isSwapMode
                 )
-                .frame(maxHeight: 400)
+                .frame(minHeight: 200, maxHeight: 400)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .animation(.easeInOut(duration: 0.22), value: selectedAthleteIDs.isEmpty)
         .navigationTitle("Routine")
         .toolbar {
             ToolbarItemGroup(placement: .navigationBarTrailing) {
