@@ -437,9 +437,6 @@ struct TransitionSpec: Codable, Identifiable, Equatable, Hashable {
     }
 
     mutating func synchronize(athleteIDs: [UUID]) {
-        // ⚡ Bolt: Optimize O(N^2) lookup to O(N) by pre-computing a dictionary.
-        // `uniquingKeysWith: { first, _ in first }` perfectly matches the behavior
-        // of `first(where:)` while protecting against runtime crashes from duplicate IDs.
         let lookup = Dictionary(
             athleteTransitions.map { ($0.athleteID, $0) },
             uniquingKeysWith: { first, _ in first }
@@ -1149,7 +1146,6 @@ final class RoutineStore: ObservableObject {
             routine.formations[toIndex].placements.map { ($0.athleteID, $0.position) },
             uniquingKeysWith: { first, _ in first }
         )
-        // ⚡ Bolt: Optimize O(N^2) transition lookup to O(N) by pre-computing a dictionary.
         let transitionLookup = Dictionary(
             spec.athleteTransitions.map { ($0.athleteID, $0) },
             uniquingKeysWith: { first, _ in first }
@@ -1157,7 +1153,6 @@ final class RoutineStore: ObservableObject {
 
         return routine.formations[fromIndex].placements.compactMap { placement in
             guard let endPosition = endLookup[placement.athleteID] else { return nil }
-            // ⚡ Bolt: Replace O(N) lookup with O(1) dictionary access
             let athleteTransition = transitionLookup[placement.athleteID] ?? AthleteTransition(athleteID: placement.athleteID)
             return TransitionPathRenderItem(
                 athleteID: placement.athleteID,
@@ -1277,12 +1272,6 @@ final class RoutineStore: ObservableObject {
                 ? positions[index]
                 : FormationTemplates.defaultSpawnPosition(for: index)
             routine.formations[formationIndex].placements[index].position = position
-        }
-
-        if routine.roster.count >= 10 {
-            for index in 0..<10 {
-                routine.roster[index].label = "A\(index + 1)"
-            }
         }
 
         reconcileTransitionSpecs()
