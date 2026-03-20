@@ -116,6 +116,8 @@ struct TransitionTransportSidebarView: View {
                     }
                     .buttonStyle(.bordered)
                     .tint(player.counts == CGFloat(count) ? .accentColor : .secondary)
+                    .accessibilityLabel("\(count) counts")
+                    .accessibilityValue(player.counts == CGFloat(count) ? "Selected" : "")
                 }
             }
             Slider(
@@ -126,6 +128,8 @@ struct TransitionTransportSidebarView: View {
                 in: 1...32,
                 step: 1
             )
+            .accessibilityLabel("Transition counts")
+            .accessibilityValue(TransitionCountFormatting.label(player.counts))
         }
     }
 
@@ -144,6 +148,7 @@ struct TransitionTransportSidebarView: View {
                 Text("2x").tag(CGFloat(2.0))
             }
             .pickerStyle(.segmented)
+            .accessibilityLabel("Playback speed")
         }
     }
 

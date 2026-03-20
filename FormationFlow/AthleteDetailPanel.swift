@@ -172,8 +172,13 @@ struct AthleteRolePicker: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(role.displayName)
+                .accessibilityValue(role == selectedRole ? "Selected" : "")
+                .accessibilityHint("Double tap to set role to \(role.displayName)")
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Athlete role picker")
     }
 }
 
