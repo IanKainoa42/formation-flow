@@ -17,6 +17,9 @@ struct RoutineWorkspaceView: View {
     @State private var showingCompactFormationPicker = false
     @State private var renamingFormationID: UUID?
     @State private var formationNameDraft = ""
+    @EnvironmentObject private var entitlementManager: EntitlementManager
+    @State private var showingUpgradeSheet = false
+    @State private var selectedAthleteIDs: Set<UUID> = []
 
     private var isCompactLayout: Bool {
         horizontalSizeClass == .compact || UIDevice.current.userInterfaceIdiom == .phone
@@ -67,6 +70,10 @@ struct RoutineWorkspaceView: View {
                 }
             }
         )
+    }
+
+    private var canAddFormation: Bool {
+        entitlementManager.isPro || store.routine.formations.count < FreeTierLimits.maxFormations
     }
 
     var body: some View {
@@ -155,6 +162,9 @@ struct RoutineWorkspaceView: View {
         } message: {
             Text("Use the routine list or toolbar menu to rename formations without covering the floor.")
         }
+        .sheet(isPresented: $showingUpgradeSheet) {
+            ProUpgradeSheet()
+        }
     }
 
     // MARK: - Workspace Shell
@@ -226,9 +236,9 @@ struct RoutineWorkspaceView: View {
             ToolbarItemGroup(placement: .navigationBarTrailing) {
                 EditButton()
                 Button(action: addFormation) {
-                    Image(systemName: "plus")
+                    Image(systemName: canAddFormation ? "plus" : "lock.fill")
                 }
-                .accessibilityLabel("Add formation")
+                .accessibilityLabel(canAddFormation ? "Add formation" : "Upgrade to Pro to add formation")
             }
         }
     }
@@ -284,9 +294,9 @@ struct RoutineWorkspaceView: View {
             ToolbarItemGroup(placement: .navigationBarTrailing) {
                 EditButton()
                 Button(action: addFormation) {
-                    Image(systemName: "plus")
+                    Image(systemName: canAddFormation ? "plus" : "lock.fill")
                 }
-                .accessibilityLabel("Add formation")
+                .accessibilityLabel(canAddFormation ? "Add formation" : "Upgrade to Pro to add formation")
             }
         }
     }
@@ -318,6 +328,7 @@ struct RoutineWorkspaceView: View {
     private func detailContent(for formation: Formation, formationID: UUID, compact: Bool) -> some View {
         let editor = FloorGridView(
             store: store,
+            selectedAthleteIDs: $selectedAthleteIDs,
             formationID: formationID,
             onDuplicateAsNext: duplicateSelectedFormation,
             player: previewSession.player,
@@ -342,7 +353,10 @@ struct RoutineWorkspaceView: View {
                 .toolbar {
                     ToolbarItemGroup(placement: .navigationBarTrailing) {
                         Button(action: duplicateSelectedFormation) {
-                            Label("Duplicate", systemImage: "plus.square.on.square")
+                            Label(
+                                canAddFormation ? "Duplicate" : "Duplicate (Pro)",
+                                systemImage: canAddFormation ? "plus.square.on.square" : "lock.fill"
+                            )
                         }
 
                         Menu {
@@ -369,7 +383,10 @@ struct RoutineWorkspaceView: View {
         ToolbarItem(placement: .navigationBarTrailing) {
             Menu {
                 Button(action: duplicateSelectedFormation) {
-                    Label("Duplicate as Next", systemImage: "plus.square.on.square")
+                    Label(
+                        canAddFormation ? "Duplicate as Next" : "Duplicate as Next (Pro)",
+                        systemImage: canAddFormation ? "plus.square.on.square" : "lock.fill"
+                    )
                 }
 
                 Divider()
@@ -426,9 +443,9 @@ struct RoutineWorkspaceView: View {
                         addFormation()
                         showingCompactFormationPicker = false
                     }) {
-                        Image(systemName: "plus")
+                        Image(systemName: canAddFormation ? "plus" : "lock.fill")
                     }
-                    .accessibilityLabel("Add formation")
+                    .accessibilityLabel(canAddFormation ? "Add formation" : "Upgrade to Pro to add formation")
 
                     Button("Done") {
                         showingCompactFormationPicker = false
@@ -479,7 +496,10 @@ struct RoutineWorkspaceView: View {
         Button {
             duplicateFormation(after: formation.id)
         } label: {
-            Label("Duplicate as Next", systemImage: "plus.square.on.square")
+            Label(
+                canAddFormation ? "Duplicate as Next" : "Duplicate as Next (Pro)",
+                systemImage: canAddFormation ? "plus.square.on.square" : "lock.fill"
+            )
         }
         
         Divider()
@@ -593,11 +613,19 @@ struct RoutineWorkspaceView: View {
     // MARK: - Actions
 
     private func addFormation() {
+        guard canAddFormation else {
+            showingUpgradeSheet = true
+            return
+        }
         let newFormationID = store.addFormation(after: selectedFormationID)
         showFormation(newFormationID)
     }
 
     private func duplicateFormation(after formationID: UUID) {
+        guard canAddFormation else {
+            showingUpgradeSheet = true
+            return
+        }
         let duplicatedFormationID = store.duplicateFormation(after: formationID)
         showFormation(duplicatedFormationID)
     }
@@ -860,4 +888,5 @@ private struct FormationThumbnailView: View {
 
 #Preview {
     RoutineWorkspaceView()
+        .environmentObject(EntitlementManager())
 }
