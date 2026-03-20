@@ -9,6 +9,8 @@ struct FloorGridView: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @ObservedObject var store: RoutineStore
     @Binding var selectedAthleteIDs: Set<UUID>
+    @Binding var isSwapMode: Bool
+    @Binding var triggerDeleteAthlete: Bool
     let formationID: UUID
     var onDuplicateAsNext: () -> Void
 
@@ -38,7 +40,6 @@ struct FloorGridView: View {
     @State private var lastZoomScale: CGFloat = 1.0
     @State private var canvasPanOffset: CGSize = .zero
     @State private var lastCanvasPanOffset: CGSize = .zero
-    @State private var isSwapMode = false
     @State private var swapSourceAthleteID: UUID?
     @State private var hasMadeFirstSelection = false
     @State private var activeAlignmentGuides: [AlignmentGuideRenderItem] = []
@@ -418,6 +419,12 @@ struct FloorGridView: View {
             if newSelection.isEmpty {
                 endSwapMode()
                 focusedEndpoint = nil
+            }
+        }
+        .onChange(of: triggerDeleteAthlete) { _, shouldDelete in
+            if shouldDelete {
+                triggerDeleteAthlete = false
+                deleteSelectedAthlete()
             }
         }
         .confirmationDialog(
@@ -2593,12 +2600,16 @@ private struct SnapResult {
     struct PreviewWrapper: View {
         @StateObject private var store = RoutineStore()
         @State private var selectedAthleteIDs: Set<UUID> = []
+        @State private var isSwapMode = false
+        @State private var triggerDeleteAthlete = false
 
         var body: some View {
             NavigationStack {
                 FloorGridView(
                     store: store,
                     selectedAthleteIDs: $selectedAthleteIDs,
+                    isSwapMode: $isSwapMode,
+                    triggerDeleteAthlete: $triggerDeleteAthlete,
                     formationID: store.routine.formations.first?.id ?? UUID()
                 ) {}
             }

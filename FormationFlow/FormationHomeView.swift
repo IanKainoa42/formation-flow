@@ -20,6 +20,8 @@ struct RoutineWorkspaceView: View {
     @EnvironmentObject private var entitlementManager: EntitlementManager
     @State private var showingUpgradeSheet = false
     @State private var selectedAthleteIDs: Set<UUID> = []
+    @State private var isSwapMode = false
+    @State private var triggerDeleteAthlete = false
 
     private var isCompactLayout: Bool {
         horizontalSizeClass == .compact || UIDevice.current.userInterfaceIdiom == .phone
@@ -97,6 +99,7 @@ struct RoutineWorkspaceView: View {
         }
         .onChange(of: selectedFormationID) { _, _ in
             selectedAthleteIDs = []
+            isSwapMode = false
             previewReferenceMode = smartPickReferenceMode()
             refreshPreviewSession()
         }
@@ -237,7 +240,14 @@ struct RoutineWorkspaceView: View {
                 SidebarInspectorView(
                     store: store,
                     formationID: selectedFormationID,
-                    selectedAthleteIDs: $selectedAthleteIDs
+                    selectedAthleteIDs: $selectedAthleteIDs,
+                    onSwap: {
+                        isSwapMode.toggle()
+                    },
+                    onDeleteAthlete: {
+                        triggerDeleteAthlete = true
+                    },
+                    isSwapMode: isSwapMode
                 )
                 .frame(maxHeight: 400)
             }
@@ -340,6 +350,8 @@ struct RoutineWorkspaceView: View {
         let editor = FloorGridView(
             store: store,
             selectedAthleteIDs: $selectedAthleteIDs,
+            isSwapMode: $isSwapMode,
+            triggerDeleteAthlete: $triggerDeleteAthlete,
             formationID: formationID,
             onDuplicateAsNext: duplicateSelectedFormation,
             player: previewSession.player,
