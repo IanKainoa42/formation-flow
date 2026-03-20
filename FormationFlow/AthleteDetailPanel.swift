@@ -97,8 +97,9 @@ struct AthleteInspectorView: View {
             titleVisibility: .visible
         ) {
             Button("Delete Athlete", role: .destructive, action: onDelete)
+            Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will remove them from all \(formationCount) formations and their transitions.")
+            Text("This will remove them from all \(formationCount) formations and their transitions. This cannot be undone.")
         }
     }
 }
