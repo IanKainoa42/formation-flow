@@ -1244,8 +1244,12 @@ struct FloorGridView: View {
                         onDelete: {
                             deleteSelectedAthlete()
                         },
+                        isPro: entitlementManager.isPro,
                         onClearSelection: {
                             selectedAthleteIDs = []
+                        },
+                        onUpgrade: {
+                            showingUpgradeSheet = true
                         }
                     )
 
