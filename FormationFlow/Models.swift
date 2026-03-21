@@ -2089,6 +2089,7 @@ final class RoutinePlayer: ObservableObject {
     private var player: TransitionPlayer?
     private var athletesSink: AnyCancellable?
     private var isInGap = false
+    private var gapWorkItem: DispatchWorkItem?
     private let trailLength = 6
 
     // Cumulative duration fractions for proportional timeline
@@ -2137,9 +2138,12 @@ final class RoutinePlayer: ObservableObject {
         if progress >= 1.0 {
             progress = 0
             currentSegmentIndex = 0
+            loadSegment(at: 0)
         }
         isPlaying = true
-        loadSegment(at: currentSegmentIndex)
+        if player == nil {
+            loadSegment(at: currentSegmentIndex)
+        }
         player?.play()
     }
 
@@ -2150,6 +2154,7 @@ final class RoutinePlayer: ObservableObject {
 
     func reset() {
         pause()
+        cancelGap()
         progress = 0
         currentSegmentIndex = 0
         trailPositions = [:]
@@ -2160,6 +2165,7 @@ final class RoutinePlayer: ObservableObject {
     }
 
     func seek(to globalProgress: CGFloat) {
+        cancelGap()
         let clamped = max(0, min(1, globalProgress))
         progress = clamped
 
@@ -2233,7 +2239,7 @@ final class RoutinePlayer: ObservableObject {
         }
 
         isInGap = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+        let workItem = DispatchWorkItem { [weak self] in
             guard let self, self.isPlaying else {
                 self?.isInGap = false
                 return
@@ -2243,6 +2249,14 @@ final class RoutinePlayer: ObservableObject {
             self.loadSegment(at: nextIndex)
             self.player?.play()
         }
+        gapWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: workItem)
+    }
+
+    private func cancelGap() {
+        gapWorkItem?.cancel()
+        gapWorkItem = nil
+        isInGap = false
     }
 
     private func updateGlobalProgress() {

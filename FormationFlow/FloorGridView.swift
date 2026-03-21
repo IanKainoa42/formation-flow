@@ -358,6 +358,7 @@ struct FloorGridView: View {
             Button("Save") {
                 commitAthleteRename()
             }
+            .disabled(athleteLabelDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -810,6 +811,7 @@ struct FloorGridView: View {
                     .onChanged { value in
                         guard selectedAthleteIDs.count >= 2 else { return }
                         if rotationStartPositions.isEmpty {
+                            // Capture starting positions for undo + rotation reference
                             let selected = renderedAthletes.filter { selectedAthleteIDs.contains($0.id) }
                             rotationStartPositions = Dictionary(uniqueKeysWithValues: selected.map { ($0.id, $0.position) })
                         }
@@ -820,6 +822,7 @@ struct FloorGridView: View {
                             rotationStartPositions = [:]
                             return
                         }
+                        // Final snap + push undo
                         applyRotation(angle: value.radians)
                         undoStack.append(rotationStartPositions.map { ($0.key, $0.value) })
                         rotationStartPositions = [:]
@@ -925,11 +928,6 @@ struct FloorGridView: View {
                 Text(formationContextLabel)
                     .font(.caption.weight(.semibold))
                     .foregroundColor(.primary)
-                if onCycleFormation != nil, store.routine.formations.count > 1 {
-                    Image(systemName: "chevron.right")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundColor(.secondary)
-                }
             }
 
             if hasTransition, showTransitionPaths, let startFormationName, let endFormationName {
@@ -967,10 +965,6 @@ struct FloorGridView: View {
         .overlay {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(.white.opacity(0.08))
-        }
-        .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .onTapGesture {
-            onCycleFormation?()
         }
     }
 
@@ -2299,9 +2293,11 @@ struct FloorGridView: View {
     private func applyRotation(angle: CGFloat) {
         guard !rotationStartPositions.isEmpty else { return }
 
+        // Compute center of mass of the selected group
         let positions = Array(rotationStartPositions.values)
         let centerX = positions.map(\.x).reduce(0, +) / CGFloat(positions.count)
         let centerY = positions.map(\.y).reduce(0, +) / CGFloat(positions.count)
+        let center = CGPoint(x: centerX, y: centerY)
 
         let cosA = cos(angle)
         let sinA = sin(angle)
@@ -2310,11 +2306,13 @@ struct FloorGridView: View {
             for (athleteID, startPosition) in rotationStartPositions {
                 guard let placementIndex = formation.placementIndex(for: athleteID) else { continue }
 
-                let dx = startPosition.x - centerX
-                let dy = startPosition.y - centerY
-                let rotatedX = centerX + dx * cosA - dy * sinA
-                let rotatedY = centerY + dx * sinA + dy * cosA
+                // Rotate around center
+                let dx = startPosition.x - center.x
+                let dy = startPosition.y - center.y
+                let rotatedX = center.x + dx * cosA - dy * sinA
+                let rotatedY = center.y + dx * sinA + dy * cosA
 
+                // Snap to whole feet and clamp to court
                 formation.placements[placementIndex].position = CGPoint(
                     x: clampedCoordinate(rotatedX, upperBound: CourtConstants.width),
                     y: clampedCoordinate(rotatedY, upperBound: CourtConstants.height)
