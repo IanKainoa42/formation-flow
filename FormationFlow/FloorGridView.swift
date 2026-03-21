@@ -358,7 +358,6 @@ struct FloorGridView: View {
             Button("Save") {
                 commitAthleteRename()
             }
-            .disabled(athleteLabelDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
             Button("Cancel", role: .cancel) {}
         } message: {
