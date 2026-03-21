@@ -924,7 +924,6 @@ private struct SidebarTransportView: View {
                 in: 0...1
             )
             .accessibilityLabel("Transition progress")
-            .accessibilityValue("\(Int(player.progress * 100)) percent")
 
             HStack {
                 Text("Counts")

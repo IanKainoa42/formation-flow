@@ -92,7 +92,6 @@ struct TransitionTransportSidebarView: View {
                 in: 0...1
             )
             .accessibilityLabel("Transition progress")
-            .accessibilityValue("\(Int(player.progress * 100)) percent")
 
             Text(String(format: "%.0f%%", player.progress * 100))
                 .font(.system(.caption, design: .monospaced))
@@ -129,7 +128,6 @@ struct TransitionTransportSidebarView: View {
                 step: 1
             )
             .accessibilityLabel("Transition counts")
-            .accessibilityValue(TransitionCountFormatting.label(player.counts))
         }
     }
 
@@ -204,7 +202,6 @@ struct CompactTransitionPlaybackOverlayView: View {
                     in: 0...1
                 )
                 .accessibilityLabel("Transition progress")
-                .accessibilityValue("\(Int(player.progress * 100)) percent")
 
                 Button {
                     player.isLooping.toggle()
@@ -349,7 +346,6 @@ struct CompactTransitionPlaybackRailView: View {
                     in: 0...1
                 )
                 .accessibilityLabel("Transition progress")
-                .accessibilityValue("\(Int(player.progress * 100)) percent")
 
                 HStack(spacing: 6) {
                     Text("0%")
