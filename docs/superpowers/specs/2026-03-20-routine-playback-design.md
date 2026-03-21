@@ -16,32 +16,36 @@ A full-screen routine player that chains all transitions end-to-end with a globa
 
 **Initialization:**
 - Takes a `RoutineStore` reference
-- On play, snapshots all formations and transition specs into an ordered segment list: `[(startAthletes: [RenderedAthlete], endAthletes: [RenderedAthlete], spec: TransitionSpec)]`
+- On init, snapshots all formations and transition specs into an ordered segment list: `[(startAthletes: [RenderedAthlete], endAthletes: [RenderedAthlete], spec: TransitionSpec, formationName: String)]`
+- Default speed is `1.0` (real-time, so coaches see actual performance tempo)
 
 **Segment sequencing:**
 - Owns a single `TransitionPlayer` instance internally
-- When a segment completes, pauses for 0.5 seconds, then loads the next segment via `TransitionPlayer.refresh()` and resumes
-- When the last segment completes, stops playback (no auto-loop)
+- Detects segment completion by adding an `onComplete: (() -> Void)?` closure to `TransitionPlayer`. When `progress >= 1.0` and not looping, `TransitionPlayer` calls `onComplete` before pausing.
+- On segment completion: schedules a 0.5s `DispatchQueue.main.asyncAfter` delay, then calls `player.refresh()` with the next segment's data followed by `player.seek(to: 0)` (to avoid a one-frame flash of end positions), then `player.play()`.
+- During the 0.5s inter-segment pause, athletes remain at the completed segment's end positions. Global progress holds steady (the pause is off-timeline).
+- When the last segment completes, stops playback (no auto-loop).
 
 **Global progress:**
 - `progress: CGFloat` (0–1) across the entire routine
-- Each segment gets an equal fraction of the timeline (e.g., 3 transitions = each segment is 1/3)
-- Segment boundary positions are published as `segmentMarkers: [CGFloat]` for the UI to render tick marks
+- Segments are **proportional to their `TransitionSpec.duration`** (a 16-count transition gets 4x the scrub bar width of a 4-count transition). Total timeline = sum of all segment durations.
+- Segment boundary positions are published as `segmentMarkers: [CGFloat]` for the UI to render tick marks. Computed from cumulative duration fractions.
+- Seeking to an exact segment boundary belongs to the **next** segment (for `currentSegmentIndex` and `currentFormationName`).
 
 **Published state:**
-- `currentAthletes: [RenderedAthlete]` — current interpolated positions
-- `progress: CGFloat` — global 0–1
+- `currentAthletes: [RenderedAthlete]` — forwarded from internal `TransitionPlayer.currentAthletes` via a Combine `$currentAthletes.sink` subscription
+- `progress: CGFloat` — global 0–1, computed from `currentSegmentIndex` + `TransitionPlayer.progress` mapped to the global scale
 - `isPlaying: Bool`
 - `speed: CGFloat` — 1.0, 2.0, or 4.0
 - `currentSegmentIndex: Int`
 - `segmentCount: Int`
-- `currentFormationName: String` — name of the formation the playback is currently in/leaving
-- `showTrail: Bool` — ghost effect toggle
-- `trailPositions: [UUID: [CGPoint]]` — ring buffer of last ~6 positions per athlete
+- `currentFormationName: String` — name of the formation the playback is currently leaving (the "from" formation of the active segment)
+- `showTrail: Bool` — ghost effect toggle (default `false`)
+- `trailPositions: [UUID: [CGPoint]]` — ring buffer of last ~6 positions per athlete, in **floor-feet coordinates** (matching all other position data in the app)
 
 **Speed:** Passed through to internal `TransitionPlayer.speed`.
 
-**Scrubbing:** `seek(to:)` maps global progress to the correct segment index, loads that segment into the `TransitionPlayer`, and seeks within it at the local offset.
+**Scrubbing:** `seek(to:)` maps global progress to the correct segment index using cumulative duration fractions, loads that segment into `TransitionPlayer` via `refresh()` + `seek(to: 0)`, then seeks within it at the computed local offset.
 
 **Ghost trail:** Updated every frame from `currentAthletes`. Stores last 6 positions per athlete ID in a dictionary of ring buffers. Buffer updates regardless of `showTrail` — the flag only controls rendering.
 
@@ -53,6 +57,7 @@ Full-screen SwiftUI view for playback. No editing, no sidebar, no inspector.
 - Dark background, court centered and filling available space
 - `FloorCanvasView` with `RoutinePlayer.currentAthletes`
 - Close button (top-left corner, `arrow.down.right.and.arrow.up.left` icon on material circle — matches existing full-screen pattern)
+- `FloorCanvasView` parameters mirror the existing full-screen floor pattern: `GeometryReader` computes `cellSize` and `offset`, `hasTransition = false`, `formationColor = .accentColor`, `ghostAthletes` is empty (the trail system is separate), `collisionIDs` and `pathCollisionIDs` are empty, no transition paths or endpoint markers
 
 **Transport bar (bottom overlay):**
 - Material background pill (matches existing `CompactTransitionPlaybackOverlayView` style)
@@ -65,26 +70,29 @@ Full-screen SwiftUI view for playback. No editing, no sidebar, no inspector.
 ### Ghost Trail Rendering (FloorCanvasView)
 
 - New optional parameter: `trailPositions: [UUID: [CGPoint]]` (defaults to empty)
+- Coordinates are in floor-feet; the Canvas applies `* cellSize` conversion at draw time (same as athlete positions)
 - When non-empty, draws ghost circles before main athlete circles
 - Each ghost: same role color, decreasing opacity (oldest = most faded), slightly smaller radius
 - Example: 6 trail positions at opacities 0.08, 0.12, 0.16, 0.20, 0.24, 0.28
 - Subtle, not distracting — just enough to see movement direction and speed
+- This is distinct from the existing `ghostAthletes` parameter (which shows static prior-formation positions). During routine playback, `ghostAthletes` is empty.
 
-### Integration (FormationHomeView)
+### Integration (RoutineWorkspaceView in FormationHomeView.swift)
 
 - New "Play Routine" button in the sidebar toolbar (e.g., `play.circle` icon)
 - Disabled when fewer than 2 formations
 - `@State private var showingRoutinePlayback = false`
 - `.fullScreenCover(isPresented:)` presenting `RoutinePlaybackView(store: store)`
 - `RoutinePlaybackView` creates `RoutinePlayer` as `@StateObject` on init
+- Data is snapshotted at init time; `RoutinePlayer` does not react to `RoutineStore` changes during playback (`.fullScreenCover` blocks underlying interaction anyway)
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| `Models.swift` | Add `RoutinePlayer` class |
+| `Models.swift` | Add `RoutinePlayer` class, add `onComplete` closure to `TransitionPlayer` |
 | `FloorCanvasView.swift` | Add optional `trailPositions` parameter and ghost rendering |
-| `FormationHomeView.swift` | Add Play Routine button and `.fullScreenCover` |
+| `FormationHomeView.swift` | Add Play Routine button and `.fullScreenCover` to `RoutineWorkspaceView` |
 | `RoutinePlaybackView.swift` (new) | Full-screen playback view with transport controls |
 
 ## Out of Scope
