@@ -183,6 +183,7 @@ struct RoutineWorkspaceView: View {
             isSwapMode: $isSwapMode,
             triggerDeleteAthlete: $triggerDeleteAthlete,
             formationID: formationID,
+            onCycleFormation: cycleToNextFormation,
             onDuplicateAsNext: duplicateSelectedFormation,
             player: previewSession.player,
             startFormationID: previewTransitionPair?.start.id,
@@ -202,6 +203,18 @@ struct RoutineWorkspaceView: View {
             }
             .padding(16)
         }
+        .overlay(alignment: .bottom) {
+            if let previewTransitionPair, let player = previewSession.player {
+                CompactTransitionPlaybackOverlayView(
+                    player: player,
+                    startFormationName: previewTransitionPair.start.name,
+                    endFormationName: previewTransitionPair.end.name
+                )
+                .padding(.horizontal, 20)
+                .padding(.bottom, 20)
+            }
+        }
+        .environmentObject(entitlementManager)
         .ignoresSafeArea()
         .statusBarHidden()
     }
@@ -390,6 +403,7 @@ struct RoutineWorkspaceView: View {
             isSwapMode: $isSwapMode,
             triggerDeleteAthlete: $triggerDeleteAthlete,
             formationID: formationID,
+            onCycleFormation: cycleToNextFormation,
             onDuplicateAsNext: duplicateSelectedFormation,
             player: previewSession.player,
             startFormationID: previewTransitionPair?.start.id,
@@ -701,6 +715,14 @@ struct RoutineWorkspaceView: View {
     private func duplicateSelectedFormation() {
         guard let selectedFormationID else { return }
         duplicateFormation(after: selectedFormationID)
+    }
+
+    private func cycleToNextFormation() {
+        let formations = store.routine.formations
+        guard formations.count > 1 else { return }
+        let currentIndex = formations.firstIndex(where: { $0.id == selectedFormationID }) ?? 0
+        let nextIndex = (currentIndex + 1) % formations.count
+        selectedFormationID = formations[nextIndex].id
     }
 
     private func requestFormationDeletion(_ formationIDs: [UUID]) {

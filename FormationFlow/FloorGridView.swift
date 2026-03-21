@@ -12,6 +12,7 @@ struct FloorGridView: View {
     @Binding var isSwapMode: Bool
     @Binding var triggerDeleteAthlete: Bool
     let formationID: UUID
+    var onCycleFormation: (() -> Void)?
     var onDuplicateAsNext: () -> Void
 
     // Transition parameters (nil when no adjacent formation)
@@ -925,6 +926,11 @@ struct FloorGridView: View {
                 Text(formationContextLabel)
                     .font(.caption.weight(.semibold))
                     .foregroundColor(.primary)
+                if onCycleFormation != nil, store.routine.formations.count > 1 {
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(.secondary)
+                }
             }
 
             if hasTransition, showTransitionPaths, let startFormationName, let endFormationName {
@@ -962,6 +968,10 @@ struct FloorGridView: View {
         .overlay {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(.white.opacity(0.08))
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .onTapGesture {
+            onCycleFormation?()
         }
     }
 
