@@ -8,6 +8,9 @@ struct FloorGridView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @ObservedObject var store: RoutineStore
+    @Binding var selectedAthleteIDs: Set<UUID>
+    @Binding var isSwapMode: Bool
+    @Binding var triggerDeleteAthlete: Bool
     let formationID: UUID
     var onDuplicateAsNext: () -> Void
 
@@ -16,12 +19,12 @@ struct FloorGridView: View {
     var startFormationID: UUID?
     var endFormationID: UUID?
 
-    @State private var selectedAthleteIDs: Set<UUID> = []
+    @EnvironmentObject private var entitlementManager: EntitlementManager
+    @State private var showingUpgradeSheet = false
     @State private var showingRosterSheet = false
     @State private var showingNotesSheet = false
     @State private var showingInspectorSheet = false
     @State private var showingTransportSheet = false
-    @State private var showingPinnedInspector = false
     @State private var showingAthleteRenamePrompt = false
     @State private var athleteLabelDraft = ""
     @State private var showingAthleteDeleteConfirmation = false
@@ -33,11 +36,11 @@ struct FloorGridView: View {
     @State private var selectionStartPoint: CGPoint = .zero
     @State private var dragStartPositions: [UUID: CGPoint] = [:]
     @State private var undoStack: [[(id: UUID, position: CGPoint)]] = []
+    @State private var rotationStartPositions: [UUID: CGPoint] = [:]
     @State private var zoomScale: CGFloat = 1.0
     @State private var lastZoomScale: CGFloat = 1.0
     @State private var canvasPanOffset: CGSize = .zero
     @State private var lastCanvasPanOffset: CGSize = .zero
-    @State private var isSwapMode = false
     @State private var swapSourceAthleteID: UUID?
     @State private var hasMadeFirstSelection = false
     @State private var activeAlignmentGuides: [AlignmentGuideRenderItem] = []
@@ -57,9 +60,6 @@ struct FloorGridView: View {
     @State private var sharePayload: TransitionSharePayload?
     @State private var shareResultMessage = ""
     @State private var showingShareResult = false
-    @State private var inspectorScrollOffset: CGFloat = 0
-    @State private var inspectorContentHeight: CGFloat = 1
-    @State private var inspectorViewportHeight: CGFloat = 1
 
     private var formationIndex: Int? {
         store.formationIndex(id: formationID)
@@ -276,10 +276,6 @@ struct FloorGridView: View {
         return "Inspect"
     }
 
-    private var regularInspectButtonTitle: String {
-        showingPinnedInspector ? "Hide Inspector" : "Inspect"
-    }
-
     private var pathCollidingAthletes: [RenderedAthlete] {
         renderedAthletes.filter { pathCollisionIDs.contains($0.id) }
     }
@@ -338,6 +334,9 @@ struct FloorGridView: View {
         }
         .sheet(isPresented: $showingTransportSheet) {
             compactTransportSheet
+        }
+        .sheet(isPresented: $showingUpgradeSheet) {
+            ProUpgradeSheet()
         }
         .sheet(item: $sharePayload) { payload in
             ShareSheetView(items: [payload.message, payload.image]) { completed, activityType in
@@ -404,7 +403,6 @@ struct FloorGridView: View {
             pathCollisionCycleIndex = 0
             focusedEndpoint = nil
             showingInspectorSheet = false
-            showingPinnedInspector = false
             showingTransportSheet = false
             showingAthleteRenamePrompt = false
             showingAthleteDeleteConfirmation = false
@@ -412,6 +410,7 @@ struct FloorGridView: View {
             athleteLabelDraft = ""
             canvasPanOffset = .zero
             lastCanvasPanOffset = .zero
+            rotationStartPositions = [:]
             clearTransitionDragState()
         }
         .onChange(of: selectedAthleteIDs) { _, newSelection in
@@ -422,6 +421,12 @@ struct FloorGridView: View {
             if newSelection.isEmpty {
                 endSwapMode()
                 focusedEndpoint = nil
+            }
+        }
+        .onChange(of: triggerDeleteAthlete) { _, shouldDelete in
+            if shouldDelete {
+                triggerDeleteAthlete = false
+                deleteSelectedAthlete()
             }
         }
         .confirmationDialog(
@@ -456,27 +461,8 @@ struct FloorGridView: View {
 
                     if renderedAthletes.isEmpty {
                         emptyState
-                    } else if isCompactLayout {
-                        canvasArea
                     } else {
                         canvasArea
-                            .overlay(alignment: .trailing) {
-                                if showingPinnedInspector {
-                                    HStack(spacing: 0) {
-                                        Rectangle()
-                                            .fill(Color(uiColor: .separator).opacity(0.35))
-                                            .frame(width: 1)
-
-                                        inspectorPanel
-                                            .frame(width: 320)
-                                            .frame(maxHeight: .infinity)
-                                    }
-                                    .background(.thinMaterial)
-                                    .shadow(color: .black.opacity(0.12), radius: 14, x: -4, y: 0)
-                                    .transition(.move(edge: .trailing).combined(with: .opacity))
-                                }
-                            }
-                            .animation(.easeInOut(duration: 0.22), value: selectedAthleteIDs.isEmpty)
                     }
                 }
             }
@@ -584,19 +570,6 @@ struct FloorGridView: View {
                 if isCompactLayout {
                     compactOverflowMenu
                 } else {
-                    if showingPinnedInspector {
-                        Button(action: togglePinnedInspector) {
-                            Label(regularInspectButtonTitle, systemImage: "slider.horizontal.3")
-                        }
-                        .buttonStyle(.borderedProminent)
-                    } else {
-                        Button(action: togglePinnedInspector) {
-                            Label(regularInspectButtonTitle, systemImage: "slider.horizontal.3")
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(selectedAthleteIDs.isEmpty)
-                    }
-
                     Button(action: { showingRosterSheet = true }) {
                         Label("Manage Roster", systemImage: "list.bullet.rectangle")
                     }
@@ -832,6 +805,27 @@ struct FloorGridView: View {
                         lastCanvasPanOffset = canvasPanOffset
                     }
             )
+            .simultaneousGesture(
+                RotationGesture()
+                    .onChanged { value in
+                        guard selectedAthleteIDs.count >= 2 else { return }
+                        if rotationStartPositions.isEmpty {
+                            let selected = renderedAthletes.filter { selectedAthleteIDs.contains($0.id) }
+                            rotationStartPositions = Dictionary(uniqueKeysWithValues: selected.map { ($0.id, $0.position) })
+                        }
+                        applyRotation(angle: value.radians)
+                    }
+                    .onEnded { value in
+                        guard selectedAthleteIDs.count >= 2, !rotationStartPositions.isEmpty else {
+                            rotationStartPositions = [:]
+                            return
+                        }
+                        applyRotation(angle: value.radians)
+                        undoStack.append(rotationStartPositions.map { ($0.key, $0.value) })
+                        rotationStartPositions = [:]
+                        refreshTransitionFromStore()
+                    }
+            )
 
             let canvasContent = baseCanvasContent.overlay(alignment: .top) {
                 if isPhoneLayout {
@@ -973,16 +967,24 @@ struct FloorGridView: View {
 
     private var compactInspectorSheet: some View {
         NavigationStack {
-            inspectorPanel
-                .navigationTitle(compactInspectorTitle)
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Done") {
-                            showingInspectorSheet = false
-                        }
+            SidebarInspectorView(
+                store: store,
+                formationID: formationID,
+                selectedAthleteIDs: $selectedAthleteIDs,
+                isCompactLayout: true,
+                onSwap: toggleSwapMode,
+                onDeleteAthlete: { deleteSelectedAthlete() },
+                isSwapMode: isSwapMode
+            )
+            .navigationTitle(compactInspectorTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        showingInspectorSheet = false
                     }
                 }
+            }
         }
         .presentationDetents(isPhoneLayout ? [.large] : [.medium, .large])
         .presentationDragIndicator(.visible)
@@ -1201,128 +1203,6 @@ struct FloorGridView: View {
         }
     }
 
-    // MARK: - Inspector Panel
-
-    private var inspectorPanel: some View {
-        ScrollView {
-            GeometryReader { proxy in
-                Color.clear
-                    .preference(
-                        key: InspectorScrollOffsetPreferenceKey.self,
-                        value: -proxy.frame(in: .named("InspectorPanelScroll")).minY
-                    )
-            }
-            .frame(height: 0)
-
-            VStack(alignment: .leading, spacing: 0) {
-                if let selectedRosterAthlete, let selectedPlacement {
-                    AthleteInspectorView(
-                        athlete: selectedRosterAthlete,
-                        position: selectedPlacement.position,
-                        isSwapMode: isSwapMode,
-                        formationCount: store.routine.formations.count,
-                        formationName: formation?.name ?? "Formation",
-                        compactLayout: isCompactLayout,
-                        onUpdateLabel: { newLabel in
-                            store.mutateRosterAthlete(id: selectedRosterAthlete.id) { athlete in
-                                athlete.label = newLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                    ? athlete.label
-                                    : newLabel.trimmingCharacters(in: .whitespacesAndNewlines)
-                            }
-                        },
-                        onUpdateRole: { newRole in
-                            store.mutateRosterAthlete(id: selectedRosterAthlete.id) { athlete in
-                                athlete.role = newRole
-                            }
-                        },
-                        onSwap: toggleSwapMode,
-                        onDelete: {
-                            deleteSelectedAthlete()
-                        },
-                        onClearSelection: {
-                            selectedAthleteIDs = []
-                        }
-                    )
-
-                    if hasTransition, let selectedTransition, let player,
-                       let startFormationID, let endFormationID
-                    {
-                        Divider()
-                        transitionInspectorSection(
-                            transition: selectedTransition,
-                            player: player,
-                            startFormationID: startFormationID,
-                            endFormationID: endFormationID
-                        )
-                    }
-                } else if selectedAthleteIDs.count > 1 {
-                    MultiSelectionInspectorView(
-                        count: selectedAthleteIDs.count,
-                        compactLayout: isCompactLayout,
-                        onClearSelection: { selectedAthleteIDs = [] }
-                    )
-                } else {
-                    EmptyInspectorView(
-                        title: "Inspector",
-                        message: "Select one athlete to edit its label, role, and actions. Multi-select to move groups together.",
-                        compactLayout: isCompactLayout
-                    )
-                }
-            }
-            .background(
-                GeometryReader { proxy in
-                    Color.clear
-                        .preference(key: InspectorContentHeightPreferenceKey.self, value: proxy.size.height)
-                }
-            )
-        }
-        .coordinateSpace(name: "InspectorPanelScroll")
-        .background(
-            GeometryReader { proxy in
-                Color.clear
-                    .preference(key: InspectorViewportHeightPreferenceKey.self, value: proxy.size.height)
-            }
-        )
-        .onPreferenceChange(InspectorScrollOffsetPreferenceKey.self) { inspectorScrollOffset = $0 }
-        .onPreferenceChange(InspectorContentHeightPreferenceKey.self) { inspectorContentHeight = $0 }
-        .onPreferenceChange(InspectorViewportHeightPreferenceKey.self) { inspectorViewportHeight = $0 }
-        .overlay(alignment: .trailing) {
-            inspectorScrollIndicator
-        }
-        .background(.thinMaterial)
-        .frame(maxHeight: .infinity)
-    }
-
-    private var inspectorScrollIndicator: some View {
-        let viewport = max(1, inspectorViewportHeight)
-        let content = max(viewport, inspectorContentHeight)
-        let canScroll = content > viewport + 1
-        let scrollRange = max(1, content - viewport)
-        let clampedOffset = min(max(inspectorScrollOffset, 0), scrollRange)
-        let progress = clampedOffset / scrollRange
-        let thumbHeight = max(58, (viewport / content) * viewport)
-        let trackTravel = max(0, viewport - thumbHeight)
-        let thumbYOffset = progress * trackTravel
-
-        return Group {
-            if canScroll {
-                ZStack(alignment: .top) {
-                    Capsule(style: .continuous)
-                        .fill(.white.opacity(0.2))
-                        .frame(width: 8)
-                    Capsule(style: .continuous)
-                        .fill(.white.opacity(0.82))
-                        .frame(width: 10, height: thumbHeight)
-                        .offset(y: thumbYOffset)
-                }
-                .padding(.trailing, 8)
-                .padding(.vertical, 10)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-            }
-        }
-    }
-
     // MARK: - Transition Inspector
 
     private func transitionInspectorSection(
@@ -1357,25 +1237,39 @@ struct FloorGridView: View {
             VStack(alignment: .leading, spacing: isCompactLayout ? 6 : 8) {
                 Text("Start Delay")
                     .font(.subheadline.weight(.semibold))
-                Slider(
-                    value: Binding(
-                        get: { transition.moveDelayCounts },
-                        set: { newValue in
-                            guard let selectedAthleteID else { return }
-                            store.mutateAthleteTransition(
-                                from: startFormationID,
-                                to: endFormationID,
-                                athleteID: selectedAthleteID
-                            ) { t in
-                                t.moveDelayCounts = min(CGFloat(player.counts), max(0, newValue))
+                if entitlementManager.isPro {
+                    Slider(
+                        value: Binding(
+                            get: { transition.moveDelayCounts },
+                            set: { newValue in
+                                guard let selectedAthleteID else { return }
+                                store.mutateAthleteTransition(
+                                    from: startFormationID,
+                                    to: endFormationID,
+                                    athleteID: selectedAthleteID
+                                ) { t in
+                                    t.moveDelayCounts = min(CGFloat(player.counts), max(0, newValue))
+                                }
+                                refreshTransitionFromStore()
                             }
-                            refreshTransitionFromStore()
+                        ),
+                        in: 0...CGFloat(player.counts),
+                        step: 0.5
+                    )
+                    .accessibilityLabel("Start Delay")
+                    .accessibilityValue(TransitionCountFormatting.label(transition.moveDelayCounts))
+                } else {
+                    HStack {
+                        Slider(value: .constant(0), in: 0...CGFloat(player.counts))
+                            .disabled(true)
+                        Button {
+                            showingUpgradeSheet = true
+                        } label: {
+                            Image(systemName: "lock.fill")
+                                .foregroundColor(.secondary)
                         }
-                    ),
-                    in: 0...CGFloat(player.counts),
-                    step: 0.5
-                )
-                .accessibilityLabel("Start Delay")
+                    }
+                }
                 Text(TransitionCountFormatting.label(transition.moveDelayCounts))
                     .font(.system(.body, design: .monospaced))
                     .foregroundColor(.secondary)
@@ -1463,6 +1357,10 @@ struct FloorGridView: View {
                 Text(waypoint.isSmooth ? "Smooth" : "Sharp")
                 Spacer()
                 Button(waypoint.isSmooth ? "Make Sharp" : "Make Smooth") {
+                    guard entitlementManager.isPro else {
+                        showingUpgradeSheet = true
+                        return
+                    }
                     guard let selectedAthleteID else { return }
                     store.mutateAthleteTransition(
                         from: startFormationID,
@@ -1556,6 +1454,10 @@ struct FloorGridView: View {
         startFormationID: UUID,
         endFormationID: UUID
     ) {
+        guard entitlementManager.isPro else {
+            showingUpgradeSheet = true
+            return
+        }
         guard let selectedAthleteID else { return }
         store.mutateAthleteTransition(
             from: startFormationID,
@@ -1904,6 +1806,10 @@ struct FloorGridView: View {
                                         < hitRadiusSquared
                                     {
                                         guard dragDistance >= dragActivationDistance else { return }
+                                        guard entitlementManager.isPro else {
+                                            showingUpgradeSheet = true
+                                            return
+                                        }
                                         let newWaypoint = PathWaypoint(position: midpoint, isSmooth: true)
                                         store.mutateAthleteTransition(
                                             from: startFormationID,
@@ -2379,6 +2285,35 @@ struct FloorGridView: View {
         }
     }
 
+    // MARK: - Rotation
+
+    private func applyRotation(angle: CGFloat) {
+        guard !rotationStartPositions.isEmpty else { return }
+
+        let positions = Array(rotationStartPositions.values)
+        let centerX = positions.map(\.x).reduce(0, +) / CGFloat(positions.count)
+        let centerY = positions.map(\.y).reduce(0, +) / CGFloat(positions.count)
+
+        let cosA = cos(angle)
+        let sinA = sin(angle)
+
+        store.mutateFormation(id: formationID) { formation in
+            for (athleteID, startPosition) in rotationStartPositions {
+                guard let placementIndex = formation.placementIndex(for: athleteID) else { continue }
+
+                let dx = startPosition.x - centerX
+                let dy = startPosition.y - centerY
+                let rotatedX = centerX + dx * cosA - dy * sinA
+                let rotatedY = centerY + dx * sinA + dy * cosA
+
+                formation.placements[placementIndex].position = CGPoint(
+                    x: clampedCoordinate(rotatedX, upperBound: CourtConstants.width),
+                    y: clampedCoordinate(rotatedY, upperBound: CourtConstants.height)
+                )
+            }
+        }
+    }
+
     private func handleSelectionBoxContinued(_ value: DragGesture.Value) {
         activeAlignmentGuides = []
         selectionRect = CGRect(
@@ -2443,6 +2378,10 @@ struct FloorGridView: View {
     }
 
     private func addWaypoint() {
+        guard entitlementManager.isPro else {
+            showingUpgradeSheet = true
+            return
+        }
         guard let selectedAthleteID, let startFormationID, let endFormationID, let player else { return }
         let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID })
         let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
@@ -2569,14 +2508,6 @@ struct FloorGridView: View {
     private func applyTemplate() {
         store.applyBowlingPinTemplate(to: formationID)
         selectedAthleteIDs = []
-    }
-
-    private func togglePinnedInspector() {
-        if showingPinnedInspector {
-            showingPinnedInspector = false
-        } else if !selectedAthleteIDs.isEmpty {
-            showingPinnedInspector = true
-        }
     }
 
     private func toggleSwapMode() {
@@ -2710,30 +2641,6 @@ struct FloorGridView: View {
     }
 }
 
-private struct InspectorScrollOffsetPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
-private struct InspectorContentHeightPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 1
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
-private struct InspectorViewportHeightPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 1
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
 private struct SnapResult {
     let translation: CGPoint
     let guides: [AlignmentGuideRenderItem]
@@ -2744,11 +2651,17 @@ private struct SnapResult {
 #Preview {
     struct PreviewWrapper: View {
         @StateObject private var store = RoutineStore()
+        @State private var selectedAthleteIDs: Set<UUID> = []
+        @State private var isSwapMode = false
+        @State private var triggerDeleteAthlete = false
 
         var body: some View {
             NavigationStack {
                 FloorGridView(
                     store: store,
+                    selectedAthleteIDs: $selectedAthleteIDs,
+                    isSwapMode: $isSwapMode,
+                    triggerDeleteAthlete: $triggerDeleteAthlete,
                     formationID: store.routine.formations.first?.id ?? UUID()
                 ) {}
             }
