@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import OSLog
 import SwiftUI
@@ -2058,6 +2059,226 @@ final class TransitionPreviewSession: ObservableObject {
         player = nil
         startFormationID = nil
         endFormationID = nil
+    }
+}
+
+// MARK: - Routine Player
+
+struct RoutineSegment {
+    let startAthletes: [RenderedAthlete]
+    let endAthletes: [RenderedAthlete]
+    let spec: TransitionSpec
+    let formationName: String
+}
+
+@MainActor
+final class RoutinePlayer: ObservableObject {
+    @Published var currentAthletes: [RenderedAthlete] = []
+    @Published var progress: CGFloat = 0
+    @Published var isPlaying = false
+    @Published var speed: CGFloat = 1.0
+    @Published var currentSegmentIndex: Int = 0
+    @Published var currentFormationName: String = ""
+    @Published var showTrail = false
+    @Published var trailPositions: [UUID: [CGPoint]] = [:]
+
+    let segments: [RoutineSegment]
+    let segmentMarkers: [CGFloat]
+    var segmentCount: Int { segments.count }
+
+    private var player: TransitionPlayer?
+    private var athletesSink: AnyCancellable?
+    private var isInGap = false
+    private let trailLength = 6
+
+    // Cumulative duration fractions for proportional timeline
+    private let cumulativeFractions: [CGFloat]
+    private let totalDuration: CGFloat
+
+    init(store: RoutineStore) {
+        let formations = store.routine.formations
+        var segs: [RoutineSegment] = []
+
+        for i in 0..<(formations.count - 1) {
+            let from = formations[i]
+            let to = formations[i + 1]
+            segs.append(RoutineSegment(
+                startAthletes: store.renderedAthletes(for: from),
+                endAthletes: store.renderedAthletes(for: to),
+                spec: store.transitionSpec(for: from.id, to: to.id),
+                formationName: from.name
+            ))
+        }
+
+        self.segments = segs
+
+        // Compute cumulative duration fractions
+        let total = segs.reduce(CGFloat(0)) { $0 + max(CGFloat($1.spec.duration), 0.5) }
+        self.totalDuration = total
+        var cumulative: [CGFloat] = []
+        var running: CGFloat = 0
+        for seg in segs {
+            running += max(CGFloat(seg.spec.duration), 0.5)
+            cumulative.append(running / total)
+        }
+        self.cumulativeFractions = cumulative
+
+        // Segment markers are at boundaries between segments (not including 0 or 1)
+        self.segmentMarkers = Array(cumulative.dropLast())
+
+        if let first = segs.first {
+            self.currentAthletes = first.startAthletes
+            self.currentFormationName = first.formationName
+        }
+    }
+
+    func play() {
+        guard !segments.isEmpty else { return }
+        if progress >= 1.0 {
+            progress = 0
+            currentSegmentIndex = 0
+        }
+        isPlaying = true
+        loadSegment(at: currentSegmentIndex)
+        player?.play()
+    }
+
+    func pause() {
+        isPlaying = false
+        player?.pause()
+    }
+
+    func reset() {
+        pause()
+        progress = 0
+        currentSegmentIndex = 0
+        trailPositions = [:]
+        if let first = segments.first {
+            currentAthletes = first.startAthletes
+            currentFormationName = first.formationName
+        }
+    }
+
+    func seek(to globalProgress: CGFloat) {
+        let clamped = max(0, min(1, globalProgress))
+        progress = clamped
+
+        // Find which segment this falls in
+        let segIndex = segmentIndex(for: clamped)
+        let localProgress = localProgress(for: clamped, inSegment: segIndex)
+
+        currentSegmentIndex = segIndex
+        if segIndex < segments.count {
+            currentFormationName = segments[segIndex].formationName
+        }
+
+        trailPositions = [:]
+        loadSegment(at: segIndex)
+        player?.seek(to: localProgress)
+    }
+
+    func setSpeed(_ newSpeed: CGFloat) {
+        speed = newSpeed
+        player?.speed = newSpeed
+    }
+
+    // MARK: - Private
+
+    private func loadSegment(at index: Int) {
+        guard index < segments.count else { return }
+        let seg = segments[index]
+        currentFormationName = seg.formationName
+
+        if let player {
+            player.refresh(
+                startAthletes: seg.startAthletes,
+                endAthletes: seg.endAthletes,
+                transitionSpec: seg.spec
+            )
+            player.seek(to: 0)
+            player.speed = speed
+        } else {
+            let newPlayer = TransitionPlayer(
+                startAthletes: seg.startAthletes,
+                endAthletes: seg.endAthletes,
+                transitionSpec: seg.spec
+            )
+            newPlayer.speed = speed
+            self.player = newPlayer
+            subscribeToPlayer(newPlayer)
+        }
+
+        player?.onComplete = { [weak self] in
+            self?.handleSegmentComplete()
+        }
+    }
+
+    private func subscribeToPlayer(_ player: TransitionPlayer) {
+        athletesSink = player.$currentAthletes
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] athletes in
+                guard let self else { return }
+                self.currentAthletes = athletes
+                self.updateTrail(athletes: athletes)
+                self.updateGlobalProgress()
+            }
+    }
+
+    private func handleSegmentComplete() {
+        let nextIndex = currentSegmentIndex + 1
+        guard nextIndex < segments.count else {
+            isPlaying = false
+            progress = 1.0
+            return
+        }
+
+        isInGap = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self, self.isPlaying else {
+                self?.isInGap = false
+                return
+            }
+            self.isInGap = false
+            self.currentSegmentIndex = nextIndex
+            self.loadSegment(at: nextIndex)
+            self.player?.play()
+        }
+    }
+
+    private func updateGlobalProgress() {
+        guard !isInGap, let player else { return }
+        let localP = player.progress
+
+        let segStart: CGFloat = currentSegmentIndex > 0 ? cumulativeFractions[currentSegmentIndex - 1] : 0
+        let segEnd = cumulativeFractions[currentSegmentIndex]
+        progress = segStart + localP * (segEnd - segStart)
+    }
+
+    private func updateTrail(athletes: [RenderedAthlete]) {
+        for athlete in athletes {
+            var positions = trailPositions[athlete.id] ?? []
+            positions.append(athlete.position)
+            if positions.count > trailLength {
+                positions.removeFirst(positions.count - trailLength)
+            }
+            trailPositions[athlete.id] = positions
+        }
+    }
+
+    private func segmentIndex(for globalProgress: CGFloat) -> Int {
+        if globalProgress >= 1.0 { return max(0, segments.count - 1) }
+        for (i, fraction) in cumulativeFractions.enumerated() {
+            if globalProgress < fraction { return i }
+        }
+        return max(0, segments.count - 1)
+    }
+
+    private func localProgress(for globalProgress: CGFloat, inSegment index: Int) -> CGFloat {
+        let segStart: CGFloat = index > 0 ? cumulativeFractions[index - 1] : 0
+        let segEnd = cumulativeFractions[index]
+        let segWidth = segEnd - segStart
+        guard segWidth > 0 else { return 0 }
+        return max(0, min(1, (globalProgress - segStart) / segWidth))
     }
 }
 
