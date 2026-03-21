@@ -22,6 +22,7 @@ struct RoutineWorkspaceView: View {
     @State private var selectedAthleteIDs: Set<UUID> = []
     @State private var isSwapMode = false
     @State private var triggerDeleteAthlete = false
+    @State private var isFullScreen = false
 
     private var isCompactLayout: Bool {
         horizontalSizeClass == .compact || UIDevice.current.userInterfaceIdiom == .phone
@@ -80,7 +81,9 @@ struct RoutineWorkspaceView: View {
 
     var body: some View {
         Group {
-            if isCompactLayout {
+            if isFullScreen, !isCompactLayout, let selectedFormationID {
+                fullScreenFloor(formationID: selectedFormationID)
+            } else if isCompactLayout {
                 compactWorkspace
             } else {
                 regularWorkspace
@@ -169,6 +172,38 @@ struct RoutineWorkspaceView: View {
         .sheet(isPresented: $showingUpgradeSheet) {
             ProUpgradeSheet()
         }
+    }
+
+    // MARK: - Full Screen Floor
+
+    private func fullScreenFloor(formationID: UUID) -> some View {
+        FloorGridView(
+            store: store,
+            selectedAthleteIDs: $selectedAthleteIDs,
+            isSwapMode: $isSwapMode,
+            triggerDeleteAthlete: $triggerDeleteAthlete,
+            formationID: formationID,
+            onDuplicateAsNext: duplicateSelectedFormation,
+            player: previewSession.player,
+            startFormationID: previewTransitionPair?.start.id,
+            endFormationID: previewTransitionPair?.end.id
+        )
+        .overlay(alignment: .topLeading) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    isFullScreen = false
+                }
+            } label: {
+                Image(systemName: "arrow.down.right.and.arrow.up.left")
+                    .font(.body.weight(.semibold))
+                    .foregroundColor(.white)
+                    .padding(10)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+            .padding(16)
+        }
+        .ignoresSafeArea()
+        .statusBarHidden()
     }
 
     // MARK: - Workspace Shell
@@ -377,6 +412,14 @@ struct RoutineWorkspaceView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItemGroup(placement: .navigationBarTrailing) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                isFullScreen = true
+                            }
+                        } label: {
+                            Label("Full Screen", systemImage: "arrow.up.left.and.arrow.down.right")
+                        }
+
                         Button(action: duplicateSelectedFormation) {
                             Label(
                                 canAddFormation ? "Duplicate" : "Duplicate (Pro)",
