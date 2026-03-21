@@ -24,6 +24,7 @@ struct FloorCanvasView: View {
     var trailPositions: [UUID: [CGPoint]] = [:]
     var hoveredHandlePosition: CGPoint? = nil
     var hoveredAthleteID: UUID? = nil
+    var focusedPathHandle: CGPoint? = nil
 
     var body: some View {
         Canvas { context, _ in
@@ -105,6 +106,11 @@ struct FloorCanvasView: View {
     }
 
     private func isHandleHovered(at gridPosition: CGPoint) -> Bool {
+        if let focused = focusedPathHandle {
+            let dx = gridPosition.x - focused.x
+            let dy = gridPosition.y - focused.y
+            if dx * dx + dy * dy < 1.0 { return true }
+        }
         guard let hovered = hoveredHandlePosition else { return false }
         let dx = gridPosition.x - hovered.x
         let dy = gridPosition.y - hovered.y

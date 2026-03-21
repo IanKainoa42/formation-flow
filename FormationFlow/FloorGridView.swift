@@ -59,6 +59,7 @@ struct FloorGridView: View {
     @State private var showingResetAllPathsConfirmation = false
     @State private var hoveredHandlePosition: CGPoint?
     @State private var hoveredAthleteID: UUID?
+    @State private var focusedPathHandle: CGPoint?
     @State private var playerTick: UInt = 0
     @State private var sharePayload: TransitionSharePayload?
     @State private var shareResultMessage = ""
@@ -405,6 +406,7 @@ struct FloorGridView: View {
             collisionCycleIndex = 0
             pathCollisionCycleIndex = 0
             focusedEndpoint = nil
+            focusedPathHandle = nil
             showingInspectorSheet = false
             showingTransportSheet = false
             showingAthleteRenamePrompt = false
@@ -769,7 +771,8 @@ struct FloorGridView: View {
                 formationColor: currentFormationColor,
                 ghostAthletes: previousFormationAthletes,
                 hoveredHandlePosition: hoveredHandlePosition,
-                hoveredAthleteID: hoveredAthleteID
+                hoveredAthleteID: hoveredAthleteID,
+                focusedPathHandle: focusedPathHandle
             )
             .gesture(
                 dragGesture(
@@ -1617,12 +1620,14 @@ struct FloorGridView: View {
     }
 
     private func athleteHitRadiusSquared(for athlete: RenderedAthlete, cellSize: CGFloat) -> CGFloat {
+        let isSelected = selectedAthleteIDs.contains(athlete.id)
         let baseRadius = sqrt(interactionHitRadiusSquared(for: cellSize))
         let rolePadding: CGFloat = athlete.role == .tumbler ? 10 : 6
         let markerRadius = (athlete.role.selectedMarkerRadius + rolePadding) / max(cellSize, 1)
         let radiusBonus: CGFloat = athlete.role == .tumbler ? 1.25 : 0.5
         let radius = max(baseRadius + radiusBonus, markerRadius)
-        return radius * radius
+        let selectedBoost: CGFloat = isSelected ? 1.5 : 1.0
+        return radius * radius * selectedBoost
     }
 
     private func athleteHit(
@@ -1772,9 +1777,31 @@ struct FloorGridView: View {
                     return
                 }
 
-                // Priority 2: Hit-test for new drag initiation
+                // Priority 2: Focused path handle gets a large grab area
+                if let focusedPathHandle,
+                   let selectedAthleteID, let player,
+                   showTransitionPaths, hasTransition
+                {
+                    let focusedHitRadius = hitRadiusSquared * 4
+                    if PathCalculations.squaredDistance(from: startScaledPoint, to: focusedPathHandle) < focusedHitRadius {
+                        guard dragDistance >= dragActivationDistance else { return }
+                        let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
+                        // Match to a waypoint if possible
+                        if let waypoint = transition.pathWaypoints.first(where: {
+                            PathCalculations.squaredDistance(from: focusedPathHandle, to: $0.position) < 1.0
+                        }) {
+                            draggingWaypointID = waypoint.id
+                        }
+                        isDraggingPathHandle = true
+                        focusedEndpoint = nil
+                        handlePathDragContinued(scaledPoint: scaledPoint)
+                        return
+                    }
+                }
+
+                // Priority 3: Hit-test for new drag initiation
                     if showTransitionPaths, hasTransition {
-                        // 2a: Path handles (checked first so they win over athlete dot)
+                        // 3a: Path handles (checked first so they win over athlete dot)
                     if let selectedAthleteID,
                        let startFormationID, let endFormationID,
                        let player
@@ -1868,7 +1895,7 @@ struct FloorGridView: View {
                         }
                     }
 
-                    // 2b: Currently selected athlete (allow dragging)
+                    // 2b: Currently selected athlete (enlarged grab area via athleteHitRadiusSquared)
                     if athleteHit(
                         at: startScaledPoint,
                         within: renderedAthletes.filter { selectedAthleteIDs.contains($0.id) },
@@ -2089,6 +2116,7 @@ struct FloorGridView: View {
                 ) {
                     selectedAthleteIDs = [athlete.id]
                     focusedEndpoint = nil
+                    focusedPathHandle = nil
                     return
                 }
 
@@ -2102,16 +2130,18 @@ struct FloorGridView: View {
                     return
                 }
 
-                if showTransitionPaths && (
-                    transitionHandleIsHit(at: tapPoint, hitRadiusSquared: hitRadiusSquared)
-                        || transitionHandleIsHit(at: startScaledPoint, hitRadiusSquared: hitRadiusSquared)
-                )
-                {
-                    return
+                if showTransitionPaths {
+                    if let handle = nearestPathHandle(at: tapPoint, cellSize: cellSize)
+                        ?? nearestPathHandle(at: startScaledPoint, cellSize: cellSize)
+                    {
+                        focusedPathHandle = handle
+                        return
+                    }
                 }
 
                 selectedAthleteIDs = []
                 focusedEndpoint = nil
+                focusedPathHandle = nil
             }
     }
 
