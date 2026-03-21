@@ -207,14 +207,15 @@ struct RoutineWorkspaceView: View {
             }
             .padding(16)
         }
-        .overlay(alignment: .bottom) {
+        .overlay(alignment: .bottomTrailing) {
             if let previewTransitionPair, let player = previewSession.player {
                 CompactTransitionPlaybackOverlayView(
                     player: player,
                     startFormationName: previewTransitionPair.start.name,
                     endFormationName: previewTransitionPair.end.name
                 )
-                .padding(.horizontal, 20)
+                .frame(maxWidth: 420)
+                .padding(.trailing, 20)
                 .padding(.bottom, 20)
             }
         }
