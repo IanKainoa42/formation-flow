@@ -48,6 +48,7 @@ struct RoutinePlaybackView: View {
                                 .background(.ultraThinMaterial, in: Circle())
                         }
                         .padding(16)
+                        .accessibilityLabel("Close")
 
                         Spacer()
                     }
@@ -126,6 +127,7 @@ struct RoutinePlaybackView: View {
                         .frame(width: 32, height: 32)
                 }
                 .buttonStyle(.borderedProminent)
+                .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
 
                 // Reset
                 Button(action: player.reset) {
@@ -133,6 +135,7 @@ struct RoutinePlaybackView: View {
                         .frame(width: 28, height: 28)
                 }
                 .buttonStyle(.bordered)
+                .accessibilityLabel("Reset playback")
 
                 Spacer()
 
@@ -157,6 +160,8 @@ struct RoutinePlaybackView: View {
                 }
                 .buttonStyle(.bordered)
                 .tint(player.showTrail ? .orange : .secondary)
+                .accessibilityLabel("Toggle trails")
+                .accessibilityValue(player.showTrail ? "On" : "Off")
             }
         }
         .padding(12)
