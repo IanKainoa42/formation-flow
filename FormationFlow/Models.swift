@@ -1857,6 +1857,8 @@ final class TransitionPlayer: ObservableObject {
     @Published var endAthletes: [RenderedAthlete]
     @Published var transitionSpec: TransitionSpec
 
+    var onComplete: (() -> Void)?
+
     var duration: TimeInterval {
         didSet { transitionSpec.duration = duration }
     }
@@ -1932,6 +1934,7 @@ final class TransitionPlayer: ObservableObject {
                 progress = 0
             } else {
                 pause()
+                onComplete?()
             }
         }
     }
