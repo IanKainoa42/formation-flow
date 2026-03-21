@@ -19,10 +19,10 @@ struct RoutineWorkspaceView: View {
     @State private var formationNameDraft = ""
     @EnvironmentObject private var entitlementManager: EntitlementManager
     @State private var showingUpgradeSheet = false
+    @State private var isFullScreen = false
     @State private var selectedAthleteIDs: Set<UUID> = []
     @State private var isSwapMode = false
     @State private var triggerDeleteAthlete = false
-    @State private var isFullScreen = false
 
     private var isCompactLayout: Bool {
         horizontalSizeClass == .compact || UIDevice.current.userInterfaceIdiom == .phone
