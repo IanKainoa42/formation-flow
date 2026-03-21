@@ -163,6 +163,7 @@ struct RoutineWorkspaceView: View {
         }
         .sheet(isPresented: $showingUpgradeSheet) {
             ProUpgradeSheet()
+                .environmentObject(entitlementManager)
         }
         .fullScreenCover(isPresented: $showingRoutinePlayback) {
             RoutinePlaybackView(store: store)

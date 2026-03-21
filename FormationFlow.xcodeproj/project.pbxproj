@@ -20,14 +20,12 @@
 		CC220003CC220003CC220003 /* ProUpgradeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB110003BB110003BB110003 /* ProUpgradeSheet.swift */; };
 		DD330001DD330001DD330001 /* RoutinePlaybackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC440001CC440001CC440001 /* RoutinePlaybackView.swift */; };
 		AA000001AA000001AA000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1F08C9AC2F57AAC400425930 /* Assets.xcassets */; };
-		AA000002AA000002AA000002 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 1FEE78922F3E5EB100012373 /* LaunchScreen.storyboard */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		1F08C9AC2F57AAC400425930 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = FormationFlow/Assets.xcassets; sourceTree = SOURCE_ROOT; };
 		1F08C9AD2F57AAED00425930 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = FormationFlow/Info.plist; sourceTree = SOURCE_ROOT; };
 		1FEE788C2F3E5E9900012373 /* FormationFlow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FormationFlow.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		1FEE78912F3E5EB100012373 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		21E94990B494F1D3D617A4E7 /* FormationFlowApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FormationFlowApp.swift; path = FormationFlow/FormationFlowApp.swift; sourceTree = SOURCE_ROOT; };
 		22EB4E82B510B78E55C92084 /* TransitionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TransitionViews.swift; path = FormationFlow/TransitionViews.swift; sourceTree = SOURCE_ROOT; };
 		303A4352BC4FD6FB758B338C /* FloorCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FloorCanvasView.swift; path = FormationFlow/FloorCanvasView.swift; sourceTree = SOURCE_ROOT; };
@@ -66,7 +64,6 @@
 			children = (
 				1F08C9AC2F57AAC400425930 /* Assets.xcassets */,
 				1F08C9AD2F57AAED00425930 /* Info.plist */,
-				1FEE78922F3E5EB100012373 /* LaunchScreen.storyboard */,
 				B2C3D4E5F6A7B8C9D0E1F2A3 /* FormationHomeView.swift */,
 				303A4352BC4FD6FB758B338C /* FloorCanvasView.swift */,
 				EFC34761911C80E5631C8341 /* FloorGridView.swift */,
@@ -135,7 +132,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA000001AA000001AA000001 /* Assets.xcassets in Resources */,
-				AA000002AA000002AA000002 /* LaunchScreen.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -164,14 +160,6 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXVariantGroup section */
-		1FEE78922F3E5EB100012373 /* LaunchScreen.storyboard */ = {
-			isa = PBXVariantGroup;
-			children = (
-				1FEE78912F3E5EB100012373 /* Base */,
-			);
-			name = LaunchScreen.storyboard;
-			sourceTree = "<group>";
-		};
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
