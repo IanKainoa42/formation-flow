@@ -228,6 +228,13 @@ struct FloorGridView: View {
         return PathCalculations.findPathCollisionIDs(paths: transitionPaths, counts: CGFloat(player.counts))
     }
 
+    private var currentFormationEndpoint: PreviewEditableEndpoint? {
+        guard hasTransition else { return nil }
+        if formationID == startFormationID { return .start }
+        if formationID == endFormationID { return .end }
+        return nil
+    }
+
     private var editableFormationID: UUID? {
         guard hasTransition, let focusedEndpoint else { return nil }
         return focusedEndpoint == .start ? startFormationID : endFormationID
@@ -405,7 +412,7 @@ struct FloorGridView: View {
             activeAlignmentGuides = []
             collisionCycleIndex = 0
             pathCollisionCycleIndex = 0
-            focusedEndpoint = nil
+            focusedEndpoint = currentFormationEndpoint
             focusedPathHandle = nil
             showingInspectorSheet = false
             showingTransportSheet = false
@@ -425,7 +432,7 @@ struct FloorGridView: View {
             }
             if newSelection.isEmpty {
                 endSwapMode()
-                focusedEndpoint = nil
+                focusedEndpoint = hasTransition ? currentFormationEndpoint : nil
             }
         }
         .onChange(of: triggerDeleteAthlete) { _, shouldDelete in
@@ -938,7 +945,7 @@ struct FloorGridView: View {
             canvasContent
                 .overlay(alignment: isPhoneLayout ? .topLeading : .bottomLeading) {
                     formationContextBadge
-                        .padding(isPhoneLayout ? .init(top: isPhoneLandscape ? 4 : 52, leading: 12, bottom: 0, trailing: 0) : .init(top: 0, leading: 12, bottom: player != nil ? 100 : 12, trailing: 0))
+                        .padding(isPhoneLayout ? .init(top: isPhoneLandscape ? 4 : 52, leading: 12, bottom: 0, trailing: 0) : .init(top: 0, leading: 12, bottom: 12, trailing: 0))
                 }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -992,6 +999,9 @@ struct FloorGridView: View {
         .overlay {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(.white.opacity(0.08))
+        }
+        .onTapGesture {
+            onCycleFormation?()
         }
     }
 
@@ -1620,14 +1630,12 @@ struct FloorGridView: View {
     }
 
     private func athleteHitRadiusSquared(for athlete: RenderedAthlete, cellSize: CGFloat) -> CGFloat {
-        let isSelected = selectedAthleteIDs.contains(athlete.id)
         let baseRadius = sqrt(interactionHitRadiusSquared(for: cellSize))
         let rolePadding: CGFloat = athlete.role == .tumbler ? 10 : 6
         let markerRadius = (athlete.role.selectedMarkerRadius + rolePadding) / max(cellSize, 1)
         let radiusBonus: CGFloat = athlete.role == .tumbler ? 1.25 : 0.5
         let radius = max(baseRadius + radiusBonus, markerRadius)
-        let selectedBoost: CGFloat = isSelected ? 1.5 : 1.0
-        return radius * radius * selectedBoost
+        return radius * radius
     }
 
     private func athleteHit(
@@ -1793,7 +1801,7 @@ struct FloorGridView: View {
                             draggingWaypointID = waypoint.id
                         }
                         isDraggingPathHandle = true
-                        focusedEndpoint = nil
+                        focusedEndpoint = currentFormationEndpoint
                         handlePathDragContinued(scaledPoint: scaledPoint)
                         return
                     }
@@ -1817,7 +1825,7 @@ struct FloorGridView: View {
                                     guard dragDistance >= dragActivationDistance else { return }
                                     draggingWaypointID = waypoint.id
                                     isDraggingPathHandle = true
-                                    focusedEndpoint = nil
+                                    focusedEndpoint = currentFormationEndpoint
                                     handlePathDragContinued(scaledPoint: scaledPoint)
                                     return
                                 }
@@ -1857,7 +1865,7 @@ struct FloorGridView: View {
                                         }
                                         draggingWaypointID = newWaypoint.id
                                         isDraggingPathHandle = true
-                                        focusedEndpoint = nil
+                                        focusedEndpoint = currentFormationEndpoint
                                         refreshTransitionFromStore()
                                         return
                                     }
@@ -1887,7 +1895,7 @@ struct FloorGridView: View {
                                 {
                                     guard dragDistance >= dragActivationDistance else { return }
                                     isDraggingPathHandle = true
-                                    focusedEndpoint = nil
+                                    focusedEndpoint = currentFormationEndpoint
                                     handlePathDragContinued(scaledPoint: scaledPoint)
                                     return
                                 }
@@ -1895,32 +1903,19 @@ struct FloorGridView: View {
                         }
                     }
 
-                    // 2b: Currently selected athlete (enlarged grab area via athleteHitRadiusSquared)
-                    if athleteHit(
-                        at: startScaledPoint,
-                        within: renderedAthletes.filter { selectedAthleteIDs.contains($0.id) },
-                        cellSize: cellSize
-                    ) != nil {
-                        focusedEndpoint = nil
-                        guard dragDistance >= dragActivationDistance else { return }
-                        dragStartPositions = Dictionary(
-                            uniqueKeysWithValues: renderedAthletes
-                                .filter { selectedAthleteIDs.contains($0.id) }
-                                .map { ($0.id, $0.position) }
-                        )
-                        isDraggingAthletes = true
-                        handleFormationDragContinued(value, cellSize: cellSize)
-                        return
-                    }
-
-                    // 2c: Non-selected athletes
-                    if let hitAthlete = athleteHit(
-                        at: startScaledPoint,
-                        within: renderedAthletes,
-                        cellSize: cellSize
-                    ) {
-                        selectedAthleteIDs = [hitAthlete.id]
-                        focusedEndpoint = nil
+                    // 2b/2c: Hovered athlete wins, then closest hit
+                    let targetAthlete: RenderedAthlete? = {
+                        if let hoveredID = hoveredAthleteID,
+                           let hovered = renderedAthletes.first(where: { $0.id == hoveredID }) {
+                            return hovered
+                        }
+                        return athleteHit(at: startScaledPoint, within: renderedAthletes, cellSize: cellSize)
+                    }()
+                    if let hitAthlete = targetAthlete {
+                        if !selectedAthleteIDs.contains(hitAthlete.id) {
+                            selectedAthleteIDs = [hitAthlete.id]
+                        }
+                        focusedEndpoint = currentFormationEndpoint
                         guard dragDistance >= dragActivationDistance else { return }
                         dragStartPositions = Dictionary(
                             uniqueKeysWithValues: renderedAthletes
@@ -1932,13 +1927,15 @@ struct FloorGridView: View {
                         return
                     }
                 } else {
-                    // Not in transition mode: athletes have highest priority
-                    if let hitAthlete = preferredAthleteHit(
-                        at: startScaledPoint,
-                        within: renderedAthletes,
-                        cellSize: cellSize,
-                        preferredID: selectedAthleteID
-                    ) {
+                    // Not in transition mode: hovered athlete wins, then closest hit
+                    let targetAthlete: RenderedAthlete? = {
+                        if let hoveredID = hoveredAthleteID,
+                           let hovered = renderedAthletes.first(where: { $0.id == hoveredID }) {
+                            return hovered
+                        }
+                        return athleteHit(at: startScaledPoint, within: renderedAthletes, cellSize: cellSize)
+                    }()
+                    if let hitAthlete = targetAthlete {
                         if !selectedAthleteIDs.contains(hitAthlete.id) {
                             selectedAthleteIDs = [hitAthlete.id]
                         }
@@ -1955,7 +1952,7 @@ struct FloorGridView: View {
                     }
                 }
 
-                // 2c: Endpoint markers (other formation — tapping focuses that formation)
+                // 2c: Endpoint markers — only allow dragging markers from the current formation
                 if hasTransition {
                     if let hitMarker = endpointMarkerHit(
                         at: startScaledPoint,
@@ -1965,6 +1962,8 @@ struct FloorGridView: View {
                         selectedAthleteIDs = [hitMarker.athleteID]
                         focusedEndpoint = hitMarker.endpoint
                         endpointDragStartPosition = hitMarker.position
+                        // Only allow dragging if the marker belongs to the current formation
+                        guard hitMarker.endpoint == currentFormationEndpoint else { return }
                         guard dragDistance >= dragActivationDistance else { return }
                         isDraggingEndpoint = true
                         handleEndpointDragContinued(value, cellSize: cellSize, offset: offset)
@@ -1973,7 +1972,7 @@ struct FloorGridView: View {
                 }
 
                 // 2d: Empty space → pan if zoomed on compact, otherwise selection box
-                focusedEndpoint = nil
+                focusedEndpoint = hasTransition ? currentFormationEndpoint : nil
                 guard dragDistance >= dragActivationDistance else { return }
 
                 if canPanCanvas(viewportSize: viewportSize, canvasSize: canvasSize) {
@@ -2105,6 +2104,15 @@ struct FloorGridView: View {
                     y: (value.startLocation.y - offset.y) / cellSize
                 )
 
+                // If an athlete is hovered, tapping selects exactly that athlete
+                if let hoveredID = hoveredAthleteID,
+                   renderedAthletes.contains(where: { $0.id == hoveredID }) {
+                    selectedAthleteIDs = [hoveredID]
+                    focusedEndpoint = hasTransition ? currentFormationEndpoint : nil
+                    focusedPathHandle = nil
+                    return
+                }
+
                 if let athlete = cycledAthleteHit(
                     at: tapPoint,
                     within: renderedAthletes,
@@ -2115,7 +2123,7 @@ struct FloorGridView: View {
                     cellSize: cellSize
                 ) {
                     selectedAthleteIDs = [athlete.id]
-                    focusedEndpoint = nil
+                    focusedEndpoint = hasTransition ? currentFormationEndpoint : nil
                     focusedPathHandle = nil
                     return
                 }
@@ -2140,7 +2148,7 @@ struct FloorGridView: View {
                 }
 
                 selectedAthleteIDs = []
-                focusedEndpoint = nil
+                focusedEndpoint = hasTransition ? currentFormationEndpoint : nil
                 focusedPathHandle = nil
             }
     }

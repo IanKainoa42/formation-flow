@@ -2076,7 +2076,7 @@ final class RoutinePlayer: ObservableObject {
     @Published var currentAthletes: [RenderedAthlete] = []
     @Published var progress: CGFloat = 0
     @Published var isPlaying = false
-    @Published var speed: CGFloat = 1.0
+    @Published var speed: CGFloat = 2.0
     @Published var currentSegmentIndex: Int = 0
     @Published var currentFormationName: String = ""
     @Published var showTrail = false
@@ -2090,7 +2090,7 @@ final class RoutinePlayer: ObservableObject {
     private var athletesSink: AnyCancellable?
     private var isInGap = false
     private var gapWorkItem: DispatchWorkItem?
-    private let trailLength = 6
+    private let trailLength = 14
 
     // Cumulative duration fractions for proportional timeline
     private let cumulativeFractions: [CGFloat]
@@ -2186,6 +2186,24 @@ final class RoutinePlayer: ObservableObject {
     func setSpeed(_ newSpeed: CGFloat) {
         speed = newSpeed
         player?.speed = newSpeed
+    }
+
+    func jumpToNextSegment() {
+        let wasPlaying = isPlaying
+        cancelGap()
+        let nextIndex = (currentSegmentIndex + 1) % segments.count
+        currentSegmentIndex = nextIndex
+        trailPositions = [:]
+        loadSegment(at: nextIndex)
+
+        // Set progress to segment start
+        let segStart: CGFloat = nextIndex > 0 ? cumulativeFractions[nextIndex - 1] : 0
+        progress = segStart
+
+        player?.seek(to: 0)
+        if wasPlaying {
+            player?.play()
+        }
     }
 
     // MARK: - Private

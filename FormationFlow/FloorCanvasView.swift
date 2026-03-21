@@ -20,6 +20,7 @@ struct FloorCanvasView: View {
     var endFormationColor: Color = .clear
     var transitionProgress: CGFloat = 0
     var formationColor: Color = .white
+    var useRoleColors: Bool = false
     var ghostAthletes: [RenderedAthlete] = []
     var trailPositions: [UUID: [CGPoint]] = [:]
     var hoveredHandlePosition: CGPoint? = nil
@@ -466,7 +467,8 @@ struct FloorCanvasView: View {
                 context.draw(label, at: point, anchor: .center)
             } else {
                 // Formation-only mode: colored by formation, role conveyed by shape
-                let fillColor: Color = isColliding ? .red : formationColor
+                let baseColor: Color = useRoleColors ? athlete.role.color : formationColor
+                let fillColor: Color = isColliding ? .red : baseColor
                 let baseRadius = isSelected ? athlete.role.selectedMarkerRadius : athlete.role.markerRadius
                 let radius = baseRadius * hoverScale
                 let marker = athlete.role.markerPath(center: point, radius: radius)

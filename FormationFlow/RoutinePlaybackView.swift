@@ -29,7 +29,7 @@ struct RoutinePlaybackView: View {
                     athletes: player.currentAthletes,
                     cellSize: cellSize,
                     offset: CGPoint(x: offsetX, y: offsetY),
-                    formationColor: .accentColor,
+                    useRoleColors: true,
                     trailPositions: player.showTrail ? player.trailPositions : [:]
                 )
                 .ignoresSafeArea()
@@ -77,8 +77,14 @@ struct RoutinePlaybackView: View {
             HStack {
                 Text(player.currentFormationName)
                     .font(.caption.weight(.semibold))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.white)
                     .lineLimit(1)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(.white.opacity(0.12), in: Capsule())
+                    .onTapGesture {
+                        player.jumpToNextSegment()
+                    }
 
                 Spacer()
 
@@ -135,9 +141,9 @@ struct RoutinePlaybackView: View {
                     get: { player.speed },
                     set: { player.setSpeed($0) }
                 )) {
-                    Text("1x").tag(CGFloat(1.0))
-                    Text("2x").tag(CGFloat(2.0))
-                    Text("4x").tag(CGFloat(4.0))
+                    Text("1x").tag(CGFloat(2.0))
+                    Text("2x").tag(CGFloat(4.0))
+                    Text("4x").tag(CGFloat(8.0))
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 160)
