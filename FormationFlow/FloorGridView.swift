@@ -57,6 +57,7 @@ struct FloorGridView: View {
     @State private var pendingWaypointDeletionID: UUID?
     @State private var endpointDragStartPosition: CGPoint?
     @State private var showingResetAllPathsConfirmation = false
+    @State private var hoveredHandlePosition: CGPoint?
     @State private var playerTick: UInt = 0
     @State private var sharePayload: TransitionSharePayload?
     @State private var shareResultMessage = ""
@@ -765,7 +766,8 @@ struct FloorGridView: View {
                 endFormationColor: transitionEndColor,
                 transitionProgress: player?.progress ?? 0,
                 formationColor: currentFormationColor,
-                ghostAthletes: previousFormationAthletes
+                ghostAthletes: previousFormationAthletes,
+                hoveredHandlePosition: hoveredHandlePosition
             )
             .gesture(
                 dragGesture(
@@ -830,7 +832,24 @@ struct FloorGridView: View {
                     }
             )
 
-            let canvasContent = baseCanvasContent.overlay(alignment: .top) {
+            let canvasContent = baseCanvasContent
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let location):
+                    let scaledPoint = CGPoint(
+                        x: (location.x - offset.x) / cellSize,
+                        y: (location.y - offset.y) / cellSize
+                    )
+                    if let nearestHandle = nearestPathHandle(at: scaledPoint, cellSize: cellSize) {
+                        hoveredHandlePosition = nearestHandle
+                    } else {
+                        hoveredHandlePosition = nil
+                    }
+                case .ended:
+                    hoveredHandlePosition = nil
+                }
+            }
+            .overlay(alignment: .top) {
                 if isPhoneLayout {
                     VStack(spacing: 10) {
                         phoneTopOverlay
@@ -1712,7 +1731,6 @@ struct FloorGridView: View {
                 if isSwapMode { return }
 
                 let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize)
-                let pathHitRadiusSquared = pathHandleHitRadiusSquared(for: cellSize)
                 let dragDistance = hypot(value.translation.width, value.translation.height)
                 let startScaledPoint = CGPoint(
                     x: (value.startLocation.x - offset.x) / cellSize,
@@ -1781,7 +1799,7 @@ struct FloorGridView: View {
                             // Check waypoint handles
                             for waypoint in transition.pathWaypoints {
                                 if PathCalculations.squaredDistance(from: startScaledPoint, to: waypoint.position)
-                                    < pathHitRadiusSquared
+                                    < hitRadiusSquared
                                 {
                                     guard dragDistance >= dragActivationDistance else { return }
                                     draggingWaypointID = waypoint.id
@@ -1807,7 +1825,7 @@ struct FloorGridView: View {
                                         y: (nodes[segmentIndex].y + nodes[segmentIndex + 1].y) / 2
                                     )
                                     if PathCalculations.squaredDistance(from: startScaledPoint, to: midpoint)
-                                        < pathHitRadiusSquared
+                                        < hitRadiusSquared
                                     {
                                         guard dragDistance >= dragActivationDistance else { return }
                                         guard entitlementManager.isPro else {
@@ -1852,7 +1870,7 @@ struct FloorGridView: View {
                                     )
                                 }
                                 if PathCalculations.squaredDistance(from: startScaledPoint, to: midpoint)
-                                    < pathHitRadiusSquared
+                                    < hitRadiusSquared
                                 {
                                     guard dragDistance >= dragActivationDistance else { return }
                                     isDraggingPathHandle = true
@@ -1944,7 +1962,6 @@ struct FloorGridView: View {
             }
             .onEnded { value in
                 let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize)
-                let pathHitRadiusSquared = pathHandleHitRadiusSquared(for: cellSize)
                 defer {
                     isDraggingAthletes = false
                     isDraggingEndpoint = false
@@ -2082,8 +2099,8 @@ struct FloorGridView: View {
                 }
 
                 if showTransitionPaths && (
-                    transitionHandleIsHit(at: tapPoint, hitRadiusSquared: pathHitRadiusSquared)
-                        || transitionHandleIsHit(at: startScaledPoint, hitRadiusSquared: pathHitRadiusSquared)
+                    transitionHandleIsHit(at: tapPoint, hitRadiusSquared: hitRadiusSquared)
+                        || transitionHandleIsHit(at: startScaledPoint, hitRadiusSquared: hitRadiusSquared)
                 )
                 {
                     return
@@ -2104,9 +2121,6 @@ struct FloorGridView: View {
         return radius * radius
     }
 
-    private func pathHandleHitRadiusSquared(for cellSize: CGFloat) -> CGFloat {
-        interactionHitRadiusSquared(for: cellSize) * 2.5
-    }
 
     private func canPanCanvas(viewportSize: CGSize, canvasSize: CGSize) -> Bool {
         guard isCompactLayout else { return false }
@@ -2196,6 +2210,61 @@ struct FloorGridView: View {
         }
 
         return PathCalculations.squaredDistance(from: point, to: midpoint) < hitRadiusSquared
+    }
+
+    private func nearestPathHandle(at point: CGPoint, cellSize: CGFloat) -> CGPoint? {
+        guard hasTransition, let selectedAthleteID, let player else { return nil }
+        let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize) * 3
+
+        let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
+        let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID })
+        let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
+
+        // Check waypoint handles
+        for waypoint in transition.pathWaypoints {
+            if PathCalculations.squaredDistance(from: point, to: waypoint.position) < hitRadiusSquared {
+                return waypoint.position
+            }
+        }
+
+        // Check midpoint "+" handles
+        if !transition.pathWaypoints.isEmpty, let startAthlete, let endAthlete {
+            let nodes = PathCalculations.waypointNodes(
+                from: startAthlete.position,
+                to: endAthlete.position,
+                waypoints: transition.pathWaypoints
+            )
+            for segmentIndex in 0..<(nodes.count - 1) {
+                let midpoint = CGPoint(
+                    x: (nodes[segmentIndex].x + nodes[segmentIndex + 1].x) / 2,
+                    y: (nodes[segmentIndex].y + nodes[segmentIndex + 1].y) / 2
+                )
+                if PathCalculations.squaredDistance(from: point, to: midpoint) < hitRadiusSquared {
+                    return midpoint
+                }
+            }
+        }
+
+        // Legacy control point handle
+        guard transition.pathWaypoints.isEmpty, let startAthlete, let endAthlete else { return nil }
+        let midpoint: CGPoint
+        if let controlPoint = transition.pathControlPoint {
+            midpoint = PathCalculations.quadraticBezierPoint(
+                from: startAthlete.position,
+                control: controlPoint,
+                to: endAthlete.position,
+                t: 0.5
+            )
+        } else {
+            midpoint = CGPoint(
+                x: (startAthlete.position.x + endAthlete.position.x) / 2,
+                y: (startAthlete.position.y + endAthlete.position.y) / 2
+            )
+        }
+        if PathCalculations.squaredDistance(from: point, to: midpoint) < hitRadiusSquared {
+            return midpoint
+        }
+        return nil
     }
 
     private func handlePathDragContinued(scaledPoint: CGPoint) {

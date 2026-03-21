@@ -22,6 +22,7 @@ struct FloorCanvasView: View {
     var formationColor: Color = .white
     var ghostAthletes: [RenderedAthlete] = []
     var trailPositions: [UUID: [CGPoint]] = [:]
+    var hoveredHandlePosition: CGPoint? = nil
 
     var body: some View {
         Canvas { context, _ in
@@ -102,6 +103,13 @@ struct FloorCanvasView: View {
         }
     }
 
+    private func isHandleHovered(at gridPosition: CGPoint) -> Bool {
+        guard let hovered = hoveredHandlePosition else { return false }
+        let dx = gridPosition.x - hovered.x
+        let dy = gridPosition.y - hovered.y
+        return dx * dx + dy * dy < 1.0
+    }
+
     private func drawTransitionPaths(in context: inout GraphicsContext) {
         let pathOpacityMultiplier: CGFloat = focusedEndpoint != nil ? 0.5 : 1.0
         for item in transitionPaths {
@@ -151,15 +159,18 @@ struct FloorCanvasView: View {
 
                     if isSelected {
                         let midpoint = CGPoint(x: (p0.x + p1.x) / 2, y: (p0.y + p1.y) / 2)
+                        let midpointGrid = CGPoint(x: midpoint.x / cellSize, y: midpoint.y / cellSize)
+                        let isHovered = isHandleHovered(at: midpointGrid)
+                        let handleRadius: CGFloat = isHovered ? 12 : 8
                         var handleBackground = Path()
                         handleBackground.addEllipse(
-                            in: CGRect(x: midpoint.x - 8, y: midpoint.y - 8, width: 16, height: 16)
+                            in: CGRect(x: midpoint.x - handleRadius, y: midpoint.y - handleRadius, width: handleRadius * 2, height: handleRadius * 2)
                         )
-                        context.fill(handleBackground, with: .color(.white.opacity(0.75)))
-                        context.stroke(handleBackground, with: .color(pathColor.opacity(0.55)), lineWidth: 1)
+                        context.fill(handleBackground, with: .color(.white.opacity(isHovered ? 0.9 : 0.75)))
+                        context.stroke(handleBackground, with: .color(pathColor.opacity(isHovered ? 0.8 : 0.55)), lineWidth: isHovered ? 2 : 1)
                         context.draw(
                             Text("+")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.system(size: isHovered ? 16 : 12, weight: .bold))
                                 .foregroundColor(pathColor),
                             at: midpoint,
                             anchor: .center
@@ -173,11 +184,13 @@ struct FloorCanvasView: View {
                             x: waypoint.position.x * cellSize,
                             y: waypoint.position.y * cellSize
                         )
-                        let size: CGFloat = waypoint.isSmooth ? 14 : 12
+                        let isHovered = isHandleHovered(at: waypoint.position)
+                        let baseSize: CGFloat = waypoint.isSmooth ? 14 : 12
+                        let size: CGFloat = isHovered ? baseSize * 1.6 : baseSize
 
                         // Outer glow for visibility
                         var glow = Path()
-                        let glowSize = size + 6
+                        let glowSize = size + (isHovered ? 10 : 6)
                         glow.addEllipse(
                             in: CGRect(
                                 x: point.x - glowSize / 2,
@@ -186,7 +199,7 @@ struct FloorCanvasView: View {
                                 height: glowSize
                             )
                         )
-                        context.fill(glow, with: .color(pathColor.opacity(0.15)))
+                        context.fill(glow, with: .color(pathColor.opacity(isHovered ? 0.25 : 0.15)))
 
                         var handle = Path()
                         if waypoint.isSmooth {
@@ -205,8 +218,8 @@ struct FloorCanvasView: View {
                             handle.addLine(to: CGPoint(x: point.x - size / 2, y: point.y))
                             handle.closeSubpath()
                         }
-                        context.fill(handle, with: .color(pathColor.opacity(0.18)))
-                        context.stroke(handle, with: .color(pathColor), lineWidth: 2.5)
+                        context.fill(handle, with: .color(pathColor.opacity(isHovered ? 0.3 : 0.18)))
+                        context.stroke(handle, with: .color(pathColor), lineWidth: isHovered ? 3.5 : 2.5)
 
                         if waypoint.holdDuration > 0 {
                             let ringSize = size + 6
@@ -247,12 +260,15 @@ struct FloorCanvasView: View {
                         midpoint = CGPoint(x: (start.x + end.x) / 2, y: (start.y + end.y) / 2)
                     }
 
+                    let midpointGrid = CGPoint(x: midpoint.x / cellSize, y: midpoint.y / cellSize)
+                    let isHovered = isHandleHovered(at: midpointGrid)
+                    let handleRadius: CGFloat = isHovered ? 10 : 6
                     var handle = Path()
                     handle.addEllipse(
-                        in: CGRect(x: midpoint.x - 6, y: midpoint.y - 6, width: 12, height: 12)
+                        in: CGRect(x: midpoint.x - handleRadius, y: midpoint.y - handleRadius, width: handleRadius * 2, height: handleRadius * 2)
                     )
                     context.fill(handle, with: .color(.white))
-                    context.stroke(handle, with: .color(pathColor), lineWidth: 2)
+                    context.stroke(handle, with: .color(pathColor), lineWidth: isHovered ? 3 : 2)
                 }
             }
 
