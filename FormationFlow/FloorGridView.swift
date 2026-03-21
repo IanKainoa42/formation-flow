@@ -1712,6 +1712,7 @@ struct FloorGridView: View {
                 if isSwapMode { return }
 
                 let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize)
+                let pathHitRadiusSquared = pathHandleHitRadiusSquared(for: cellSize)
                 let dragDistance = hypot(value.translation.width, value.translation.height)
                 let startScaledPoint = CGPoint(
                     x: (value.startLocation.x - offset.x) / cellSize,
@@ -1780,7 +1781,7 @@ struct FloorGridView: View {
                             // Check waypoint handles
                             for waypoint in transition.pathWaypoints {
                                 if PathCalculations.squaredDistance(from: startScaledPoint, to: waypoint.position)
-                                    < hitRadiusSquared
+                                    < pathHitRadiusSquared
                                 {
                                     guard dragDistance >= dragActivationDistance else { return }
                                     draggingWaypointID = waypoint.id
@@ -1806,7 +1807,7 @@ struct FloorGridView: View {
                                         y: (nodes[segmentIndex].y + nodes[segmentIndex + 1].y) / 2
                                     )
                                     if PathCalculations.squaredDistance(from: startScaledPoint, to: midpoint)
-                                        < hitRadiusSquared
+                                        < pathHitRadiusSquared
                                     {
                                         guard dragDistance >= dragActivationDistance else { return }
                                         guard entitlementManager.isPro else {
@@ -1851,7 +1852,7 @@ struct FloorGridView: View {
                                     )
                                 }
                                 if PathCalculations.squaredDistance(from: startScaledPoint, to: midpoint)
-                                    < hitRadiusSquared
+                                    < pathHitRadiusSquared
                                 {
                                     guard dragDistance >= dragActivationDistance else { return }
                                     isDraggingPathHandle = true
@@ -1943,6 +1944,7 @@ struct FloorGridView: View {
             }
             .onEnded { value in
                 let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize)
+                let pathHitRadiusSquared = pathHandleHitRadiusSquared(for: cellSize)
                 defer {
                     isDraggingAthletes = false
                     isDraggingEndpoint = false
@@ -2080,8 +2082,8 @@ struct FloorGridView: View {
                 }
 
                 if showTransitionPaths && (
-                    transitionHandleIsHit(at: tapPoint, hitRadiusSquared: hitRadiusSquared)
-                        || transitionHandleIsHit(at: startScaledPoint, hitRadiusSquared: hitRadiusSquared)
+                    transitionHandleIsHit(at: tapPoint, hitRadiusSquared: pathHitRadiusSquared)
+                        || transitionHandleIsHit(at: startScaledPoint, hitRadiusSquared: pathHitRadiusSquared)
                 )
                 {
                     return
@@ -2100,6 +2102,10 @@ struct FloorGridView: View {
         let defaultRadius = sqrt(CourtConstants.hitRadiusSquared)
         let radius = max(defaultRadius, cellAdjustedRadius)
         return radius * radius
+    }
+
+    private func pathHandleHitRadiusSquared(for cellSize: CGFloat) -> CGFloat {
+        interactionHitRadiusSquared(for: cellSize) * 2.5
     }
 
     private func canPanCanvas(viewportSize: CGSize, canvasSize: CGSize) -> Bool {
