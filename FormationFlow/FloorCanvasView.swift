@@ -23,6 +23,7 @@ struct FloorCanvasView: View {
     var ghostAthletes: [RenderedAthlete] = []
     var trailPositions: [UUID: [CGPoint]] = [:]
     var hoveredHandlePosition: CGPoint? = nil
+    var hoveredAthleteID: UUID? = nil
 
     var body: some View {
         Canvas { context, _ in
@@ -435,33 +436,39 @@ struct FloorCanvasView: View {
             let point = CGPoint(x: athlete.position.x * cellSize, y: athlete.position.y * cellSize)
             let isSelected = selectedAthleteIDs.contains(athlete.id)
             let isColliding = collisionIDs.contains(athlete.id)
+            let isHovered = athlete.id == hoveredAthleteID
+            let hoverScale: CGFloat = isHovered ? 1.3 : 1.0
 
             if hasTransition {
                 // Transition mode: athletes colored by formation, blending start→end
-                let radius = isSelected ? athlete.role.markerRadius - 1 : athlete.role.markerRadius - 2
+                let baseRadius = isSelected ? athlete.role.markerRadius - 1 : athlete.role.markerRadius - 2
+                let radius = baseRadius * hoverScale
                 let formationColor = blendedFormationColor(progress: transitionProgress)
                 let fillColor: Color = isColliding ? .red : formationColor
-                let fillOpacity: CGFloat = isSelected ? 0.92 : 0.78
+                let fillOpacity: CGFloat = isSelected ? 0.92 : (isHovered ? 0.88 : 0.78)
                 let marker = athlete.role.markerPath(center: point, radius: radius)
                 context.fill(marker, with: .color(fillColor.opacity(fillOpacity)))
 
-                if isSelected {
-                    context.stroke(marker, with: .color(.orange.opacity(0.7)), lineWidth: 2)
+                if isSelected || isHovered {
+                    let strokeColor: Color = isSelected ? .orange : .white
+                    context.stroke(marker, with: .color(strokeColor.opacity(0.7)), lineWidth: isHovered ? 2.5 : 2)
                 }
 
                 let label = Text(athlete.label)
-                    .font(.system(.caption2, design: .monospaced))
-                    .foregroundColor(.white.opacity(isSelected ? 0.95 : 0.85))
+                    .font(.system(isHovered ? .caption : .caption2, design: .monospaced))
+                    .foregroundColor(.white.opacity(isSelected || isHovered ? 0.95 : 0.85))
                 context.draw(label, at: point, anchor: .center)
             } else {
                 // Formation-only mode: colored by formation, role conveyed by shape
                 let fillColor: Color = isColliding ? .red : formationColor
-                let radius = isSelected ? athlete.role.selectedMarkerRadius : athlete.role.markerRadius
+                let baseRadius = isSelected ? athlete.role.selectedMarkerRadius : athlete.role.markerRadius
+                let radius = baseRadius * hoverScale
                 let marker = athlete.role.markerPath(center: point, radius: radius)
-                context.fill(marker, with: .color(fillColor.opacity(isSelected ? 0.92 : 0.86)))
+                context.fill(marker, with: .color(fillColor.opacity(isSelected ? 0.92 : (isHovered ? 0.92 : 0.86))))
 
-                if isSelected {
-                    context.stroke(marker, with: .color(.orange.opacity(0.7)), lineWidth: 3)
+                if isSelected || isHovered {
+                    let strokeColor: Color = isSelected ? .orange : .white
+                    context.stroke(marker, with: .color(strokeColor.opacity(0.7)), lineWidth: isHovered ? 3.5 : 3)
                 }
 
                 if isColliding {
@@ -480,8 +487,8 @@ struct FloorCanvasView: View {
 
                 let labelColor = contrastingLabelColor(for: fillColor)
                 let label = Text(athlete.label)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(labelColor.opacity(isSelected ? 0.95 : 0.85))
+                    .font(.system(isHovered ? .caption : .caption, design: .monospaced))
+                    .foregroundColor(labelColor.opacity(isSelected || isHovered ? 0.95 : 0.85))
                 context.draw(label, at: point, anchor: .center)
             }
         }

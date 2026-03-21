@@ -58,6 +58,7 @@ struct FloorGridView: View {
     @State private var endpointDragStartPosition: CGPoint?
     @State private var showingResetAllPathsConfirmation = false
     @State private var hoveredHandlePosition: CGPoint?
+    @State private var hoveredAthleteID: UUID?
     @State private var playerTick: UInt = 0
     @State private var sharePayload: TransitionSharePayload?
     @State private var shareResultMessage = ""
@@ -767,7 +768,8 @@ struct FloorGridView: View {
                 transitionProgress: player?.progress ?? 0,
                 formationColor: currentFormationColor,
                 ghostAthletes: previousFormationAthletes,
-                hoveredHandlePosition: hoveredHandlePosition
+                hoveredHandlePosition: hoveredHandlePosition,
+                hoveredAthleteID: hoveredAthleteID
             )
             .gesture(
                 dragGesture(
@@ -842,11 +844,14 @@ struct FloorGridView: View {
                     )
                     if let nearestHandle = nearestPathHandle(at: scaledPoint, cellSize: cellSize) {
                         hoveredHandlePosition = nearestHandle
+                        hoveredAthleteID = nil
                     } else {
                         hoveredHandlePosition = nil
+                        hoveredAthleteID = athleteHit(at: scaledPoint, within: renderedAthletes, cellSize: cellSize)?.id
                     }
                 case .ended:
                     hoveredHandlePosition = nil
+                    hoveredAthleteID = nil
                 }
             }
             .overlay(alignment: .top) {
