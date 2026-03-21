@@ -21,6 +21,7 @@ struct FloorCanvasView: View {
     var transitionProgress: CGFloat = 0
     var formationColor: Color = .white
     var ghostAthletes: [RenderedAthlete] = []
+    var trailPositions: [UUID: [CGPoint]] = [:]
 
     var body: some View {
         Canvas { context, _ in
@@ -28,6 +29,7 @@ struct FloorCanvasView: View {
             context.translateBy(x: offset.x, y: offset.y)
             drawGrid(in: &context)
             drawGhostAthletes(in: &context)
+            drawTrails(in: &context)
             drawAlignmentGuides(in: &context)
             drawTransitionPaths(in: &context)
             drawEndpointMarkers(in: &context)
@@ -348,6 +350,36 @@ struct FloorCanvasView: View {
             let radius = athlete.role.markerRadius - 3
             let marker = athlete.role.markerPath(center: point, radius: radius)
             context.fill(marker, with: .color(.white.opacity(0.07)))
+        }
+    }
+
+    private func drawTrails(in context: inout GraphicsContext) {
+        guard !trailPositions.isEmpty else { return }
+
+        let athleteLookup = Dictionary(athletes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+
+        for (athleteID, positions) in trailPositions {
+            guard positions.count > 1, let athlete = athleteLookup[athleteID] else { continue }
+            let color = athlete.role.color
+
+            for (i, position) in positions.enumerated() {
+                let age = positions.count - 1 - i  // 0 = newest, count-1 = oldest
+                guard age > 0 else { continue }  // skip newest (that's the main circle)
+
+                let opacity = 0.06 + 0.04 * CGFloat(positions.count - 1 - age)
+                let scale = 0.5 + 0.08 * CGFloat(positions.count - 1 - age)
+                let radius = athlete.role.markerRadius * scale
+
+                let point = CGPoint(x: position.x * cellSize, y: position.y * cellSize)
+                var trail = Path()
+                trail.addEllipse(in: CGRect(
+                    x: point.x - radius,
+                    y: point.y - radius,
+                    width: radius * 2,
+                    height: radius * 2
+                ))
+                context.fill(trail, with: .color(color.opacity(opacity)))
+            }
         }
     }
 
