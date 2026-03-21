@@ -18,6 +18,7 @@
 		CC220001CC220001CC220001 /* EntitlementManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB110001BB110001BB110001 /* EntitlementManager.swift */; };
 		CC220002CC220002CC220002 /* FreeTierLimits.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB110002BB110002BB110002 /* FreeTierLimits.swift */; };
 		CC220003CC220003CC220003 /* ProUpgradeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB110003BB110003BB110003 /* ProUpgradeSheet.swift */; };
+		DD330001DD330001DD330001 /* RoutinePlaybackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC440001CC440001CC440001 /* RoutinePlaybackView.swift */; };
 		AA000001AA000001AA000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1F08C9AC2F57AAC400425930 /* Assets.xcassets */; };
 		AA000002AA000002AA000002 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 1FEE78922F3E5EB100012373 /* LaunchScreen.storyboard */; };
 /* End PBXBuildFile section */
@@ -38,6 +39,7 @@
 		BB110001BB110001BB110001 /* EntitlementManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EntitlementManager.swift; path = FormationFlow/EntitlementManager.swift; sourceTree = SOURCE_ROOT; };
 		BB110002BB110002BB110002 /* FreeTierLimits.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FreeTierLimits.swift; path = FormationFlow/FreeTierLimits.swift; sourceTree = SOURCE_ROOT; };
 		BB110003BB110003BB110003 /* ProUpgradeSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ProUpgradeSheet.swift; path = FormationFlow/ProUpgradeSheet.swift; sourceTree = SOURCE_ROOT; };
+		CC440001CC440001CC440001 /* RoutinePlaybackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RoutinePlaybackView.swift; path = FormationFlow/RoutinePlaybackView.swift; sourceTree = SOURCE_ROOT; };
 		BB110004BB110004BB110004 /* FormationFlow.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; name = FormationFlow.storekit; path = FormationFlow.storekit; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
@@ -76,6 +78,7 @@
 				BB110001BB110001BB110001 /* EntitlementManager.swift */,
 				BB110002BB110002BB110002 /* FreeTierLimits.swift */,
 				BB110003BB110003BB110003 /* ProUpgradeSheet.swift */,
+				CC440001CC440001CC440001 /* RoutinePlaybackView.swift */,
 			);
 			path = FormationFlow;
 			sourceTree = "<group>";
@@ -154,6 +157,7 @@
 				CC220001CC220001CC220001 /* EntitlementManager.swift in Sources */,
 				CC220002CC220002CC220002 /* FreeTierLimits.swift in Sources */,
 				CC220003CC220003CC220003 /* ProUpgradeSheet.swift in Sources */,
+				DD330001DD330001DD330001 /* RoutinePlaybackView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

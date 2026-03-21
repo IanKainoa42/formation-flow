@@ -20,6 +20,7 @@ struct RoutineWorkspaceView: View {
     @EnvironmentObject private var entitlementManager: EntitlementManager
     @State private var showingUpgradeSheet = false
     @State private var isFullScreen = false
+    @State private var showingRoutinePlayback = false
     @State private var selectedAthleteIDs: Set<UUID> = []
     @State private var isSwapMode = false
     @State private var triggerDeleteAthlete = false
@@ -172,6 +173,9 @@ struct RoutineWorkspaceView: View {
         .sheet(isPresented: $showingUpgradeSheet) {
             ProUpgradeSheet()
         }
+        .fullScreenCover(isPresented: $showingRoutinePlayback) {
+            RoutinePlaybackView(store: store)
+        }
     }
 
     // MARK: - Full Screen Floor
@@ -305,6 +309,14 @@ struct RoutineWorkspaceView: View {
         .navigationTitle("Routine")
         .toolbar {
             ToolbarItemGroup(placement: .navigationBarTrailing) {
+                Button {
+                    showingRoutinePlayback = true
+                } label: {
+                    Image(systemName: "play.circle")
+                }
+                .disabled(store.routine.formations.count < 2)
+                .accessibilityLabel("Play routine")
+
                 EditButton()
                 Button(action: addFormation) {
                     Image(systemName: canAddFormation ? "plus" : "lock.fill")
@@ -363,6 +375,14 @@ struct RoutineWorkspaceView: View {
         .navigationTitle("Routine")
         .toolbar {
             ToolbarItemGroup(placement: .navigationBarTrailing) {
+                Button {
+                    showingRoutinePlayback = true
+                } label: {
+                    Image(systemName: "play.circle")
+                }
+                .disabled(store.routine.formations.count < 2)
+                .accessibilityLabel("Play routine")
+
                 EditButton()
                 Button(action: addFormation) {
                     Image(systemName: canAddFormation ? "plus" : "lock.fill")
