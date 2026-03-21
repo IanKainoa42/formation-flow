@@ -1947,6 +1947,10 @@ final class TransitionPlayer: ObservableObject {
             uniquingKeysWith: { first, _ in first }
         )
 
+        // ⚡ Bolt: Cache timing calculations to avoid repeating O(N) operations in the second pass.
+        var timingCache: [UUID: (endAthlete: RenderedAthlete, transition: AthleteTransition, travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat)] = [:]
+        timingCache.reserveCapacity(startAthletes.count)
+
         let maxEffectiveTime = startAthletes.compactMap { athlete -> CGFloat? in
             guard let endAthlete = endLookup[athlete.id] else { return nil }
             let transition = transitionLookup[athlete.id] ?? AthleteTransition(athleteID: athlete.id)
@@ -1956,19 +1960,20 @@ final class TransitionPlayer: ObservableObject {
                 transition: transition
             )
             let hold = transition.pathWaypoints.reduce(CGFloat(0)) { $0 + $1.holdCounts }
-            return travel + hold
+            let effectiveTime = travel + hold
+
+            timingCache[athlete.id] = (endAthlete, transition, travel, hold, effectiveTime)
+            return effectiveTime
         }.max() ?? 1
 
         currentAthletes = startAthletes.map { athlete in
-            guard let endAthlete = endLookup[athlete.id] else { return athlete }
-            let transition = transitionLookup[athlete.id] ?? AthleteTransition(athleteID: athlete.id)
-            let travel = PathCalculations.travelDistance(
-                from: athlete.position,
-                to: endAthlete.position,
-                transition: transition
-            )
-            let hold = transition.pathWaypoints.reduce(CGFloat(0)) { $0 + $1.holdCounts }
-            let effectiveTime = travel + hold
+            guard let cached = timingCache[athlete.id] else { return athlete }
+            let endAthlete = cached.endAthlete
+            let transition = cached.transition
+            let travel = cached.travel
+            let hold = cached.hold
+            let effectiveTime = cached.effectiveTime
+
             let durationFraction = maxEffectiveTime > 0 ? effectiveTime / maxEffectiveTime : 1
             let timingOffset = min(0.99, transition.moveDelayCounts / max(CGFloat(counts), 0.5))
             let adjustedProgress = max(0, progress - timingOffset) / (1.0 - timingOffset)
