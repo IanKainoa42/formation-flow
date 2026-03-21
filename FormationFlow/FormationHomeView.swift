@@ -175,6 +175,7 @@ struct RoutineWorkspaceView: View {
         }
         .fullScreenCover(isPresented: $showingRoutinePlayback) {
             RoutinePlaybackView(store: store)
+                .environmentObject(entitlementManager)
         }
     }
 

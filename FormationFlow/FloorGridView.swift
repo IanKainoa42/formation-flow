@@ -2767,6 +2767,7 @@ private struct SnapResult {
 #Preview {
     struct PreviewWrapper: View {
         @StateObject private var store = RoutineStore()
+        @StateObject private var entitlementManager = EntitlementManager()
         @State private var selectedAthleteIDs: Set<UUID> = []
         @State private var isSwapMode = false
         @State private var triggerDeleteAthlete = false
@@ -2781,6 +2782,7 @@ private struct SnapResult {
                     formationID: store.routine.formations.first?.id ?? UUID()
                 ) {}
             }
+            .environmentObject(entitlementManager)
         }
     }
 
