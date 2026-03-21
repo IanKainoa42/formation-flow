@@ -13,10 +13,48 @@ final class EntitlementManager: ObservableObject {
     private var updateTask: Task<Void, Never>?
 
     init() {
-        self.isPro = UserDefaults.standard.bool(forKey: Self.cacheKey)
+        self.isPro = Self.readIsProFromKeychain()
         updateTask = Task { [weak self] in
             await self?.checkEntitlement()
             await self?.listenForTransactions()
+        }
+    }
+
+    private static func readIsProFromKeychain() -> Bool {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: cacheKey,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+
+        var dataTypeRef: AnyObject? = nil
+        let status: OSStatus = SecItemCopyMatching(query as CFDictionary, &dataTypeRef)
+
+        if status == errSecSuccess, let data = dataTypeRef as? Data {
+            return data == Data([1])
+        }
+        return false
+    }
+
+    private static func writeIsProToKeychain(_ value: Bool) {
+        let valueData = Data([value ? 1 : 0])
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: cacheKey
+        ]
+
+        let status = SecItemCopyMatching(query as CFDictionary, nil)
+
+        if status == errSecSuccess {
+            let attributesToUpdate: [String: Any] = [
+                kSecValueData as String: valueData
+            ]
+            SecItemUpdate(query as CFDictionary, attributesToUpdate as CFDictionary)
+        } else {
+            var newQuery = query
+            newQuery[kSecValueData as String] = valueData
+            SecItemAdd(newQuery as CFDictionary, nil)
         }
     }
 
@@ -81,8 +119,8 @@ final class EntitlementManager: ObservableObject {
     private func setIsPro(_ value: Bool) {
         guard isPro != value else { return }
         isPro = value
-        UserDefaults.standard.set(value, forKey: Self.cacheKey)
-        Self.logger.log("isPro=\(value)")
+        Self.writeIsProToKeychain(value)
+        Self.logger.log("isPro=\(value, privacy: .private)")
     }
 
     enum PurchaseResult {
