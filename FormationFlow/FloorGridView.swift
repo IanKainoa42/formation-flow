@@ -1769,26 +1769,7 @@ struct FloorGridView: View {
 
                 // Priority 2: Hit-test for new drag initiation
                     if showTransitionPaths, hasTransition {
-                        // In transition mode: path handles take priority over non-selected athletes
-                        // 2a: Currently selected athlete (allow dragging)
-                    if athleteHit(
-                        at: startScaledPoint,
-                        within: renderedAthletes.filter { selectedAthleteIDs.contains($0.id) },
-                        cellSize: cellSize
-                    ) != nil {
-                        focusedEndpoint = nil
-                        guard dragDistance >= dragActivationDistance else { return }
-                        dragStartPositions = Dictionary(
-                            uniqueKeysWithValues: renderedAthletes
-                                .filter { selectedAthleteIDs.contains($0.id) }
-                                .map { ($0.id, $0.position) }
-                        )
-                        isDraggingAthletes = true
-                        handleFormationDragContinued(value, cellSize: cellSize)
-                        return
-                    }
-
-                    // 2b: Waypoint/path handles (prioritized over non-selected athletes)
+                        // 2a: Path handles (checked first so they win over athlete dot)
                     if let selectedAthleteID,
                        let startFormationID, let endFormationID,
                        let player
@@ -1880,6 +1861,24 @@ struct FloorGridView: View {
                                 }
                             }
                         }
+                    }
+
+                    // 2b: Currently selected athlete (allow dragging)
+                    if athleteHit(
+                        at: startScaledPoint,
+                        within: renderedAthletes.filter { selectedAthleteIDs.contains($0.id) },
+                        cellSize: cellSize
+                    ) != nil {
+                        focusedEndpoint = nil
+                        guard dragDistance >= dragActivationDistance else { return }
+                        dragStartPositions = Dictionary(
+                            uniqueKeysWithValues: renderedAthletes
+                                .filter { selectedAthleteIDs.contains($0.id) }
+                                .map { ($0.id, $0.position) }
+                        )
+                        isDraggingAthletes = true
+                        handleFormationDragContinued(value, cellSize: cellSize)
+                        return
                     }
 
                     // 2c: Non-selected athletes
