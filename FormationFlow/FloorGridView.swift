@@ -36,6 +36,7 @@ struct FloorGridView: View {
     @State private var selectionStartPoint: CGPoint = .zero
     @State private var dragStartPositions: [UUID: CGPoint] = [:]
     @State private var undoStack: [[(id: UUID, position: CGPoint)]] = []
+    @State private var rotationStartPositions: [UUID: CGPoint] = [:]
     @State private var zoomScale: CGFloat = 1.0
     @State private var lastZoomScale: CGFloat = 1.0
     @State private var canvasPanOffset: CGSize = .zero
@@ -409,6 +410,7 @@ struct FloorGridView: View {
             athleteLabelDraft = ""
             canvasPanOffset = .zero
             lastCanvasPanOffset = .zero
+            rotationStartPositions = [:]
             clearTransitionDragState()
         }
         .onChange(of: selectedAthleteIDs) { _, newSelection in
@@ -801,6 +803,27 @@ struct FloorGridView: View {
                             )
                         )
                         lastCanvasPanOffset = canvasPanOffset
+                    }
+            )
+            .simultaneousGesture(
+                RotationGesture()
+                    .onChanged { value in
+                        guard selectedAthleteIDs.count >= 2 else { return }
+                        if rotationStartPositions.isEmpty {
+                            let selected = renderedAthletes.filter { selectedAthleteIDs.contains($0.id) }
+                            rotationStartPositions = Dictionary(uniqueKeysWithValues: selected.map { ($0.id, $0.position) })
+                        }
+                        applyRotation(angle: value.radians)
+                    }
+                    .onEnded { value in
+                        guard selectedAthleteIDs.count >= 2, !rotationStartPositions.isEmpty else {
+                            rotationStartPositions = [:]
+                            return
+                        }
+                        applyRotation(angle: value.radians)
+                        undoStack.append(rotationStartPositions.map { ($0.key, $0.value) })
+                        rotationStartPositions = [:]
+                        refreshTransitionFromStore()
                     }
             )
 
@@ -2258,6 +2281,35 @@ struct FloorGridView: View {
                     y: clampedCoordinate(startPosition.y + snapResult.translation.y, upperBound: CourtConstants.height)
                 )
                 formation.placements[placementIndex].position = nextPosition
+            }
+        }
+    }
+
+    // MARK: - Rotation
+
+    private func applyRotation(angle: CGFloat) {
+        guard !rotationStartPositions.isEmpty else { return }
+
+        let positions = Array(rotationStartPositions.values)
+        let centerX = positions.map(\.x).reduce(0, +) / CGFloat(positions.count)
+        let centerY = positions.map(\.y).reduce(0, +) / CGFloat(positions.count)
+
+        let cosA = cos(angle)
+        let sinA = sin(angle)
+
+        store.mutateFormation(id: formationID) { formation in
+            for (athleteID, startPosition) in rotationStartPositions {
+                guard let placementIndex = formation.placementIndex(for: athleteID) else { continue }
+
+                let dx = startPosition.x - centerX
+                let dy = startPosition.y - centerY
+                let rotatedX = centerX + dx * cosA - dy * sinA
+                let rotatedY = centerY + dx * sinA + dy * cosA
+
+                formation.placements[placementIndex].position = CGPoint(
+                    x: clampedCoordinate(rotatedX, upperBound: CourtConstants.width),
+                    y: clampedCoordinate(rotatedY, upperBound: CourtConstants.height)
+                )
             }
         }
     }
