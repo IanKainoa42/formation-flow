@@ -1,0 +1,25 @@
+{
+  "identifier" : "FormationFlow",
+  "nonConsumableProducts" : [
+    {
+      "displayPrice" : "4.99",
+      "familyShareable" : true,
+      "internalID" : "2B3A4C5D-6E7F-8A9B-0C1D-2E3F4A5B6C7D",
+      "localizations" : [
+        {
+          "description" : "Unlimited formations, roles, timing controls, and waypoints",
+          "displayName" : "FormationFlow Pro",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.ianrichardson.formationflow.pro",
+      "referenceName" : "FormationFlow Pro",
+      "type" : "NonConsumable"
+    }
+  ],
+  "version" : {
+    "major" : 2,
+    "minor" : 0,
+    "patch" : 0
+  }
+}
