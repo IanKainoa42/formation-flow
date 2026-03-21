@@ -911,7 +911,7 @@ struct FloorGridView: View {
             canvasContent
                 .overlay(alignment: isPhoneLayout ? .topLeading : .bottomLeading) {
                     formationContextBadge
-                        .padding(isPhoneLayout ? .init(top: isPhoneLandscape ? 4 : 52, leading: 12, bottom: 0, trailing: 0) : .init(top: 0, leading: 12, bottom: 12, trailing: 0))
+                        .padding(isPhoneLayout ? .init(top: isPhoneLandscape ? 4 : 52, leading: 12, bottom: 0, trailing: 0) : .init(top: 0, leading: 12, bottom: player != nil ? 100 : 12, trailing: 0))
                 }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
