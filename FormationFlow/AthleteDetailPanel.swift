@@ -162,42 +162,62 @@ struct AthleteRolePicker: View {
             spacing: 8
         ) {
             ForEach(AthleteRole.allCases, id: \.self) { role in
-                Button {
-                    if isPro || role == .base {
-                        onSelect(role)
-                    } else {
-                        onUpgrade()
-                    }
-                } label: {
-                    VStack(spacing: compactLayout ? 4 : 6) {
-                        ZStack {
-                            AthleteRoleSwatch(role: role, isSelected: role == selectedRole)
-                                .frame(width: compactLayout ? 24 : 28, height: compactLayout ? 24 : 28)
-                            if !isPro && role != .base {
-                                Image(systemName: "lock.fill")
-                                    .font(.caption2)
-                                    .foregroundColor(.white)
-                                    .shadow(radius: 2)
-                            }
-                        }
-                        Text(role.displayName)
-                            .font(.caption2)
-                            .foregroundColor(role == selectedRole ? .primary : .secondary)
-                            .multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, compactLayout ? 6 : 8)
-                    .background(role == selectedRole ? Color.primary.opacity(0.08) : Color.clear)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(role.displayName)
-                .accessibilityValue(role == selectedRole ? "Selected" : "")
-                .accessibilityHint("Double tap to set role to \(role.displayName)")
+                AthleteRolePickerButton(
+                    role: role,
+                    isSelected: role == selectedRole,
+                    compactLayout: compactLayout,
+                    isPro: isPro,
+                    onSelect: { onSelect(role) },
+                    onUpgrade: onUpgrade
+                )
             }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Athlete role picker")
+    }
+}
+
+private struct AthleteRolePickerButton: View {
+    let role: AthleteRole
+    let isSelected: Bool
+    let compactLayout: Bool
+    let isPro: Bool
+    let onSelect: () -> Void
+    let onUpgrade: () -> Void
+
+    var body: some View {
+        Button {
+            if isPro || role == .base {
+                onSelect()
+            } else {
+                onUpgrade()
+            }
+        } label: {
+            VStack(spacing: compactLayout ? 4 : 6) {
+                ZStack {
+                    AthleteRoleSwatch(role: role, isSelected: isSelected)
+                        .frame(width: compactLayout ? 24 : 28, height: compactLayout ? 24 : 28)
+                    if !isPro && role != .base {
+                        Image(systemName: "lock.fill")
+                            .font(.caption2)
+                            .foregroundColor(.white)
+                            .shadow(radius: 2)
+                    }
+                }
+                Text(role.displayName)
+                    .font(.caption2)
+                    .foregroundColor(isSelected ? .primary : .secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, compactLayout ? 6 : 8)
+            .background(isSelected ? Color.primary.opacity(0.08) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(role.displayName)
+        .accessibilityValue(isSelected ? "Selected" : "")
+        .accessibilityHint("Double tap to set role to \(role.displayName)")
     }
 }
 

@@ -80,7 +80,21 @@ struct RoutineWorkspaceView: View {
         entitlementManager.isPro || store.routine.formations.count < FreeTierLimits.maxFormations
     }
 
-    var body: some View {
+    private var deleteConfirmationTitle: String {
+        "Delete \(pendingFormationDeleteIDs.count == 1 ? "this formation" : "these formations")?"
+    }
+    
+    private var deleteButtonTitle: String {
+        pendingFormationDeleteIDs.count == 1 ? "Delete Formation" : "Delete Formations"
+    }
+    
+    private var deleteConfirmationMessage: String {
+        pendingFormationDeleteIDs.count == 1
+            ? "This removes the formation and any transition data connected to it. This cannot be undone."
+            : "This removes the selected formations and any transition data connected to them. This cannot be undone."
+    }
+
+    private var workspaceContent: some View {
         Group {
             if isFullScreen, !isCompactLayout, let selectedFormationID {
                 fullScreenFloor(formationID: selectedFormationID)
@@ -90,6 +104,10 @@ struct RoutineWorkspaceView: View {
                 regularWorkspace
             }
         }
+    }
+
+    var body: some View {
+        workspaceContent
         .onAppear {
             if selectedFormationID == nil {
                 selectedFormationID = store.routine.formations.first?.id
@@ -113,50 +131,23 @@ struct RoutineWorkspaceView: View {
             titleVisibility: .visible
         ) {
             Button("Reset Routine", role: .destructive) {
-                let context = LAContext()
-                var error: NSError?
-                if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) {
-                    context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: "Authenticate to reset the routine") { success, _ in
-                        DispatchQueue.main.async {
-                            if success {
-                                resetRoutine()
-                            }
-                        }
-                    }
-                } else if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
-                    context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Authenticate to reset the routine") { success, _ in
-                        DispatchQueue.main.async {
-                            if success {
-                                resetRoutine()
-                            }
-                        }
-                    }
-                } else {
-                    resetRoutine()
-                }
+                authenticateAndResetRoutine()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This clears the roster, formations, notes, and transition data, then starts over with one empty formation.")
         }
         .confirmationDialog(
-            "Delete \(pendingFormationDeleteIDs.count == 1 ? "this formation" : "these formations")?",
+            deleteConfirmationTitle,
             isPresented: showingFormationDeleteConfirmation,
             titleVisibility: .visible
         ) {
-            Button(
-                pendingFormationDeleteIDs.count == 1 ? "Delete Formation" : "Delete Formations",
-                role: .destructive
-            ) {
+            Button(deleteButtonTitle, role: .destructive) {
                 deletePendingFormations()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text(
-                pendingFormationDeleteIDs.count == 1
-                ? "This removes the formation and any transition data connected to it. This cannot be undone."
-                : "This removes the selected formations and any transition data connected to them. This cannot be undone."
-            )
+            Text(deleteConfirmationMessage)
         }
         .alert("Rename Formation", isPresented: showingRenamePrompt) {
             TextField("Formation name", text: $formationNameDraft)
@@ -823,6 +814,30 @@ struct RoutineWorkspaceView: View {
         } else {
             selectedFormationID = nil
             compactNavigationPath.removeAll()
+        }
+    }
+
+    private func authenticateAndResetRoutine() {
+        let context = LAContext()
+        var error: NSError?
+        if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) {
+            context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: "Authenticate to reset the routine") { success, _ in
+                DispatchQueue.main.async {
+                    if success {
+                        resetRoutine()
+                    }
+                }
+            }
+        } else if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
+            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Authenticate to reset the routine") { success, _ in
+                DispatchQueue.main.async {
+                    if success {
+                        resetRoutine()
+                    }
+                }
+            }
+        } else {
+            resetRoutine()
         }
     }
 

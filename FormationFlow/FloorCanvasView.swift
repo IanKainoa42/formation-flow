@@ -28,6 +28,16 @@ struct FloorCanvasView: View {
     var focusedPathHandle: CGPoint? = nil
 
     var body: some View {
+        mainCanvas
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(.background)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Formation court grid")
+            .accessibilityValue("\(athletes.count) athletes on the court")
+            .overlay { accessibilityOverlay }
+    }
+
+    private var mainCanvas: some View {
         Canvas { context, _ in
             var context = context
             context.translateBy(x: offset.x, y: offset.y)
@@ -56,21 +66,17 @@ struct FloorCanvasView: View {
                 )
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.background)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Formation court grid")
-        .accessibilityValue("\(athletes.count) athletes on the court")
-        .overlay {
-            ForEach(athletes) { athlete in
-                AthleteAccessibilityElement(
-                    athlete: athlete,
-                    cellSize: cellSize,
-                    offset: offset,
-                    isSelected: selectedAthleteIDs.contains(athlete.id),
-                    isColliding: collisionIDs.contains(athlete.id)
-                )
-            }
+    }
+
+    private var accessibilityOverlay: some View {
+        ForEach(athletes) { athlete in
+            AthleteAccessibilityElement(
+                athlete: athlete,
+                cellSize: cellSize,
+                offset: offset,
+                isSelected: selectedAthleteIDs.contains(athlete.id),
+                isColliding: collisionIDs.contains(athlete.id)
+            )
         }
     }
 
