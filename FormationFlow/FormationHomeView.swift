@@ -195,16 +195,30 @@ struct RoutineWorkspaceView: View {
             endFormationID: previewTransitionPair?.end.id
         )
         .overlay(alignment: .topLeading) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    isFullScreen = false
+            HStack(spacing: 10) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        isFullScreen = false
+                    }
+                } label: {
+                    Image(systemName: "arrow.down.right.and.arrow.up.left")
+                        .font(.body.weight(.semibold))
+                        .foregroundColor(.white)
+                        .padding(10)
+                        .background(.ultraThinMaterial, in: Circle())
                 }
-            } label: {
-                Image(systemName: "arrow.down.right.and.arrow.up.left")
-                    .font(.body.weight(.semibold))
-                    .foregroundColor(.white)
-                    .padding(10)
-                    .background(.ultraThinMaterial, in: Circle())
+
+                if store.routine.formations.count >= 2 {
+                    Button {
+                        showingRoutinePlayback = true
+                    } label: {
+                        Image(systemName: "play.fill")
+                            .font(.body.weight(.semibold))
+                            .foregroundColor(.white)
+                            .padding(10)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                }
             }
             .padding(16)
         }
@@ -445,16 +459,36 @@ struct RoutineWorkspaceView: View {
             editor
                 .navigationTitle(formation.name)
                 .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItemGroup(placement: .navigationBarTrailing) {
+                .overlay(alignment: .topTrailing) {
+                    HStack(spacing: 8) {
+                        if store.routine.formations.count >= 2 {
+                            Button {
+                                showingRoutinePlayback = true
+                            } label: {
+                                Image(systemName: "play.fill")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundColor(.white)
+                                    .padding(8)
+                                    .background(.ultraThinMaterial, in: Circle())
+                            }
+                        }
+
                         Button {
                             withAnimation(.easeInOut(duration: 0.25)) {
                                 isFullScreen = true
                             }
                         } label: {
-                            Label("Full Screen", systemImage: "arrow.up.left.and.arrow.down.right")
+                            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(.white)
+                                .padding(8)
+                                .background(.ultraThinMaterial, in: Circle())
                         }
-
+                    }
+                    .padding(12)
+                }
+                .toolbar {
+                    ToolbarItemGroup(placement: .navigationBarTrailing) {
                         Button(action: duplicateSelectedFormation) {
                             Label(
                                 canAddFormation ? "Duplicate" : "Duplicate (Pro)",
