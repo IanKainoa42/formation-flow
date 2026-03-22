@@ -25,6 +25,136 @@ enum TransitionCountFormatting {
     }
 }
 
+// MARK: - Transport Building Blocks
+
+@MainActor
+enum TransportControls {
+
+    @ViewBuilder
+    static func resetButton(player: TransitionPlayer, size: CGFloat = 34) -> some View {
+        Button(action: player.reset) {
+            Image(systemName: "backward.end.fill")
+                .frame(width: size, height: size)
+        }
+        .buttonStyle(.bordered)
+        .accessibilityLabel("Reset transition")
+    }
+
+    @ViewBuilder
+    static func playPauseButton(player: TransitionPlayer, size: CGFloat = 34) -> some View {
+        Button {
+            player.isPlaying ? player.pause() : player.play()
+        } label: {
+            Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                .frame(width: size, height: size)
+        }
+        .buttonStyle(.borderedProminent)
+        .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
+    }
+
+    @ViewBuilder
+    static func loopButton(player: TransitionPlayer, size: CGFloat = 34) -> some View {
+        Button {
+            player.isLooping.toggle()
+        } label: {
+            Image(systemName: "repeat")
+                .frame(width: size, height: size)
+        }
+        .buttonStyle(.bordered)
+        .tint(player.isLooping ? .accentColor : .secondary)
+        .accessibilityLabel("Toggle loop")
+        .accessibilityValue(player.isLooping ? "On" : "Off")
+    }
+
+    @ViewBuilder
+    static func progressSlider(player: TransitionPlayer) -> some View {
+        Slider(
+            value: Binding(
+                get: { player.progress },
+                set: { player.seek(to: $0) }
+            ),
+            in: 0...1
+        )
+        .accessibilityLabel("Transition progress")
+    }
+
+    @ViewBuilder
+    static func progressText(player: TransitionPlayer) -> some View {
+        Text(String(format: "%.0f%%", player.progress * 100))
+            .font(.system(.caption, design: .monospaced))
+            .foregroundColor(.secondary)
+    }
+
+    @ViewBuilder
+    static func countsPresetButtons(player: TransitionPlayer) -> some View {
+        ForEach([4, 8, 16, 32], id: \.self) { count in
+            Button("\(count)") {
+                player.counts = CGFloat(count)
+            }
+            .buttonStyle(.bordered)
+            .tint(player.counts == CGFloat(count) ? .accentColor : .secondary)
+            .accessibilityLabel("\(count) counts")
+            .accessibilityValue(player.counts == CGFloat(count) ? "Selected" : "")
+        }
+    }
+
+    @ViewBuilder
+    static func speedPicker(player: TransitionPlayer) -> some View {
+        Picker("Speed", selection: Binding(
+            get: {
+                [CGFloat(0.5), 1.0, 1.5, 2.0]
+                    .min(by: { abs($0 - player.speed) < abs($1 - player.speed) }) ?? 1.0
+            },
+            set: { player.speed = $0 }
+        )) {
+            Text("0.5x").tag(CGFloat(0.5))
+            Text("1x").tag(CGFloat(1.0))
+            Text("1.5x").tag(CGFloat(1.5))
+            Text("2x").tag(CGFloat(2.0))
+        }
+        .pickerStyle(.segmented)
+        .accessibilityLabel("Playback speed")
+    }
+
+    static func speedLabel(for value: CGFloat) -> String {
+        if abs(value.rounded() - value) < 0.001 {
+            return "\(Int(value.rounded()))x"
+        }
+        return String(format: "%.1fx", value)
+    }
+
+    @ViewBuilder
+    static func settingsMenuContent(player: TransitionPlayer) -> some View {
+        Section("Counts") {
+            ForEach([4, 8, 16, 32], id: \.self) { count in
+                Button {
+                    player.counts = Double(count)
+                } label: {
+                    if Int(player.counts.rounded()) == count {
+                        Label("\(count) counts", systemImage: "checkmark")
+                    } else {
+                        Text("\(count) counts")
+                    }
+                }
+            }
+        }
+
+        Section("Speed") {
+            ForEach([CGFloat(0.5), 1.0, 1.5, 2.0], id: \.self) { speed in
+                Button {
+                    player.speed = speed
+                } label: {
+                    if abs(player.speed - speed) < 0.01 {
+                        Label(speedLabel(for: speed), systemImage: "checkmark")
+                    } else {
+                        Text(speedLabel(for: speed))
+                    }
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Transport Sidebar
 
 struct TransitionTransportSidebarView: View {
@@ -58,46 +188,13 @@ struct TransitionTransportSidebarView: View {
     private var transportControls: some View {
         VStack(spacing: 12) {
             HStack(spacing: 16) {
-                Button(action: player.reset) {
-                    Image(systemName: "backward.end.fill")
-                        .frame(width: 34, height: 34)
-                }
-                .buttonStyle(.bordered)
-                .accessibilityLabel("Reset transition")
-
-                Button {
-                    player.isPlaying ? player.pause() : player.play()
-                } label: {
-                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .frame(width: 34, height: 34)
-                }
-                .buttonStyle(.borderedProminent)
-                .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
-
-                Button {
-                    player.isLooping.toggle()
-                } label: {
-                    Image(systemName: "repeat")
-                        .frame(width: 34, height: 34)
-                }
-                .buttonStyle(.bordered)
-                .tint(player.isLooping ? .accentColor : .secondary)
-                .accessibilityLabel("Toggle loop")
-                .accessibilityValue(player.isLooping ? "On" : "Off")
+                TransportControls.resetButton(player: player)
+                TransportControls.playPauseButton(player: player)
+                TransportControls.loopButton(player: player)
             }
 
-            Slider(
-                value: Binding(
-                    get: { player.progress },
-                    set: { player.seek(to: $0) }
-                ),
-                in: 0...1
-            )
-            .accessibilityLabel("Transition progress")
-
-            Text(String(format: "%.0f%%", player.progress * 100))
-                .font(.system(.caption, design: .monospaced))
-                .foregroundColor(.secondary)
+            TransportControls.progressSlider(player: player)
+            TransportControls.progressText(player: player)
         }
     }
 
@@ -111,15 +208,7 @@ struct TransitionTransportSidebarView: View {
                     .font(.system(.body, design: .monospaced))
             }
             HStack(spacing: 8) {
-                ForEach([4, 8, 16, 32], id: \.self) { count in
-                    Button("\(count)") {
-                        player.counts = CGFloat(count)
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(player.counts == CGFloat(count) ? .accentColor : .secondary)
-                    .accessibilityLabel("\(count) counts")
-                    .accessibilityValue(player.counts == CGFloat(count) ? "Selected" : "")
-                }
+                TransportControls.countsPresetButtons(player: player)
             }
             Slider(
                 value: Binding(
@@ -138,23 +227,8 @@ struct TransitionTransportSidebarView: View {
             Text("Speed")
                 .font(.subheadline.weight(.semibold))
 
-            Picker("Speed", selection: Binding(
-                get: { speedSelection(for: player.speed) },
-                set: { player.speed = $0 }
-            )) {
-                Text("0.5x").tag(CGFloat(0.5))
-                Text("1x").tag(CGFloat(1.0))
-                Text("1.5x").tag(CGFloat(1.5))
-                Text("2x").tag(CGFloat(2.0))
-            }
-            .pickerStyle(.segmented)
-            .accessibilityLabel("Playback speed")
+            TransportControls.speedPicker(player: player)
         }
-    }
-
-    private func speedSelection(for value: CGFloat) -> CGFloat {
-        [CGFloat(0.5), 1.0, 1.5, 2.0]
-            .min(by: { abs($0 - value) < abs($1 - value) }) ?? 1.0
     }
 }
 
@@ -162,9 +236,6 @@ struct CompactTransitionPlaybackOverlayView: View {
     @ObservedObject var player: TransitionPlayer
     let startFormationName: String
     let endFormationName: String
-
-    private let countOptions = [4, 8, 16, 32]
-    private let speedOptions: [CGFloat] = [0.5, 1.0, 1.5, 2.0]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -180,45 +251,11 @@ struct CompactTransitionPlaybackOverlayView: View {
             }
 
             HStack(spacing: 10) {
-                Button(action: player.reset) {
-                    Image(systemName: "backward.end.fill")
-                        .frame(width: 28, height: 28)
-                }
-                .buttonStyle(.bordered)
-                .accessibilityLabel("Reset transition")
-
-                Button {
-                    player.isPlaying ? player.pause() : player.play()
-                } label: {
-                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .frame(width: 32, height: 32)
-                }
-                .buttonStyle(.borderedProminent)
-                .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
-
-                Slider(
-                    value: Binding(
-                        get: { player.progress },
-                        set: { player.seek(to: $0) }
-                    ),
-                    in: 0...1
-                )
-                .accessibilityLabel("Transition progress")
-
-                Button {
-                    player.isLooping.toggle()
-                } label: {
-                    Image(systemName: "repeat")
-                        .frame(width: 28, height: 28)
-                }
-                .buttonStyle(.bordered)
-                .tint(player.isLooping ? .accentColor : .secondary)
-                .accessibilityLabel("Toggle loop")
-                .accessibilityValue(player.isLooping ? "On" : "Off")
-
-                Text(String(format: "%.0f%%", player.progress * 100))
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(.secondary)
+                TransportControls.resetButton(player: player, size: 28)
+                TransportControls.playPauseButton(player: player, size: 32)
+                TransportControls.progressSlider(player: player)
+                TransportControls.loopButton(player: player, size: 28)
+                TransportControls.progressText(player: player)
                     .frame(minWidth: 42, alignment: .trailing)
             }
         }
@@ -234,51 +271,18 @@ struct CompactTransitionPlaybackOverlayView: View {
 
     private var settingsMenu: some View {
         Menu {
-            Section("Counts") {
-                ForEach(countOptions, id: \.self) { count in
-                    Button {
-                        player.counts = Double(count)
-                    } label: {
-                        if Int(player.counts.rounded()) == count {
-                            Label("\(count) counts", systemImage: "checkmark")
-                        } else {
-                            Text("\(count) counts")
-                        }
-                    }
-                }
-            }
-
-            Section("Speed") {
-                ForEach(speedOptions, id: \.self) { speed in
-                    Button {
-                        player.speed = speed
-                    } label: {
-                        if abs(player.speed - speed) < 0.01 {
-                            Label(speedLabel(for: speed), systemImage: "checkmark")
-                        } else {
-                            Text(speedLabel(for: speed))
-                        }
-                    }
-                }
-            }
+            TransportControls.settingsMenuContent(player: player)
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "slider.horizontal.3")
                 Text("\(TransitionCountFormatting.value(player.counts)) ct")
-                Text(speedLabel(for: player.speed))
+                Text(TransportControls.speedLabel(for: player.speed))
             }
             .font(.caption.weight(.semibold))
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .background(Color.primary.opacity(0.08), in: Capsule())
         }
-    }
-
-    private func speedLabel(for value: CGFloat) -> String {
-        if abs(value.rounded() - value) < 0.001 {
-            return "\(Int(value.rounded()))x"
-        }
-        return String(format: "%.1fx", value)
     }
 }
 
@@ -287,9 +291,6 @@ struct CompactTransitionPlaybackRailView: View {
     let startFormationName: String
     let endFormationName: String
     let availableWidth: CGFloat
-
-    private let countOptions = [4, 8, 16, 32]
-    private let speedOptions: [CGFloat] = [0.5, 1.0, 1.5, 2.0]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -301,32 +302,9 @@ struct CompactTransitionPlaybackRailView: View {
             settingsMenu
 
             HStack(spacing: 8) {
-                Button(action: player.reset) {
-                    Image(systemName: "backward.end.fill")
-                        .frame(width: 30, height: 30)
-                }
-                .buttonStyle(.bordered)
-                .accessibilityLabel("Reset transition")
-
-                Button {
-                    player.isPlaying ? player.pause() : player.play()
-                } label: {
-                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .frame(width: 36, height: 36)
-                }
-                .buttonStyle(.borderedProminent)
-                .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
-
-                Button {
-                    player.isLooping.toggle()
-                } label: {
-                    Image(systemName: "repeat")
-                        .frame(width: 30, height: 30)
-                }
-                .buttonStyle(.bordered)
-                .tint(player.isLooping ? .accentColor : .secondary)
-                .accessibilityLabel("Toggle loop")
-                .accessibilityValue(player.isLooping ? "On" : "Off")
+                TransportControls.resetButton(player: player, size: 30)
+                TransportControls.playPauseButton(player: player, size: 36)
+                TransportControls.loopButton(player: player, size: 30)
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -340,14 +318,7 @@ struct CompactTransitionPlaybackRailView: View {
                         .foregroundColor(.secondary)
                 }
 
-                Slider(
-                    value: Binding(
-                        get: { player.progress },
-                        set: { player.seek(to: $0) }
-                    ),
-                    in: 0...1
-                )
-                .accessibilityLabel("Transition progress")
+                TransportControls.progressSlider(player: player)
 
                 HStack(spacing: 6) {
                     Text("0%")
@@ -373,39 +344,13 @@ struct CompactTransitionPlaybackRailView: View {
 
     private var settingsMenu: some View {
         Menu {
-            Section("Counts") {
-                ForEach(countOptions, id: \.self) { count in
-                    Button {
-                        player.counts = Double(count)
-                    } label: {
-                        if Int(player.counts.rounded()) == count {
-                            Label("\(count) counts", systemImage: "checkmark")
-                        } else {
-                            Text("\(count) counts")
-                        }
-                    }
-                }
-            }
-
-            Section("Speed") {
-                ForEach(speedOptions, id: \.self) { speed in
-                    Button {
-                        player.speed = speed
-                    } label: {
-                        if abs(player.speed - speed) < 0.01 {
-                            Label(speedLabel(for: speed), systemImage: "checkmark")
-                        } else {
-                            Text(speedLabel(for: speed))
-                        }
-                    }
-                }
-            }
+            TransportControls.settingsMenuContent(player: player)
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "slider.horizontal.3")
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(TransitionCountFormatting.value(player.counts)) ct")
-                    Text(speedLabel(for: player.speed))
+                    Text(TransportControls.speedLabel(for: player.speed))
                 }
                 Spacer(minLength: 0)
             }
@@ -416,12 +361,43 @@ struct CompactTransitionPlaybackRailView: View {
             .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
     }
+}
 
-    private func speedLabel(for value: CGFloat) -> String {
-        if abs(value.rounded() - value) < 0.001 {
-            return "\(Int(value.rounded()))x"
+// MARK: - Sidebar Transport View
+
+struct SidebarTransportView: View {
+    @ObservedObject var player: TransitionPlayer
+    let startFormationName: String
+    let endFormationName: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("\(startFormationName) \u{2192} \(endFormationName)")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+
+            HStack(spacing: 16) {
+                TransportControls.resetButton(player: player)
+                TransportControls.playPauseButton(player: player)
+                TransportControls.loopButton(player: player)
+            }
+
+            TransportControls.progressSlider(player: player)
+
+            HStack {
+                Text("Counts")
+                    .font(.caption.weight(.semibold))
+                Spacer()
+                Text(TransitionCountFormatting.label(player.counts))
+                    .font(.system(.caption, design: .monospaced))
+            }
+            HStack(spacing: 8) {
+                TransportControls.countsPresetButtons(player: player)
+            }
+            .controlSize(.small)
+
+            TransportControls.speedPicker(player: player)
         }
-        return String(format: "%.1fx", value)
     }
 }
 
