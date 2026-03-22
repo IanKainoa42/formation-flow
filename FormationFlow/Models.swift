@@ -422,7 +422,7 @@ struct TransitionSpec: Codable, Identifiable, Equatable, Hashable {
         id: UUID = UUID(),
         fromFormationID: UUID,
         toFormationID: UUID,
-        duration: Double = 8.0,
+        duration: Double = 4.0,
         athleteTransitions: [AthleteTransition] = []
     ) {
         self.id = id

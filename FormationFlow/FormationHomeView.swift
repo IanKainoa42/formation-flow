@@ -235,7 +235,11 @@ struct RoutineWorkspaceView: View {
                 CompactTransitionPlaybackOverlayView(
                     player: player,
                     startFormationName: previewTransitionPair.start.name,
-                    endFormationName: previewTransitionPair.end.name
+                    endFormationName: previewTransitionPair.end.name,
+                    onSwap: { isSwapMode.toggle() },
+                    isSwapMode: isSwapMode,
+                    canSwap: selectedAthleteIDs.count == 1,
+                    canEditPath: selectedAthleteIDs.count == 1
                 )
                 .padding(.horizontal, 20)
                 .padding(.bottom, 20)
@@ -299,7 +303,11 @@ struct RoutineWorkspaceView: View {
                 SidebarTransportView(
                     player: player,
                     startFormationName: previewTransitionPair.start.name,
-                    endFormationName: previewTransitionPair.end.name
+                    endFormationName: previewTransitionPair.end.name,
+                    onSwap: { isSwapMode.toggle() },
+                    isSwapMode: isSwapMode,
+                    canSwap: selectedAthleteIDs.count == 1,
+                    canEditPath: selectedAthleteIDs.count == 1
                 )
                 .padding(16)
                 .background(.thinMaterial)
@@ -384,7 +392,11 @@ struct RoutineWorkspaceView: View {
                 SidebarTransportView(
                     player: player,
                     startFormationName: previewTransitionPair.start.name,
-                    endFormationName: previewTransitionPair.end.name
+                    endFormationName: previewTransitionPair.end.name,
+                    onSwap: { isSwapMode.toggle() },
+                    isSwapMode: isSwapMode,
+                    canSwap: selectedAthleteIDs.count == 1,
+                    canEditPath: selectedAthleteIDs.count == 1
                 )
                 .padding(16)
                 .background(.thinMaterial)

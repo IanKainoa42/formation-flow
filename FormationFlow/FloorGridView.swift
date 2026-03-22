@@ -916,7 +916,12 @@ struct FloorGridView: View {
                             CompactTransitionPlaybackOverlayView(
                                 player: player,
                                 startFormationName: startFormationName,
-                                endFormationName: endFormationName
+                                endFormationName: endFormationName,
+                                onSwap: toggleSwapMode,
+                                onPath: { showingInspectorSheet = true },
+                                isSwapMode: isSwapMode,
+                                canSwap: selectedAthleteID != nil,
+                                canEditPath: selectedAthleteID != nil
                             )
                         }
                     }
@@ -934,7 +939,12 @@ struct FloorGridView: View {
                         player: player,
                         startFormationName: startFormationName,
                         endFormationName: endFormationName,
-                        availableWidth: phonePlaybackRailWidth
+                        availableWidth: phonePlaybackRailWidth,
+                        onSwap: toggleSwapMode,
+                        onPath: { showingInspectorSheet = true },
+                        isSwapMode: isSwapMode,
+                        canSwap: selectedAthleteID != nil,
+                        canEditPath: selectedAthleteID != nil
                     )
                     .padding(.leading, 8)
                     .padding(.top, 12)
@@ -1038,7 +1048,12 @@ struct FloorGridView: View {
                 TransitionTransportSidebarView(
                     player: player,
                     startFormationName: startFormationName,
-                    endFormationName: endFormationName
+                    endFormationName: endFormationName,
+                    onSwap: toggleSwapMode,
+                    onPath: { showingInspectorSheet = true },
+                    isSwapMode: isSwapMode,
+                    canSwap: selectedAthleteID != nil,
+                    canEditPath: selectedAthleteID != nil
                 )
                 .toolbar {
                     ToolbarItem(placement: .navigationBarTrailing) {

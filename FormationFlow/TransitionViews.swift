@@ -86,72 +86,25 @@ enum TransportControls {
     }
 
     @ViewBuilder
-    static func countsPresetButtons(player: TransitionPlayer) -> some View {
-        ForEach([4, 8, 16, 32], id: \.self) { count in
-            Button("\(count)") {
-                player.counts = CGFloat(count)
-            }
-            .buttonStyle(.bordered)
-            .tint(player.counts == CGFloat(count) ? .accentColor : .secondary)
-            .accessibilityLabel("\(count) counts")
-            .accessibilityValue(player.counts == CGFloat(count) ? "Selected" : "")
+    static func swapButton(isActive: Bool, size: CGFloat = 34, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .frame(width: size, height: size)
         }
+        .buttonStyle(.bordered)
+        .tint(isActive ? .blue : .secondary)
+        .accessibilityLabel(isActive ? "Cancel Swap" : "Swap Position")
+        .accessibilityValue(isActive ? "Active" : "Inactive")
     }
 
     @ViewBuilder
-    static func speedPicker(player: TransitionPlayer) -> some View {
-        Picker("Speed", selection: Binding(
-            get: {
-                [CGFloat(0.5), 1.0, 1.5, 2.0]
-                    .min(by: { abs($0 - player.speed) < abs($1 - player.speed) }) ?? 1.0
-            },
-            set: { player.speed = $0 }
-        )) {
-            Text("0.5x").tag(CGFloat(0.5))
-            Text("1x").tag(CGFloat(1.0))
-            Text("1.5x").tag(CGFloat(1.5))
-            Text("2x").tag(CGFloat(2.0))
+    static func pathButton(size: CGFloat = 34, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
+                .frame(width: size, height: size)
         }
-        .pickerStyle(.segmented)
-        .accessibilityLabel("Playback speed")
-    }
-
-    static func speedLabel(for value: CGFloat) -> String {
-        if abs(value.rounded() - value) < 0.001 {
-            return "\(Int(value.rounded()))x"
-        }
-        return String(format: "%.1fx", value)
-    }
-
-    @ViewBuilder
-    static func settingsMenuContent(player: TransitionPlayer) -> some View {
-        Section("Counts") {
-            ForEach([4, 8, 16, 32], id: \.self) { count in
-                Button {
-                    player.counts = Double(count)
-                } label: {
-                    if Int(player.counts.rounded()) == count {
-                        Label("\(count) counts", systemImage: "checkmark")
-                    } else {
-                        Text("\(count) counts")
-                    }
-                }
-            }
-        }
-
-        Section("Speed") {
-            ForEach([CGFloat(0.5), 1.0, 1.5, 2.0], id: \.self) { speed in
-                Button {
-                    player.speed = speed
-                } label: {
-                    if abs(player.speed - speed) < 0.01 {
-                        Label(speedLabel(for: speed), systemImage: "checkmark")
-                    } else {
-                        Text(speedLabel(for: speed))
-                    }
-                }
-            }
-        }
+        .buttonStyle(.bordered)
+        .accessibilityLabel("Edit Path")
     }
 }
 
@@ -161,14 +114,18 @@ struct TransitionTransportSidebarView: View {
     @ObservedObject var player: TransitionPlayer
     let startFormationName: String
     let endFormationName: String
+    var onSwap: () -> Void = {}
+    var onPath: () -> Void = {}
+    var isSwapMode: Bool = false
+    var canSwap: Bool = false
+    var canEditPath: Bool = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 headerSection
                 transportControls
-                countsSection
-                speedSection
+                actionButtons
             }
             .padding(20)
         }
@@ -198,36 +155,12 @@ struct TransitionTransportSidebarView: View {
         }
     }
 
-    private var countsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Counts")
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                Text(TransitionCountFormatting.label(player.counts))
-                    .font(.system(.body, design: .monospaced))
-            }
-            HStack(spacing: 8) {
-                TransportControls.countsPresetButtons(player: player)
-            }
-            Slider(
-                value: Binding(
-                    get: { player.counts },
-                    set: { player.counts = $0 }
-                ),
-                in: 1...32,
-                step: 1
-            )
-            .accessibilityLabel("Transition counts")
-        }
-    }
-
-    private var speedSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Speed")
-                .font(.subheadline.weight(.semibold))
-
-            TransportControls.speedPicker(player: player)
+    private var actionButtons: some View {
+        HStack(spacing: 12) {
+            TransportControls.swapButton(isActive: isSwapMode, action: onSwap)
+                .disabled(!canSwap)
+            TransportControls.pathButton(action: onPath)
+                .disabled(!canEditPath)
         }
     }
 }
@@ -236,27 +169,28 @@ struct CompactTransitionPlaybackOverlayView: View {
     @ObservedObject var player: TransitionPlayer
     let startFormationName: String
     let endFormationName: String
+    var onSwap: () -> Void = {}
+    var onPath: () -> Void = {}
+    var isSwapMode: Bool = false
+    var canSwap: Bool = false
+    var canEditPath: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                Text("\(startFormationName) \u{2192} \(endFormationName)")
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-
-                Spacer(minLength: 0)
-
-                settingsMenu
-            }
+            Text("\(startFormationName) \u{2192} \(endFormationName)")
+                .font(.caption.weight(.semibold))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
 
             HStack(spacing: 10) {
                 TransportControls.resetButton(player: player, size: 28)
                 TransportControls.playPauseButton(player: player, size: 32)
                 TransportControls.progressSlider(player: player)
                 TransportControls.loopButton(player: player, size: 28)
-                TransportControls.progressText(player: player)
-                    .frame(minWidth: 42, alignment: .trailing)
+                TransportControls.swapButton(isActive: isSwapMode, size: 28, action: onSwap)
+                    .disabled(!canSwap)
+                TransportControls.pathButton(size: 28, action: onPath)
+                    .disabled(!canEditPath)
             }
         }
         .padding(12)
@@ -268,22 +202,6 @@ struct CompactTransitionPlaybackOverlayView: View {
         .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
         .controlSize(.small)
     }
-
-    private var settingsMenu: some View {
-        Menu {
-            TransportControls.settingsMenuContent(player: player)
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "slider.horizontal.3")
-                Text("\(TransitionCountFormatting.value(player.counts)) ct")
-                Text(TransportControls.speedLabel(for: player.speed))
-            }
-            .font(.caption.weight(.semibold))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(Color.primary.opacity(0.08), in: Capsule())
-        }
-    }
 }
 
 struct CompactTransitionPlaybackRailView: View {
@@ -291,6 +209,11 @@ struct CompactTransitionPlaybackRailView: View {
     let startFormationName: String
     let endFormationName: String
     let availableWidth: CGFloat
+    var onSwap: () -> Void = {}
+    var onPath: () -> Void = {}
+    var isSwapMode: Bool = false
+    var canSwap: Bool = false
+    var canEditPath: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -299,12 +222,17 @@ struct CompactTransitionPlaybackRailView: View {
                 .foregroundColor(.secondary)
                 .lineLimit(2)
 
-            settingsMenu
-
             HStack(spacing: 8) {
                 TransportControls.resetButton(player: player, size: 30)
                 TransportControls.playPauseButton(player: player, size: 36)
                 TransportControls.loopButton(player: player, size: 30)
+            }
+
+            HStack(spacing: 8) {
+                TransportControls.swapButton(isActive: isSwapMode, size: 30, action: onSwap)
+                    .disabled(!canSwap)
+                TransportControls.pathButton(size: 30, action: onPath)
+                    .disabled(!canEditPath)
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -341,26 +269,6 @@ struct CompactTransitionPlaybackRailView: View {
         .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
         .controlSize(.small)
     }
-
-    private var settingsMenu: some View {
-        Menu {
-            TransportControls.settingsMenuContent(player: player)
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "slider.horizontal.3")
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(TransitionCountFormatting.value(player.counts)) ct")
-                    Text(TransportControls.speedLabel(for: player.speed))
-                }
-                Spacer(minLength: 0)
-            }
-            .font(.caption.weight(.semibold))
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 9)
-            .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-    }
 }
 
 // MARK: - Sidebar Transport View
@@ -369,6 +277,11 @@ struct SidebarTransportView: View {
     @ObservedObject var player: TransitionPlayer
     let startFormationName: String
     let endFormationName: String
+    var onSwap: () -> Void = {}
+    var onPath: () -> Void = {}
+    var isSwapMode: Bool = false
+    var canSwap: Bool = false
+    var canEditPath: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -384,19 +297,12 @@ struct SidebarTransportView: View {
 
             TransportControls.progressSlider(player: player)
 
-            HStack {
-                Text("Counts")
-                    .font(.caption.weight(.semibold))
-                Spacer()
-                Text(TransitionCountFormatting.label(player.counts))
-                    .font(.system(.caption, design: .monospaced))
+            HStack(spacing: 12) {
+                TransportControls.swapButton(isActive: isSwapMode, action: onSwap)
+                    .disabled(!canSwap)
+                TransportControls.pathButton(action: onPath)
+                    .disabled(!canEditPath)
             }
-            HStack(spacing: 8) {
-                TransportControls.countsPresetButtons(player: player)
-            }
-            .controlSize(.small)
-
-            TransportControls.speedPicker(player: player)
         }
     }
 }
