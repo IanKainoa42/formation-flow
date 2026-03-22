@@ -1021,20 +1021,38 @@ enum RoutineMetrics {
         load().counters[event.rawValue, default: 0]
     }
 
-    private static func load() -> Snapshot {
-        guard
-            let data = UserDefaults.standard.data(forKey: storageKey),
-            let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data)
-        else {
-            return Snapshot()
-        }
-
-        return snapshot
+    private static var fileURL: URL {
+        let paths = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+        return paths[0].appendingPathComponent("\(storageKey).json")
     }
 
-    private static func save(_ snapshot: Snapshot) {
-        guard let data = try? JSONEncoder().encode(snapshot) else { return }
-        UserDefaults.standard.set(data, forKey: storageKey)
+    private static func load() -> Snapshot {
+        if let data = try? Data(contentsOf: fileURL),
+           let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data) {
+            return snapshot
+        }
+
+        // Migration from UserDefaults
+        if let data = UserDefaults.standard.data(forKey: storageKey),
+           let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data) {
+            if save(snapshot) { // Save to new fileURL
+                UserDefaults.standard.removeObject(forKey: storageKey) // Clean up
+            }
+            return snapshot
+        }
+
+        return Snapshot()
+    }
+
+    @discardableResult
+    private static func save(_ snapshot: Snapshot) -> Bool {
+        guard let data = try? JSONEncoder().encode(snapshot) else { return false }
+        do {
+            try data.write(to: fileURL, options: [.atomic, .completeFileProtection])
+            return true
+        } catch {
+            return false
+        }
     }
 }
 
@@ -1062,27 +1080,47 @@ final class RoutineStore: ObservableObject {
         load()
     }
 
+    private var fileURL: URL {
+        let paths = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+        return paths[0].appendingPathComponent("\(storageKey).json")
+    }
+
     func load() {
         isLoading = true
         defer { isLoading = false }
 
-        guard
-            let data = UserDefaults.standard.data(forKey: storageKey),
-            let decoded = try? JSONDecoder().decode(Routine.self, from: data)
-        else {
-            routine = Routine.initial()
+        if let data = try? Data(contentsOf: fileURL),
+           let decoded = try? JSONDecoder().decode(Routine.self, from: data) {
+            routine = decoded
             reconcileRoutineShape()
-            save()
             return
         }
 
-        routine = decoded
+        // Migration from UserDefaults
+        if let data = UserDefaults.standard.data(forKey: storageKey),
+           let decoded = try? JSONDecoder().decode(Routine.self, from: data) {
+            routine = decoded
+            reconcileRoutineShape()
+            if save() { // Save to new fileURL
+                UserDefaults.standard.removeObject(forKey: storageKey) // Clean up
+            }
+            return
+        }
+
+        routine = Routine.initial()
         reconcileRoutineShape()
+        save()
     }
 
-    func save() {
-        guard let data = try? JSONEncoder().encode(routine) else { return }
-        UserDefaults.standard.set(data, forKey: storageKey)
+    @discardableResult
+    func save() -> Bool {
+        guard let data = try? JSONEncoder().encode(routine) else { return false }
+        do {
+            try data.write(to: fileURL, options: [.atomic, .completeFileProtection])
+            return true
+        } catch {
+            return false
+        }
     }
 
     func resetRoutine() {
