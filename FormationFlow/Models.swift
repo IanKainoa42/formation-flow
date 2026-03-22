@@ -1855,8 +1855,12 @@ final class TransitionPlayer: ObservableObject {
     @Published var currentAthletes: [RenderedAthlete]
     @Published var speed: CGFloat = 2.0
     @Published var startAthletes: [RenderedAthlete]
-    @Published var endAthletes: [RenderedAthlete]
-    @Published var transitionSpec: TransitionSpec
+    @Published var endAthletes: [RenderedAthlete] {
+        didSet { updateEndLookup() }
+    }
+    @Published var transitionSpec: TransitionSpec {
+        didSet { updateTransitionLookup() }
+    }
 
     var onComplete: (() -> Void)?
 
@@ -1868,6 +1872,9 @@ final class TransitionPlayer: ObservableObject {
         get { duration }
         set { duration = newValue }
     }
+
+    private var endLookup: [UUID: RenderedAthlete] = [:]
+    private var transitionLookup: [UUID: AthleteTransition] = [:]
 
     private var animationTimer: AnimationTimer?
 
@@ -1881,6 +1888,19 @@ final class TransitionPlayer: ObservableObject {
         self.transitionSpec = transitionSpec
         self.duration = transitionSpec.duration
         self.currentAthletes = startAthletes
+        updateEndLookup()
+        updateTransitionLookup()
+    }
+
+    private func updateEndLookup() {
+        endLookup = Dictionary(endAthletes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    private func updateTransitionLookup() {
+        transitionLookup = Dictionary(
+            transitionSpec.athleteTransitions.map { ($0.athleteID, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
     }
 
     deinit {
@@ -1941,11 +1961,7 @@ final class TransitionPlayer: ObservableObject {
     }
 
     private func updateAthletesForProgress() {
-        let endLookup = Dictionary(endAthletes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let transitionLookup = Dictionary(
-            transitionSpec.athleteTransitions.map { ($0.athleteID, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
+        // ⚡ Bolt: Removed redundant O(N) lookup dictionary allocations per frame. Used cached lookups.
 
         // ⚡ Bolt: Cache timing calculations to avoid repeating O(N) operations in the second pass.
         var timingCache: [UUID: (endAthlete: RenderedAthlete, transition: AthleteTransition, travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat)] = [:]
