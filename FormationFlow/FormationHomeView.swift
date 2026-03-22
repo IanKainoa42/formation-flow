@@ -215,6 +215,7 @@ struct RoutineWorkspaceView: View {
                         .padding(10)
                         .background(.ultraThinMaterial, in: Circle())
                 }
+                .accessibilityLabel("Exit full screen")
 
                 if store.routine.formations.count >= 2 {
                     Button {
@@ -226,6 +227,7 @@ struct RoutineWorkspaceView: View {
                             .padding(10)
                             .background(.ultraThinMaterial, in: Circle())
                     }
+                    .accessibilityLabel("Play routine")
                 }
             }
             .padding(16)
@@ -479,6 +481,7 @@ struct RoutineWorkspaceView: View {
                                     .padding(8)
                                     .background(.ultraThinMaterial, in: Circle())
                             }
+                            .accessibilityLabel("Play routine")
                         }
 
                         Button {
@@ -492,6 +495,7 @@ struct RoutineWorkspaceView: View {
                                 .padding(8)
                                 .background(.ultraThinMaterial, in: Circle())
                         }
+                        .accessibilityLabel("Enter full screen")
                     }
                     .padding(12)
                 }
