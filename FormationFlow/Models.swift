@@ -1511,6 +1511,20 @@ struct PathCalculations {
         )
     }
 
+    static func catmullRomControlPoints(
+        prev: CGPoint, p0: CGPoint, p1: CGPoint, next: CGPoint
+    ) -> (c1: CGPoint, c2: CGPoint) {
+        let c1 = CGPoint(
+            x: p0.x + (p1.x - prev.x) / 6.0,
+            y: p0.y + (p1.y - prev.y) / 6.0
+        )
+        let c2 = CGPoint(
+            x: p1.x - (next.x - p0.x) / 6.0,
+            y: p1.y - (next.y - p0.y) / 6.0
+        )
+        return (c1, c2)
+    }
+
     static func waypointNodes(from start: CGPoint, to end: CGPoint, waypoints: [PathWaypoint]) -> [CGPoint] {
         [start] + waypoints.map(\.position) + [end]
     }
@@ -1571,14 +1585,7 @@ struct PathCalculations {
             if waypointAtEnd?.isSmooth == true {
                 let prev = segmentIndex > 0 ? nodes[segmentIndex - 1] : p0
                 let next = segmentIndex + 2 < nodes.count ? nodes[segmentIndex + 2] : p1
-                let c1 = CGPoint(
-                    x: p0.x + (p1.x - prev.x) / 6.0,
-                    y: p0.y + (p1.y - prev.y) / 6.0
-                )
-                let c2 = CGPoint(
-                    x: p1.x - (next.x - p0.x) / 6.0,
-                    y: p1.y - (next.y - p0.y) / 6.0
-                )
+                let (c1, c2) = catmullRomControlPoints(prev: prev, p0: p0, p1: p1, next: next)
                 for step in 1...segmentSteps {
                     let t = CGFloat(step) / CGFloat(segmentSteps)
                     path.append(cubicBezierPoint(p0: p0, c1: c1, c2: c2, p3: p1, t: t))
@@ -1630,14 +1637,7 @@ struct PathCalculations {
                 if waypointAtEnd?.isSmooth == true {
                     let prev = segmentIndex > 0 ? nodes[segmentIndex - 1] : p0
                     let next = segmentIndex + 2 < nodes.count ? nodes[segmentIndex + 2] : p1
-                    let c1 = CGPoint(
-                        x: p0.x + (p1.x - prev.x) / 6.0,
-                        y: p0.y + (p1.y - prev.y) / 6.0
-                    )
-                    let c2 = CGPoint(
-                        x: p1.x - (next.x - p0.x) / 6.0,
-                        y: p1.y - (next.y - p0.y) / 6.0
-                    )
+                    let (c1, c2) = catmullRomControlPoints(prev: prev, p0: p0, p1: p1, next: next)
                     return cubicBezierPoint(p0: p0, c1: c1, c2: c2, p3: p1, t: t)
                 }
 

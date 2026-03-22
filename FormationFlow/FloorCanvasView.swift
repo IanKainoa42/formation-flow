@@ -158,14 +158,7 @@ struct FloorCanvasView: View {
                     if waypointAtEnd?.isSmooth == true {
                         let prev = segmentIndex > 0 ? screenNodes[segmentIndex - 1] : p0
                         let next = segmentIndex + 2 < screenNodes.count ? screenNodes[segmentIndex + 2] : p1
-                        let c1 = CGPoint(
-                            x: p0.x + (p1.x - prev.x) / 6.0,
-                            y: p0.y + (p1.y - prev.y) / 6.0
-                        )
-                        let c2 = CGPoint(
-                            x: p1.x - (next.x - p0.x) / 6.0,
-                            y: p1.y - (next.y - p0.y) / 6.0
-                        )
+                        let (c1, c2) = PathCalculations.catmullRomControlPoints(prev: prev, p0: p0, p1: p1, next: next)
                         segment.addCurve(to: p1, control1: c1, control2: c2)
                     } else {
                         segment.addLine(to: p1)
@@ -396,7 +389,7 @@ struct FloorCanvasView: View {
 
         for (athleteID, positions) in trailPositions {
             guard positions.count > 1, let athlete = athleteLookup[athleteID] else { continue }
-            let color = athlete.role.color
+            let color: Color = useRoleColors ? athlete.role.color : formationColor
 
             for (i, position) in positions.enumerated() {
                 let age = positions.count - 1 - i  // 0 = newest, count-1 = oldest
