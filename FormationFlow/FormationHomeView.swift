@@ -1,5 +1,8 @@
 import SwiftUI
 import LocalAuthentication
+#if canImport(UIKit)
+import UIKit
+#endif
 
 // MARK: - Routine Workspace View
 
@@ -26,11 +29,21 @@ struct RoutineWorkspaceView: View {
     @State private var triggerDeleteAthlete = false
 
     private var isCompactLayout: Bool {
-        horizontalSizeClass == .compact || UIDevice.current.userInterfaceIdiom == .phone
+        let isPhone: Bool
+        #if os(iOS)
+        isPhone = UIDevice.current.userInterfaceIdiom == .phone
+        #else
+        isPhone = false
+        #endif
+        return horizontalSizeClass == .compact || isPhone
     }
 
     private var isPhoneLayout: Bool {
-        UIDevice.current.userInterfaceIdiom == .phone
+        #if os(iOS)
+        return UIDevice.current.userInterfaceIdiom == .phone
+        #else
+        return false
+        #endif
     }
 
     private var selectedFormationIndex: Int? {
@@ -94,15 +107,18 @@ struct RoutineWorkspaceView: View {
             : "This removes the selected formations and any transition data connected to them. This cannot be undone."
     }
 
+    @ViewBuilder
     private var workspaceContent: some View {
-        Group {
-            if isFullScreen, !isCompactLayout, let selectedFormationID {
+        if isFullScreen && !isCompactLayout {
+            if let selectedFormationID {
                 fullScreenFloor(formationID: selectedFormationID)
-            } else if isCompactLayout {
-                compactWorkspace
             } else {
                 regularWorkspace
             }
+        } else if isCompactLayout {
+            compactWorkspace
+        } else {
+            regularWorkspace
         }
     }
 

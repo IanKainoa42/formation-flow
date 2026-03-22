@@ -1,5 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#endif
 
 enum TransitionCountFormatting {
     static func value(_ value: Double) -> String {
@@ -423,6 +425,7 @@ struct CompactTransitionPlaybackRailView: View {
     }
 }
 
+#if canImport(UIKit)
 struct TransitionSharePayload: Identifiable {
     let id = UUID()
     let image: UIImage
@@ -444,6 +447,7 @@ struct ShareSheetView: UIViewControllerRepresentable {
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
+#endif
 
 struct TransitionShareCardView: View {
     let routineName: String

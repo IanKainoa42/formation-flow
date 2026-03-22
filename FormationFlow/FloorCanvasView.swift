@@ -1,4 +1,10 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
+
 
 // MARK: - Floor Canvas View
 
@@ -509,12 +515,24 @@ struct FloorCanvasView: View {
     }
 
     private func blendedFormationColor(progress: CGFloat) -> Color {
+        #if canImport(UIKit)
         let resolved1 = UIColor(startFormationColor)
         let resolved2 = UIColor(endFormationColor)
+        #elseif canImport(AppKit)
+        let resolved1 = NSColor(startFormationColor).usingColorSpace(.extendedSRGB) ?? NSColor()
+        let resolved2 = NSColor(endFormationColor).usingColorSpace(.extendedSRGB) ?? NSColor()
+        #else
+        return startFormationColor
+        #endif
+        
         var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
         var r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
+        
+        #if canImport(UIKit) || canImport(AppKit)
         resolved1.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
         resolved2.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        #endif
+        
         let t = min(max(progress, 0), 1)
         return Color(
             red: r1 + (r2 - r1) * t,
@@ -526,9 +544,19 @@ struct FloorCanvasView: View {
     /// Returns white or black depending on the perceived brightness of the fill color.
     /// Uses relative luminance formula: 0.299*R + 0.587*G + 0.114*B
     private func contrastingLabelColor(for fillColor: Color) -> Color {
+        #if canImport(UIKit)
         let uiColor = UIColor(fillColor)
+        #elseif canImport(AppKit)
+        let uiColor = NSColor(fillColor).usingColorSpace(.extendedSRGB) ?? NSColor()
+        #else
+        return .white
+        #endif
+        
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        #if canImport(UIKit) || canImport(AppKit)
         uiColor.getRed(&r, green: &g, blue: &b, alpha: &a)
+        #endif
+        
         let luminance = 0.299 * r + 0.587 * g + 0.114 * b
         return luminance > 0.5 ? .black : .white
     }
