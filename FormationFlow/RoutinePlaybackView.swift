@@ -29,6 +29,10 @@ struct RoutinePlaybackView: View {
                     athletes: player.currentAthletes,
                     cellSize: cellSize,
                     offset: CGPoint(x: offsetX, y: offsetY),
+                    hasTransition: true,
+                    startFormationColor: TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: player.currentSegmentIndex),
+                    endFormationColor: TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: player.currentSegmentIndex + 1),
+                    transitionProgress: player.segmentProgress,
                     useRoleColors: false,
                     trailPositions: player.showTrail ? player.trailPositions : [:]
                 )

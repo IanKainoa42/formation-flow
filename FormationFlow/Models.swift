@@ -2140,6 +2140,7 @@ final class RoutinePlayer: ObservableObject {
     @Published var currentFormationName: String = ""
     @Published var showTrail = false
     @Published var trailPositions: [UUID: [CGPoint]] = [:]
+    @Published var segmentProgress: CGFloat = 0
 
     let segments: [RoutineSegment]
     let segmentMarkers: [CGFloat]
@@ -2339,6 +2340,7 @@ final class RoutinePlayer: ObservableObject {
     private func updateGlobalProgress() {
         guard !isInGap, let player else { return }
         let localP = player.progress
+        segmentProgress = localP
 
         let segStart: CGFloat = currentSegmentIndex > 0 ? cumulativeFractions[currentSegmentIndex - 1] : 0
         let segEnd = cumulativeFractions[currentSegmentIndex]

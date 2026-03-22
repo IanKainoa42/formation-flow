@@ -52,7 +52,7 @@
          </BuildableReference>
       </BuildableProductRunnable>
       <StoreKitConfigurationFileReference
-         identifier = "../../../FormationFlow.storekit">
+         identifier = "../../FormationFlow.storekit">
       </StoreKitConfigurationFileReference>
    </LaunchAction>
    <ProfileAction

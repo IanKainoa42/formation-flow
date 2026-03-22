@@ -1,4 +1,14 @@
 {
+  "appPolicies" : {
+    "eula" : "",
+    "policies" : [
+      {
+        "locale" : "en_US",
+        "policyText" : "",
+        "policyURL" : ""
+      }
+    ]
+  },
   "identifier" : "FormationFlow",
   "nonConsumableProducts" : [
     {
@@ -17,8 +27,45 @@
       "type" : "NonConsumable"
     }
   ],
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "4.99",
+      "familyShareable" : true,
+      "internalID" : "4A7D96BC",
+      "localizations" : [
+        {
+          "description" : "Unlimited formations, roles, timing controls, and waypoints",
+          "displayName" : "FormationFlow Pro",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.ianrichardson.formationflow.pro",
+      "referenceName" : "FormationFlow Pro",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_askToBuyEnabled" : false,
+    "_billingGracePeriodEnabled" : false,
+    "_billingIssuesEnabled" : false,
+    "_disableDialogs" : false,
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_renewalBillingIssuesEnabled" : false,
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+
+    ],
+    "_timeRate" : 0
+  },
+  "subscriptionGroups" : [
+
+  ],
   "version" : {
-    "major" : 2,
+    "major" : 4,
     "minor" : 0,
     "patch" : 0
   }
