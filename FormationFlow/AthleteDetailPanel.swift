@@ -3,11 +3,8 @@ import SwiftUI
 // MARK: - Inspector Components
 
 struct AthleteInspectorView: View {
-    private let swapButtonSymbolName = "arrow.triangle.2.circlepath"
-
     let athlete: RosterAthlete
     let position: CGPoint
-    let isSwapMode: Bool
     let formationCount: Int
     var formationName: String = "Formation"
     var compactLayout: Bool = false
@@ -15,7 +12,6 @@ struct AthleteInspectorView: View {
     var onUpgrade: () -> Void = {}
     var onUpdateLabel: (String) -> Void
     var onUpdateRole: (AthleteRole) -> Void
-    var onSwap: () -> Void
     var onDelete: () -> Void
     var onClearSelection: () -> Void
 
@@ -76,11 +72,6 @@ struct AthleteInspectorView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Actions")
                     .font(.subheadline.weight(.semibold))
-                Button(action: onSwap) {
-                    Label(isSwapMode ? "Cancel Swap" : "Swap Position", systemImage: swapButtonSymbolName)
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
 
                 Button(role: .destructive) {
                     showDeleteConfirmation = true
@@ -258,9 +249,7 @@ struct SidebarInspectorView: View {
     let formationID: UUID
     @Binding var selectedAthleteIDs: Set<UUID>
     var isCompactLayout: Bool = false
-    var onSwap: () -> Void = {}
     var onDeleteAthlete: () -> Void = {}
-    var isSwapMode: Bool = false
 
     private var selectedAthleteID: UUID? {
         selectedAthleteIDs.count == 1 ? selectedAthleteIDs.first : nil
@@ -288,7 +277,6 @@ struct SidebarInspectorView: View {
                     AthleteInspectorView(
                         athlete: selectedRosterAthlete,
                         position: selectedPlacement.position,
-                        isSwapMode: isSwapMode,
                         formationCount: store.routine.formations.count,
                         formationName: formation?.name ?? "Formation",
                         compactLayout: isCompactLayout,
@@ -304,7 +292,6 @@ struct SidebarInspectorView: View {
                                 athlete.role = newRole
                             }
                         },
-                        onSwap: onSwap,
                         onDelete: onDeleteAthlete,
                         onClearSelection: {
                             selectedAthleteIDs = []

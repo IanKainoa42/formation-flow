@@ -2,6 +2,11 @@ import Combine
 import SwiftUI
 import UIKit
 
+enum SwapFormationTarget: String, CaseIterable {
+    case start = "Start"
+    case end = "End"
+}
+
 // MARK: - Floor Grid View
 
 struct FloorGridView: View {
@@ -43,6 +48,7 @@ struct FloorGridView: View {
     @State private var canvasPanOffset: CGSize = .zero
     @State private var lastCanvasPanOffset: CGSize = .zero
     @State private var swapSourceAthleteID: UUID?
+    @State private var swapFormationTarget: SwapFormationTarget = .start
     @State private var hasMadeFirstSelection = false
     @State private var activeAlignmentGuides: [AlignmentGuideRenderItem] = []
     @State private var rosterDeleteIDs: [UUID] = []
@@ -295,24 +301,15 @@ struct FloorGridView: View {
         hasTransition && startFormationName != nil && endFormationName != nil
     }
 
-    private var swapButtonSymbolName: String {
-        "arrow.triangle.2.circlepath"
-    }
-
-    private var swapButtonTitle: String {
-        isSwapMode ? "Cancel Swap" : "Swap Position"
-    }
-
-    private var swapButtonShortTitle: String {
-        isSwapMode ? "Cancel Swap" : "Swap"
+    private var swapSourceRosterAthlete: RosterAthlete? {
+        guard let swapSourceAthleteID else { return nil }
+        return store.routine.roster.first(where: { $0.id == swapSourceAthleteID })
     }
 
     private var compactBannerConfiguration: (text: String, color: Color)? {
-        if isSwapMode,
-           let swapSourceAthleteID,
-           let rosterAthlete = store.routine.roster.first(where: { $0.id == swapSourceAthleteID })
-        {
-            return ("Tap another athlete to swap with \(rosterAthlete.label).", .blue)
+        if isSwapMode, swapSourceRosterAthlete != nil {
+            // Handled by swapBanner view instead
+            return nil
         }
 
         if !hasMadeFirstSelection {
@@ -424,6 +421,22 @@ struct FloorGridView: View {
             lastCanvasPanOffset = .zero
             rotationStartPositions = [:]
             clearTransitionDragState()
+        }
+        .onChange(of: isSwapMode) { _, newValue in
+            if newValue, swapSourceAthleteID == nil {
+                // Swap was toggled externally (e.g. from FormationHomeView transport)
+                // Run the same logic as toggleSwapMode
+                guard let selectedAthleteID else {
+                    isSwapMode = false
+                    return
+                }
+                swapSourceAthleteID = selectedAthleteID
+                swapFormationTarget = .start
+                if let player {
+                    player.pause()
+                    player.seek(to: 0)
+                }
+            }
         }
         .onChange(of: selectedAthleteIDs) { _, newSelection in
             pendingWaypointDeletionID = nil
@@ -572,12 +585,6 @@ struct FloorGridView: View {
                     }
                     .buttonStyle(.borderedProminent)
                 }
-
-                Button(action: toggleSwapMode) {
-                    Label(swapButtonShortTitle, systemImage: swapButtonSymbolName)
-                }
-                .buttonStyle(.bordered)
-                .disabled(selectedAthleteID == nil)
 
                 if isCompactLayout {
                     compactOverflowMenu
@@ -877,24 +884,17 @@ struct FloorGridView: View {
                     .padding(.top, 12)
                 } else {
                     VStack(spacing: isCompactLayout ? 8 : 10) {
-                        if isCompactLayout {
+                        if isSwapMode, let athlete = swapSourceRosterAthlete {
+                            swapBanner(athleteLabel: athlete.label)
+                        } else if isCompactLayout {
                             if let compactBannerConfiguration {
                                 banner(text: compactBannerConfiguration.text, color: compactBannerConfiguration.color)
                             }
-                        } else {
-                            if isSwapMode, let swapSourceAthleteID,
-                                let rosterAthlete = store.routine.roster.first(where: { $0.id == swapSourceAthleteID })
-                            {
-                                banner(
-                                    text: "Tap another athlete to swap with \(rosterAthlete.label).",
-                                    color: .blue
-                                )
-                            } else if !hasMadeFirstSelection {
-                                banner(
-                                    text: "Tap an athlete to edit it. Drag on empty space to box-select.",
-                                    color: .accentColor
-                                )
-                            }
+                        } else if !hasMadeFirstSelection {
+                            banner(
+                                text: "Tap an athlete to edit it. Drag on empty space to box-select.",
+                                color: .accentColor
+                            )
                         }
                     }
                     .padding(.horizontal, isCompactLayout ? 12 : 0)
@@ -1024,9 +1024,7 @@ struct FloorGridView: View {
                 formationID: formationID,
                 selectedAthleteIDs: $selectedAthleteIDs,
                 isCompactLayout: true,
-                onSwap: toggleSwapMode,
-                onDeleteAthlete: { deleteSelectedAthlete() },
-                isSwapMode: isSwapMode
+                onDeleteAthlete: { deleteSelectedAthlete() }
             )
             .navigationTitle(compactInspectorTitle)
             .navigationBarTitleDisplayMode(.inline)
@@ -1083,17 +1081,6 @@ struct FloorGridView: View {
                 Label("Add", systemImage: "plus.circle.fill")
             }
             .buttonStyle(.borderedProminent)
-
-            if selectedAthleteID != nil {
-                Button(action: toggleSwapMode) {
-                    Image(systemName: swapButtonSymbolName)
-                        .frame(width: 30, height: 30)
-                }
-                .buttonStyle(.bordered)
-                .tint(isSwapMode ? .blue : .accentColor)
-                .accessibilityLabel(swapButtonTitle)
-                .accessibilityValue(isSwapMode ? "Active" : "Inactive")
-            }
 
             Spacer(minLength: 0)
 
@@ -1189,10 +1176,6 @@ struct FloorGridView: View {
                                 }
                             }
                         }
-                    }
-
-                    Button(action: toggleSwapMode) {
-                        Label(swapButtonTitle, systemImage: swapButtonSymbolName)
                     }
 
                     if hasTransition {
@@ -1646,6 +1629,26 @@ struct FloorGridView: View {
         .overlay(Capsule().strokeBorder(color.opacity(0.2), lineWidth: 0.5))
     }
 
+    @ViewBuilder
+    private func swapBanner(athleteLabel: String) -> some View {
+        VStack(spacing: 6) {
+            banner(text: "Tap another athlete to swap with \(athleteLabel).", color: .blue)
+
+            if hasTransition, let startFormationName, let endFormationName {
+                Picker("Swap in", selection: $swapFormationTarget) {
+                    Text(startFormationName).tag(SwapFormationTarget.start)
+                    Text(endFormationName).tag(SwapFormationTarget.end)
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 260)
+                .onChange(of: swapFormationTarget) { _, target in
+                    player?.pause()
+                    player?.seek(to: target == .start ? 0 : 1)
+                }
+            }
+        }
+    }
+
     private func athleteHitRadiusSquared(for athlete: RenderedAthlete, cellSize: CGFloat) -> CGFloat {
         let baseRadius = sqrt(interactionHitRadiusSquared(for: cellSize))
         let rolePadding: CGFloat = athlete.role == .tumbler ? 10 : 6
@@ -2028,35 +2031,25 @@ struct FloorGridView: View {
                         y: (value.location.y - offset.y) / cellSize
                     )
 
-                    // Try swapping in endpoint markers (check both sides)
+                    // Determine which formation to swap in and which athletes to hit-test
+                    let swapFormationID: UUID
+                    let swapAthletes: [RenderedAthlete]
+
                     if hasTransition, let player {
-                        let allEndpointAthletes: [(athlete: RenderedAthlete, formationID: UUID)] =
-                            player.startAthletes.map { ($0, startFormationID!) }
-                            + player.endAthletes.map { ($0, endFormationID!) }
-                        if let target = allEndpointAthletes.first(where: {
-                            athleteHit(
-                                at: tapPoint,
-                                within: [$0.athlete],
-                                cellSize: cellSize,
-                                excluding: swapSourceAthleteID
-                            ) != nil
-                        }) {
-                            store.swapPositions(in: target.formationID, id1: swapSourceAthleteID, id2: target.athlete.id)
-                            selectedAthleteIDs = [target.athlete.id]
-                            refreshTransitionFromStore()
-                            endSwapMode()
-                            return
-                        }
+                        swapFormationID = swapFormationTarget == .start ? startFormationID! : endFormationID!
+                        swapAthletes = swapFormationTarget == .start ? player.startAthletes : player.endAthletes
+                    } else {
+                        swapFormationID = formationID
+                        swapAthletes = renderedAthletes
                     }
 
-                    // Try swapping in main formation
                     if let targetAthlete = athleteHit(
                         at: tapPoint,
-                        within: renderedAthletes,
+                        within: swapAthletes,
                         cellSize: cellSize,
                         excluding: swapSourceAthleteID
                     ) {
-                        store.swapPositions(in: formationID, id1: swapSourceAthleteID, id2: targetAthlete.id)
+                        store.swapPositions(in: swapFormationID, id1: swapSourceAthleteID, id2: targetAthlete.id)
                         selectedAthleteIDs = [targetAthlete.id]
                         refreshTransitionFromStore()
                     }
@@ -2664,6 +2657,13 @@ struct FloorGridView: View {
 
         swapSourceAthleteID = selectedAthleteID
         isSwapMode = true
+        swapFormationTarget = .start
+
+        // Reset playback to show the start formation clearly
+        if let player {
+            player.pause()
+            player.seek(to: 0)
+        }
     }
 
     private func endSwapMode() {

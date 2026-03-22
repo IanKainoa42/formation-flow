@@ -324,13 +324,9 @@ struct RoutineWorkspaceView: View {
                     store: store,
                     formationID: selectedFormationID,
                     selectedAthleteIDs: $selectedAthleteIDs,
-                    onSwap: {
-                        isSwapMode.toggle()
-                    },
                     onDeleteAthlete: {
                         triggerDeleteAthlete = true
-                    },
-                    isSwapMode: isSwapMode
+                    }
                 )
                 .frame(minHeight: 200, maxHeight: 400)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
