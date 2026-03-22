@@ -29,7 +29,7 @@ struct RoutinePlaybackView: View {
                     athletes: player.currentAthletes,
                     cellSize: cellSize,
                     offset: CGPoint(x: offsetX, y: offsetY),
-                    useRoleColors: true,
+                    useRoleColors: false,
                     trailPositions: player.showTrail ? player.trailPositions : [:]
                 )
                 .ignoresSafeArea()

@@ -604,8 +604,10 @@ struct RoutineWorkspaceView: View {
 
     @ViewBuilder
     private func formationRow(for formation: Formation, showsDisclosure: Bool = false) -> some View {
-        HStack(spacing: 12) {
-            FormationThumbnailView(athletes: store.renderedAthletes(for: formation))
+        let index = store.routine.formations.firstIndex(where: { $0.id == formation.id }) ?? 0
+        let color = TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: index)
+        return HStack(spacing: 12) {
+            FormationThumbnailView(athletes: store.renderedAthletes(for: formation), color: color)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(formation.name)
@@ -945,6 +947,7 @@ struct RoutineWorkspaceView: View {
 
 private struct FormationThumbnailView: View {
     let athletes: [RenderedAthlete]
+    var color: Color = .white
 
     var body: some View {
         Canvas { context, size in
@@ -963,7 +966,7 @@ private struct FormationThumbnailView: View {
                     width: radius * 2,
                     height: radius * 2
                 )
-                context.fill(Path(ellipseIn: rect), with: .color(athlete.role.color))
+                context.fill(Path(ellipseIn: rect), with: .color(color))
             }
         }
         .frame(width: 34, height: 34)
