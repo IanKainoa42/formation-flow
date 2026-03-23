@@ -16,6 +16,7 @@ struct AthleteInspectorView: View {
     var onClearSelection: () -> Void
 
     @State private var showDeleteConfirmation = false
+    @State private var labelDraft: String = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: compactLayout ? 14 : 18) {
@@ -40,14 +41,18 @@ struct AthleteInspectorView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Identity")
                     .font(.subheadline.weight(.semibold))
-                TextField(
-                    "Label",
-                    text: Binding(
-                        get: { athlete.label },
-                        set: { onUpdateLabel(String($0.prefix(4))) }
-                    )
-                )
-                .textFieldStyle(.roundedBorder)
+                TextField("Label", text: $labelDraft)
+                    .textFieldStyle(.roundedBorder)
+                    .onChange(of: labelDraft) { _, newValue in
+                        let clamped = String(newValue.prefix(4))
+                        if clamped != newValue { labelDraft = clamped }
+                        let trimmed = clamped.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !trimmed.isEmpty {
+                            onUpdateLabel(trimmed)
+                        }
+                    }
+                    .onAppear { labelDraft = athlete.label }
+                    .onChange(of: athlete.id) { _, _ in labelDraft = athlete.label }
             }
 
             VStack(alignment: .leading, spacing: 8) {

@@ -16,7 +16,6 @@ struct RoutineWorkspaceView: View {
     @State private var splitViewVisibility: NavigationSplitViewVisibility = .all
     @State private var previewReferenceMode: PreviewReferenceMode = .outOfSelected
     @State private var showingResetConfirmation = false
-    @State private var pendingFormationDeleteIDs: [UUID] = []
     @State private var showingCompactFormationPicker = false
     @State private var renamingFormationID: UUID?
     @State private var formationNameDraft = ""
@@ -78,33 +77,8 @@ struct RoutineWorkspaceView: View {
         )
     }
 
-    private var showingFormationDeleteConfirmation: Binding<Bool> {
-        Binding(
-            get: { !pendingFormationDeleteIDs.isEmpty },
-            set: { isPresented in
-                if !isPresented {
-                    pendingFormationDeleteIDs = []
-                }
-            }
-        )
-    }
-
     private var canAddFormation: Bool {
         entitlementManager.isPro || store.routine.formations.count < FreeTierLimits.maxFormations
-    }
-
-    private var deleteConfirmationTitle: String {
-        "Delete \(pendingFormationDeleteIDs.count == 1 ? "this formation" : "these formations")?"
-    }
-    
-    private var deleteButtonTitle: String {
-        pendingFormationDeleteIDs.count == 1 ? "Delete Formation" : "Delete Formations"
-    }
-    
-    private var deleteConfirmationMessage: String {
-        pendingFormationDeleteIDs.count == 1
-            ? "This removes the formation and any transition data connected to it. This cannot be undone."
-            : "This removes the selected formations and any transition data connected to them. This cannot be undone."
     }
 
     @ViewBuilder
@@ -152,18 +126,6 @@ struct RoutineWorkspaceView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This clears the roster, formations, notes, and transition data, then starts over with one empty formation.")
-        }
-        .confirmationDialog(
-            deleteConfirmationTitle,
-            isPresented: showingFormationDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button(deleteButtonTitle, role: .destructive) {
-                deletePendingFormations()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(deleteConfirmationMessage)
         }
         .alert("Rename Formation", isPresented: showingRenamePrompt) {
             TextField("Formation name", text: $formationNameDraft)
@@ -618,7 +580,7 @@ struct RoutineWorkspaceView: View {
     private func formationRow(for formation: Formation, showsDisclosure: Bool = false) -> some View {
         let index = store.routine.formations.firstIndex(where: { $0.id == formation.id }) ?? 0
         let color = TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: index)
-        return HStack(spacing: 12) {
+        HStack(spacing: 12) {
             FormationThumbnailView(athletes: store.renderedAthletes(for: formation), color: color)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -803,16 +765,6 @@ struct RoutineWorkspaceView: View {
     }
 
     private func requestFormationDeletion(_ formationIDs: [UUID]) {
-        pendingFormationDeleteIDs = formationIDs.reduce(into: [UUID]()) { result, formationID in
-            guard store.formationIndex(id: formationID) != nil else { return }
-            guard !result.contains(formationID) else { return }
-            result.append(formationID)
-        }
-    }
-
-    private func deletePendingFormations() {
-        let formationIDs = pendingFormationDeleteIDs
-        pendingFormationDeleteIDs = []
         deleteFormations(ids: formationIDs)
     }
 

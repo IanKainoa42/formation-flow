@@ -1399,10 +1399,10 @@ final class RoutineStore: ObservableObject {
     private func nextRosterLabel() -> String {
         let existing = Set(routine.roster.map(\.label))
         var index = routine.roster.count + 1
-        var candidate = "A\(index)"
+        var candidate = String(format: "%02d", index)
         while existing.contains(candidate) {
             index += 1
-            candidate = "A\(index)"
+            candidate = String(format: "%02d", index)
         }
         return candidate
     }
