@@ -1,4 +1,5 @@
 import SwiftUI
+import LocalAuthentication
 
 // MARK: - Routine Workspace View
 
@@ -86,7 +87,9 @@ struct RoutineWorkspaceView: View {
             titleVisibility: .visible
         ) {
             Button("Reset Routine", role: .destructive) {
-                resetRoutine()
+                authenticateForDestructiveAction {
+                    resetRoutine()
+                }
             }
         } message: {
             Text("This clears the current routine and starts over with one empty formation.")
@@ -97,7 +100,9 @@ struct RoutineWorkspaceView: View {
             titleVisibility: .visible
         ) {
             Button("Delete Formation", role: .destructive) {
-                deleteSelectedFormation()
+                authenticateForDestructiveAction {
+                    deleteSelectedFormation()
+                }
             }
         } message: {
             Text("This removes the formation and updates adjacent transition previews.")
@@ -486,6 +491,23 @@ struct RoutineWorkspaceView: View {
     }
 
     // MARK: - Actions
+
+    private func authenticateForDestructiveAction(completion: @escaping () -> Void) {
+        let context = LAContext()
+        var error: NSError?
+
+        if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
+            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Authentication is required to perform this destructive action.") { success, _ in
+                DispatchQueue.main.async {
+                    if success {
+                        completion()
+                    }
+                }
+            }
+        } else {
+            completion()
+        }
+    }
 
     private func addFormation() {
         let newFormationID = store.addFormation(after: selectedFormationID)
