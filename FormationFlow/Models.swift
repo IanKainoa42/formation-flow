@@ -1051,6 +1051,7 @@ enum RoutineMetrics {
             try data.write(to: fileURL, options: [.atomic, .completeFileProtection])
             return true
         } catch {
+            Self.logger.error("Failed to save metrics: \(error.localizedDescription, privacy: .private)")
             return false
         }
     }
@@ -1060,6 +1061,8 @@ enum RoutineMetrics {
 
 @MainActor
 final class RoutineStore: ObservableObject {
+    private static let logger = Logger(subsystem: "FormationFlow", category: "Persistence")
+
     private struct TransitionEdge: Hashable {
         let fromID: UUID
         let toID: UUID
@@ -1119,6 +1122,7 @@ final class RoutineStore: ObservableObject {
             try data.write(to: fileURL, options: [.atomic, .completeFileProtection])
             return true
         } catch {
+            Self.logger.error("Failed to save routine: \(error.localizedDescription, privacy: .private)")
             return false
         }
     }

@@ -1,7 +1,9 @@
+import OSLog
 import SwiftUI
 
 struct ProUpgradeSheet: View {
     @EnvironmentObject private var entitlementManager: EntitlementManager
+    private let logger = Logger(subsystem: "FormationFlow", category: "ProUpgrade")
     @Environment(\.dismiss) private var dismiss
 
     @State private var purchaseState: PurchaseState = .idle
@@ -116,6 +118,7 @@ struct ProUpgradeSheet: View {
                 purchaseState = .error("Purchase could not be completed.")
             }
         } catch {
+            logger.error("Purchase failed: \(error.localizedDescription, privacy: .private)")
             purchaseState = .error("Something went wrong. Please try again.")
         }
     }
