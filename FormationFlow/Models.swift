@@ -1892,12 +1892,20 @@ final class TransitionPlayer: ObservableObject {
     @Published var progress: CGFloat = 0
     @Published var currentAthletes: [RenderedAthlete]
     @Published var speed: CGFloat = 2.0
-    @Published var startAthletes: [RenderedAthlete]
+    @Published var startAthletes: [RenderedAthlete] {
+        didSet { updateTimingCache() }
+    }
     @Published var endAthletes: [RenderedAthlete] {
-        didSet { updateEndLookup() }
+        didSet {
+            updateEndLookup()
+            updateTimingCache()
+        }
     }
     @Published var transitionSpec: TransitionSpec {
-        didSet { updateTransitionLookup() }
+        didSet {
+            updateTransitionLookup()
+            updateTimingCache()
+        }
     }
 
     var onComplete: (() -> Void)?
@@ -1914,6 +1922,10 @@ final class TransitionPlayer: ObservableObject {
     private var endLookup: [UUID: RenderedAthlete] = [:]
     private var transitionLookup: [UUID: AthleteTransition] = [:]
 
+    // ⚡ Bolt: Cache timing calculations outside the animation loop to avoid O(N) operations per frame.
+    private var timingCache: [UUID: (endAthlete: RenderedAthlete, transition: AthleteTransition, travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat)] = [:]
+    private var maxEffectiveTime: CGFloat = 1
+
     private var animationTimer: AnimationTimer?
 
     init(
@@ -1928,6 +1940,7 @@ final class TransitionPlayer: ObservableObject {
         self.currentAthletes = startAthletes
         updateEndLookup()
         updateTransitionLookup()
+        updateTimingCache()
     }
 
     private func updateEndLookup() {
@@ -1939,6 +1952,29 @@ final class TransitionPlayer: ObservableObject {
             transitionSpec.athleteTransitions.map { ($0.athleteID, $0) },
             uniquingKeysWith: { first, _ in first }
         )
+    }
+
+    private func updateTimingCache() {
+        var newTimingCache: [UUID: (endAthlete: RenderedAthlete, transition: AthleteTransition, travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat)] = [:]
+        newTimingCache.reserveCapacity(startAthletes.count)
+
+        let newMaxEffectiveTime = startAthletes.compactMap { athlete -> CGFloat? in
+            guard let endAthlete = endLookup[athlete.id] else { return nil }
+            let transition = transitionLookup[athlete.id] ?? AthleteTransition(athleteID: athlete.id)
+            let travel = PathCalculations.travelDistance(
+                from: athlete.position,
+                to: endAthlete.position,
+                transition: transition
+            )
+            let hold = transition.pathWaypoints.reduce(CGFloat(0)) { $0 + $1.holdCounts }
+            let effectiveTime = travel + hold
+
+            newTimingCache[athlete.id] = (endAthlete, transition, travel, hold, effectiveTime)
+            return effectiveTime
+        }.max() ?? 1
+
+        self.timingCache = newTimingCache
+        self.maxEffectiveTime = newMaxEffectiveTime
     }
 
     deinit {
@@ -1954,6 +1990,7 @@ final class TransitionPlayer: ObservableObject {
         self.endAthletes = endAthletes
         self.transitionSpec = transitionSpec
         duration = transitionSpec.duration
+        // updateTimingCache is called via property observers
         updateAthletesForProgress()
     }
 
@@ -2000,25 +2037,6 @@ final class TransitionPlayer: ObservableObject {
 
     private func updateAthletesForProgress() {
         // ⚡ Bolt: Removed redundant O(N) lookup dictionary allocations per frame. Used cached lookups.
-
-        // ⚡ Bolt: Cache timing calculations to avoid repeating O(N) operations in the second pass.
-        var timingCache: [UUID: (endAthlete: RenderedAthlete, transition: AthleteTransition, travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat)] = [:]
-        timingCache.reserveCapacity(startAthletes.count)
-
-        let maxEffectiveTime = startAthletes.compactMap { athlete -> CGFloat? in
-            guard let endAthlete = endLookup[athlete.id] else { return nil }
-            let transition = transitionLookup[athlete.id] ?? AthleteTransition(athleteID: athlete.id)
-            let travel = PathCalculations.travelDistance(
-                from: athlete.position,
-                to: endAthlete.position,
-                transition: transition
-            )
-            let hold = transition.pathWaypoints.reduce(CGFloat(0)) { $0 + $1.holdCounts }
-            let effectiveTime = travel + hold
-
-            timingCache[athlete.id] = (endAthlete, transition, travel, hold, effectiveTime)
-            return effectiveTime
-        }.max() ?? 1
 
         currentAthletes = startAthletes.map { athlete in
             guard let cached = timingCache[athlete.id] else { return athlete }
