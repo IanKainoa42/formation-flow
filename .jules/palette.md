@@ -6,3 +6,9 @@
 **Learning:** Manually overriding `.accessibilityValue` for standard SwiftUI `Slider` components breaks the native VoiceOver experience. Native `Slider` components correctly announce their percentages or bounded values by default.
 
 **Action:** DO NOT manually override `.accessibilityValue` on `Slider` components; let them use their native accessible behaviors.
+
+## 2024-03-XX - [Loading States in Primary Action Buttons]
+
+**Learning:** Swapping out a primary action button for a standalone `ProgressView` during asynchronous operations (like purchases) causes jarring UI layout jumps and completely removes the user's context of what action is being performed. It also causes screen readers to lose focus unexpectedly.
+
+**Action:** Embed loading states (e.g., `ProgressView`) directly *inside* the primary action button while disabling it. This maintains layout stability, preserves context, and allows for proper `accessibilityLabel` updates (e.g., changing from "Upgrade" to "Upgrading").
