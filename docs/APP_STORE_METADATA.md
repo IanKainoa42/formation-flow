@@ -41,6 +41,9 @@ Go beyond straight-line movement. Add waypoints to create curved paths, set hold
 BUILD FULL ROUTINES
 Create multiple formations within a single routine. Reorder formations, duplicate them, and preview the entire sequence.
 
+FREE TO START
+Create up to 3 formations with Base athletes — no purchase required. Upgrade to FormationFlow Pro to unlock unlimited formations, all athlete roles, and full routine playback.
+
 WORKS OFFLINE
 No account required. No internet needed. Your data stays on your device — always private, always available.
 
@@ -101,7 +104,11 @@ When prompted: "Do you or your third-party partners collect data from this app?"
 ---
 
 ## Pricing
-- **Free** (no in-app purchases)
+- **Free** with in-app purchase
+- **FormationFlow Pro** — $4.99 (one-time, non-consumable)
+  - Unlocks unlimited formations, all athlete roles, and full routine playback
+  - Configured via StoreKit 2 (`EntitlementManager.swift`)
+  - Restore Purchases button in `ProUpgradeSheet`
 
 ## Availability
 - All territories
