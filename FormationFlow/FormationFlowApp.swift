@@ -2,11 +2,13 @@ import SwiftUI
 
 @main
 struct FormationFlowApp: App {
+    @StateObject private var entitlementManager = EntitlementManager()
+
     var body: some Scene {
         WindowGroup {
             RoutineWorkspaceView()
-                .preferredColorScheme(.dark)
                 .tint(.orange)
+                .environmentObject(entitlementManager)
         }
     }
 }
