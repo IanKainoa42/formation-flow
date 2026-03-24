@@ -107,6 +107,7 @@ struct RoutinePlaybackView: View {
                     ),
                     in: 0...1
                 )
+                .accessibilityLabel("Routine progress")
 
                 // Segment marker ticks
                 GeometryReader { geo in
