@@ -169,25 +169,7 @@ struct FloorGridView: View {
 
     private var transitionPaths: [TransitionPathRenderItem] {
         guard let player else { return [] }
-        let endLookup = Dictionary(uniqueKeysWithValues: player.endAthletes.map { ($0.id, $0) })
-        // ⚡ Bolt: Optimize O(N^2) transition lookup to O(N) by pre-computing a dictionary.
-        let transitionLookup = Dictionary(
-            player.transitionSpec.athleteTransitions.map { ($0.athleteID, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        return player.startAthletes.compactMap { athlete in
-            guard let endAthlete = endLookup[athlete.id] else { return nil }
-            // ⚡ Bolt: Replace O(N) lookup with O(1) dictionary access
-            let transition = transitionLookup[athlete.id] ?? AthleteTransition(athleteID: athlete.id)
-            return TransitionPathRenderItem(
-                athleteID: athlete.id,
-                startPosition: athlete.position,
-                endPosition: endAthlete.position,
-                controlPoint: transition.pathControlPoint,
-                waypoints: transition.pathWaypoints,
-                moveDelay: transition.moveDelay
-            )
-        }
+        return player.cachedTransitionPaths
     }
 
     private var endpointMarkers: [TransitionEndpointMarkerRenderItem] {
@@ -231,7 +213,7 @@ struct FloorGridView: View {
 
     private var pathCollisionIDs: Set<UUID> {
         guard let player else { return [] }
-        return PathCalculations.findPathCollisionIDs(paths: transitionPaths, counts: CGFloat(player.counts))
+        return player.cachedPathCollisionIDs
     }
 
     private var currentFormationEndpoint: PreviewEditableEndpoint? {

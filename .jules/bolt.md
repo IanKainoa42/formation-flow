@@ -15,3 +15,9 @@
 **Learning:** Allocating dictionaries inside highly iterative animation frame functions (e.g., `updateAthletesForProgress`) forces O(N) array mappings and dictionary allocations on every single screen update. This creates excessive memory pressure and high CPU usage overhead in the critical animation path.
 
 **Action:** Whenever generating an O(1) lookup dictionary from an array that doesn't change during the animation loop itself, move the dictionary creation out of the hot path. Cache the resulting dictionary as a private class property and update it via `didSet` property observers on the source arrays (and once in `init()`). This eliminates O(N) repetitive work and memory spikes per frame.
+
+## 2024-05-26 - [Expensive Collision Calculations in Animation Frame Loop]
+
+**Learning:** Computed properties that perform heavy calculations (like `PathCalculations.findPathCollisionIDs` which simulates Bezier curve intersections across time) should not be directly referenced in a SwiftUI view `body` if that view re-evaluates frequently (e.g., during a 60fps animation). In `FloorGridView`, `pathCollisionIDs` was re-evaluated on every frame of `TransitionPlayer`, leading to O(N^2 * Steps) redundant work.
+
+**Action:** Move expensive derived state out of SwiftUI computed properties and into the `ObservableObject` (`TransitionPlayer`), where it can be cached and only updated when its true dependencies (e.g., `startAthletes`, `endAthletes`, `transitionSpec`) change.
