@@ -38,6 +38,7 @@ enum TransportControls {
         }
         .buttonStyle(.bordered)
         .accessibilityLabel("Reset transition")
+        .help("Jump back to the start of the transition")
     }
 
     @ViewBuilder
@@ -50,6 +51,7 @@ enum TransportControls {
         }
         .buttonStyle(.borderedProminent)
         .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
+        .help(player.isPlaying ? "Pause the transition preview" : "Play the transition animation")
     }
 
     @ViewBuilder
@@ -64,6 +66,7 @@ enum TransportControls {
         .tint(player.isLooping ? .accentColor : .secondary)
         .accessibilityLabel("Toggle loop")
         .accessibilityValue(player.isLooping ? "On" : "Off")
+        .help(player.isLooping ? "Stop looping — play once and stop" : "Loop — repeat the transition continuously")
     }
 
     @ViewBuilder
@@ -76,6 +79,7 @@ enum TransportControls {
             in: 0...1
         )
         .accessibilityLabel("Transition progress")
+        .help("Scrub through the transition — drag to jump to any point")
     }
 
     @ViewBuilder
@@ -83,6 +87,7 @@ enum TransportControls {
         Text(String(format: "%.0f%%", player.progress * 100))
             .font(.system(.caption, design: .monospaced))
             .foregroundColor(.secondary)
+            .help("Current position in the transition (0% = start, 100% = end)")
     }
 
     @ViewBuilder
@@ -95,6 +100,7 @@ enum TransportControls {
         .tint(isActive ? .blue : .secondary)
         .accessibilityLabel(isActive ? "Cancel Swap" : "Swap Position")
         .accessibilityValue(isActive ? "Active" : "Inactive")
+        .help(isActive ? "Cancel the swap operation" : "Swap start or end positions between two athletes")
     }
 
     @ViewBuilder

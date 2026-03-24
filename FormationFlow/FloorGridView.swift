@@ -404,7 +404,8 @@ struct FloorGridView: View {
             Text("This removes the waypoint and its timing hold from the selected athlete's path. This cannot be undone.")
         }
         .onChange(of: formationID) { _, _ in
-            selectedAthleteIDs = []
+            // Batch all resets before clearing selection to avoid
+            // cascading onChange triggers in the same frame.
             endSwapMode()
             activeAlignmentGuides = []
             collisionCycleIndex = 0
@@ -421,6 +422,7 @@ struct FloorGridView: View {
             lastCanvasPanOffset = .zero
             rotationStartPositions = [:]
             clearTransitionDragState()
+            selectedAthleteIDs = []
         }
         .onChange(of: isSwapMode) { _, newValue in
             if newValue, swapSourceAthleteID == nil {
@@ -444,7 +446,11 @@ struct FloorGridView: View {
                 hasMadeFirstSelection = true
             }
             if newSelection.isEmpty {
-                endSwapMode()
+                // Only call endSwapMode if still active — avoids redundant
+                // updates when formationID onChange already ended it.
+                if isSwapMode {
+                    endSwapMode()
+                }
                 focusedEndpoint = hasTransition ? currentFormationEndpoint : nil
             }
         }
@@ -514,6 +520,7 @@ struct FloorGridView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Athlete spacing alerts")
+                    .help("Athletes too close together — tap to cycle through collisions")
                 }
 
                 if showTransitionPaths, !pathCollidingAthletes.isEmpty {
@@ -533,12 +540,14 @@ struct FloorGridView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Path crossing alerts")
+                    .help("Transition paths cross — tap to cycle through conflicts")
                 }
 
                 Button(action: addAthlete) {
                     Label(isCompactLayout ? "Add" : "Add Athlete", systemImage: "plus.circle.fill")
                 }
                 .buttonStyle(.borderedProminent)
+                .help("Add a new athlete to this formation")
 
                 if isCompactLayout {
                     Group {
@@ -549,6 +558,7 @@ struct FloorGridView: View {
                                 Label(compactInspectButtonTitle, systemImage: "slider.horizontal.3")
                             }
                             .buttonStyle(.bordered)
+                            .help("Open inspector to edit athlete details")
                         } else {
                             Button {
                                 showingInspectorSheet = true
@@ -556,6 +566,7 @@ struct FloorGridView: View {
                                 Label(compactInspectButtonTitle, systemImage: "slider.horizontal.3")
                             }
                             .buttonStyle(.borderedProminent)
+                            .help("Open inspector to edit selected athlete")
                         }
                     }
                 }
@@ -567,6 +578,7 @@ struct FloorGridView: View {
                         Label("Preview", systemImage: "play.circle")
                     }
                     .buttonStyle(.bordered)
+                    .help("Preview the transition animation between formations")
                 }
 
                 if hasTransition {
@@ -579,11 +591,13 @@ struct FloorGridView: View {
                         )
                     }
                     .buttonStyle(.bordered)
+                    .help(showTransitionPaths ? "Hide movement paths between formations" : "Show movement paths between formations")
 
                     Button(action: shareTransitionPreview) {
                         Label("Share Preview", systemImage: "square.and.arrow.up")
                     }
                     .buttonStyle(.borderedProminent)
+                    .help("Export an animated preview of this transition")
                 }
 
                 if isCompactLayout {
@@ -593,16 +607,19 @@ struct FloorGridView: View {
                         Label("Manage Roster", systemImage: "list.bullet.rectangle")
                     }
                     .buttonStyle(.bordered)
+                    .help("Add, remove, or rename athletes on the team roster")
 
                     Button(action: resetView) {
                         Label("Reset View", systemImage: "arrow.counterclockwise")
                     }
                     .buttonStyle(.bordered)
+                    .help("Reset zoom and pan back to the default view")
 
                     Button(action: { showingNotesSheet = true }) {
                         Label("Notes", systemImage: "note.text")
                     }
                     .buttonStyle(.bordered)
+                    .help("Add notes or reminders for this formation")
                     .overlay(alignment: .topTrailing) {
                         if formation?.notes.isEmpty == false {
                             Circle()
@@ -617,6 +634,7 @@ struct FloorGridView: View {
                     }
                     .buttonStyle(.bordered)
                     .disabled(undoStack.isEmpty)
+                    .help("Undo the last athlete position change")
                 }
             }
             .controlSize(isCompactLayout || isHeightConstrained ? .small : .regular)
@@ -689,12 +707,14 @@ struct FloorGridView: View {
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.borderedProminent)
+                            .help("Place a single athlete on the floor")
 
                             Button(action: applyTemplate) {
                                 Label("Apply 10-Athlete Template", systemImage: "square.grid.3x3.fill")
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.bordered)
+                            .help("Place 10 athletes in a bowling-pin formation")
 
                             Button(action: onDuplicateAsNext) {
                                 Label("Duplicate as Next Formation", systemImage: "plus.square.on.square")
@@ -702,6 +722,7 @@ struct FloorGridView: View {
                             }
                             .buttonStyle(.bordered)
                             .disabled(renderedAthletes.isEmpty)
+                            .help("Copy this formation's positions into a new formation")
                         }
                     } else {
                         HStack(spacing: 12) {
@@ -710,12 +731,14 @@ struct FloorGridView: View {
                                     .frame(minWidth: 180)
                             }
                             .buttonStyle(.borderedProminent)
+                            .help("Place a single athlete on the floor")
 
                             Button(action: applyTemplate) {
                                 Label("Apply 10-Athlete Template", systemImage: "square.grid.3x3.fill")
                                     .frame(minWidth: 220)
                             }
                             .buttonStyle(.bordered)
+                            .help("Place 10 athletes in a bowling-pin formation")
 
                             Button(action: onDuplicateAsNext) {
                                 Label("Duplicate as Next Formation", systemImage: "plus.square.on.square")
@@ -723,6 +746,7 @@ struct FloorGridView: View {
                             }
                             .buttonStyle(.bordered)
                             .disabled(renderedAthletes.isEmpty)
+                            .help("Copy this formation's positions into a new formation")
                         }
                     }
                 }
