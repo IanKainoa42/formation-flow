@@ -70,6 +70,7 @@ struct FloorGridView: View {
     @State private var sharePayload: TransitionSharePayload?
     @State private var shareResultMessage = ""
     @State private var showingShareResult = false
+    @State private var cachedPathCollisionIDs: Set<UUID> = []
 
     private var formationIndex: Int? {
         store.formationIndex(id: formationID)
@@ -229,9 +230,12 @@ struct FloorGridView: View {
         return startMarkers + endMarkers
     }
 
-    private var pathCollisionIDs: Set<UUID> {
-        guard let player else { return [] }
-        return PathCalculations.findPathCollisionIDs(paths: transitionPaths, counts: CGFloat(player.counts))
+    private func recomputePathCollisionIDs() {
+        guard let player else {
+            cachedPathCollisionIDs = []
+            return
+        }
+        cachedPathCollisionIDs = PathCalculations.findPathCollisionIDs(paths: transitionPaths, counts: CGFloat(player.counts))
     }
 
     private var currentFormationEndpoint: PreviewEditableEndpoint? {
@@ -294,7 +298,7 @@ struct FloorGridView: View {
     }
 
     private var pathCollidingAthletes: [RenderedAthlete] {
-        renderedAthletes.filter { pathCollisionIDs.contains($0.id) }
+        renderedAthletes.filter { cachedPathCollisionIDs.contains($0.id) }
     }
 
     private var canShareTransition: Bool {
@@ -796,7 +800,7 @@ struct FloorGridView: View {
                 endpointMarkers: endpointMarkers,
                 alignmentGuides: activeAlignmentGuides,
                 collisionIDs: collisionSummary.ids,
-                pathCollisionIDs: pathCollisionIDs,
+                pathCollisionIDs: cachedPathCollisionIDs,
                 cellSize: cellSize,
                 offset: offset,
                 swapSourceID: swapSourceAthleteID,
@@ -2047,6 +2051,7 @@ struct FloorGridView: View {
                     dragStartPositions = [:]
                     endpointDragStartPosition = nil
                     activeAlignmentGuides = []
+                    store.saveNow()
                 }
 
                 if isSwapMode, let swapSourceAthleteID {
@@ -2612,6 +2617,7 @@ struct FloorGridView: View {
             endAthletes: store.renderedAthletes(for: endFormationID),
             transitionSpec: store.transitionSpec(for: startFormationID, to: endFormationID)
         )
+        recomputePathCollisionIDs()
     }
 
     // MARK: - Formation Actions
@@ -2626,7 +2632,8 @@ struct FloorGridView: View {
             startingPositions: Array(dragStartPositions.values),
             otherAthletePositions: renderedAthletes
                 .filter { !selectedAthleteIDs.contains($0.id) }
-                .map(\.position)
+                .map(\.position),
+            skipLinearGuides: renderedAthletes.count > 20
         )
         return SnapResult(translation: result.translation, guides: result.guides)
     }
@@ -2755,7 +2762,7 @@ struct FloorGridView: View {
             transitionPaths: transitionPaths,
             endpointMarkers: endpointMarkers,
             collisionIDs: collisionSummary.ids,
-            pathCollisionIDs: pathCollisionIDs,
+            pathCollisionIDs: cachedPathCollisionIDs,
             startFormationColor: transitionStartColor,
             endFormationColor: transitionEndColor,
             transitionProgress: player?.progress ?? 0

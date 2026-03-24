@@ -74,15 +74,20 @@ struct FloorCanvasView: View {
         }
     }
 
+    @Environment(\.accessibilityEnabled) private var accessibilityEnabled
+
+    @ViewBuilder
     private var accessibilityOverlay: some View {
-        ForEach(athletes) { athlete in
-            AthleteAccessibilityElement(
-                athlete: athlete,
-                cellSize: cellSize,
-                offset: offset,
-                isSelected: selectedAthleteIDs.contains(athlete.id),
-                isColliding: collisionIDs.contains(athlete.id)
-            )
+        if accessibilityEnabled {
+            ForEach(athletes) { athlete in
+                AthleteAccessibilityElement(
+                    athlete: athlete,
+                    cellSize: cellSize,
+                    offset: offset,
+                    isSelected: selectedAthleteIDs.contains(athlete.id),
+                    isColliding: collisionIDs.contains(athlete.id)
+                )
+            }
         }
     }
 

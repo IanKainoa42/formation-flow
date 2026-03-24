@@ -617,7 +617,8 @@ enum AlignmentSnapEngine {
         translation: CGPoint,
         startingPositions: [CGPoint],
         otherAthletePositions: [CGPoint],
-        threshold: CGFloat = 0.8
+        threshold: CGFloat = 0.8,
+        skipLinearGuides: Bool = false
     ) -> AlignmentSnapResult {
         guard !startingPositions.isEmpty else {
             return AlignmentSnapResult(translation: translation, guides: [])
@@ -645,12 +646,14 @@ enum AlignmentSnapEngine {
             CGPoint(x: $0.x + adjustedTranslation.x, y: $0.y + adjustedTranslation.y)
         }
         var guides = [verticalMatch?.guide, horizontalMatch?.guide].compactMap { $0 }
-        guides.append(
-            contentsOf: linearAlignmentGuides(
-                movingPositions: adjustedMovingPositions,
-                otherAthletePositions: otherAthletePositions
+        if !skipLinearGuides {
+            guides.append(
+                contentsOf: linearAlignmentGuides(
+                    movingPositions: adjustedMovingPositions,
+                    otherAthletePositions: otherAthletePositions
+                )
             )
-        )
+        }
 
         return AlignmentSnapResult(
             translation: adjustedTranslation,
@@ -1071,12 +1074,14 @@ final class RoutineStore: ObservableObject {
     @Published var routine: Routine {
         didSet {
             guard !isLoading else { return }
-            save()
+            debouncedSave()
         }
     }
 
     private let storageKey = "routine.v1"
     private var isLoading = false
+    private var pendingSave: DispatchWorkItem?
+    private var rosterLookup: [UUID: RosterAthlete] = [:]
 
     init() {
         self.routine = Routine.initial()
@@ -1127,9 +1132,25 @@ final class RoutineStore: ObservableObject {
         }
     }
 
+    private func debouncedSave() {
+        pendingSave?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            self?.save()
+        }
+        pendingSave = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: item)
+    }
+
+    func saveNow() {
+        pendingSave?.cancel()
+        pendingSave = nil
+        save()
+    }
+
     func resetRoutine() {
         routine = Routine.initial()
         reconcileRoutineShape()
+        saveNow()
     }
 
     func formationIndex(id: UUID?) -> Int? {
@@ -1166,7 +1187,6 @@ final class RoutineStore: ObservableObject {
     }
 
     func renderedAthletes(for formation: Formation) -> [RenderedAthlete] {
-        let rosterLookup = Dictionary(routine.roster.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         return formation.placements.compactMap { placement in
             guard let rosterAthlete = rosterLookup[placement.athleteID] else { return nil }
             return RenderedAthlete(
@@ -1288,6 +1308,7 @@ final class RoutineStore: ObservableObject {
         }
 
         reconcileTransitionSpecs()
+        rebuildRosterLookup()
         return newAthlete.id
     }
 
@@ -1344,6 +1365,7 @@ final class RoutineStore: ObservableObject {
             routine.transitionSpecs[transitionIndex].athleteTransitions.removeAll { $0.athleteID == id }
         }
         reconcileTransitionSpecs()
+        rebuildRosterLookup()
     }
 
     func swapPositions(in formationID: UUID, id1: UUID, id2: UUID) {
@@ -1368,6 +1390,7 @@ final class RoutineStore: ObservableObject {
     func mutateRosterAthlete(id: UUID, _ update: (inout RosterAthlete) -> Void) {
         guard let index = rosterIndex(id: id) else { return }
         update(&routine.roster[index])
+        rebuildRosterLookup()
     }
 
     func mutateTransitionSpec(from fromID: UUID, to toID: UUID, _ update: (inout TransitionSpec) -> Void) {
@@ -1418,6 +1441,10 @@ final class RoutineStore: ObservableObject {
         return candidate
     }
 
+    private func rebuildRosterLookup() {
+        rosterLookup = Dictionary(routine.roster.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+
     private func reconcileRoutineShape() {
         if routine.formations.isEmpty {
             routine.formations = [Formation(name: "Formation 1")]
@@ -1439,6 +1466,7 @@ final class RoutineStore: ObservableObject {
         }
 
         reconcileTransitionSpecs()
+        rebuildRosterLookup()
     }
 
     private func reconcileTransitionSpecs() {
@@ -1927,7 +1955,7 @@ final class TransitionPlayer: ObservableObject {
     private var transitionLookup: [UUID: AthleteTransition] = [:]
 
     // ⚡ Bolt: Cache timing calculations outside the animation loop to avoid O(N) operations per frame.
-    private var timingCache: [UUID: (endAthlete: RenderedAthlete, transition: AthleteTransition, travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat)] = [:]
+    private var timingCache: [UUID: (endAthlete: RenderedAthlete, transition: AthleteTransition, travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat, thresholds: [CGFloat])] = [:]
     private var maxEffectiveTime: CGFloat = 1
 
     private var animationTimer: AnimationTimer?
@@ -1959,7 +1987,7 @@ final class TransitionPlayer: ObservableObject {
     }
 
     private func updateTimingCache() {
-        var newTimingCache: [UUID: (endAthlete: RenderedAthlete, transition: AthleteTransition, travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat)] = [:]
+        var newTimingCache: [UUID: (endAthlete: RenderedAthlete, transition: AthleteTransition, travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat, thresholds: [CGFloat])] = [:]
         newTimingCache.reserveCapacity(startAthletes.count)
 
         let newMaxEffectiveTime = startAthletes.compactMap { athlete -> CGFloat? in
@@ -1972,8 +2000,15 @@ final class TransitionPlayer: ObservableObject {
             )
             let hold = transition.pathWaypoints.reduce(CGFloat(0)) { $0 + $1.holdCounts }
             let effectiveTime = travel + hold
+            let thresholds = !transition.pathWaypoints.isEmpty
+                ? PathCalculations.waypointProgressThresholds(
+                    from: athlete.position,
+                    to: endAthlete.position,
+                    waypoints: transition.pathWaypoints
+                )
+                : []
 
-            newTimingCache[athlete.id] = (endAthlete, transition, travel, hold, effectiveTime)
+            newTimingCache[athlete.id] = (endAthlete, transition, travel, hold, effectiveTime, thresholds)
             return effectiveTime
         }.max() ?? 1
 
@@ -2057,11 +2092,7 @@ final class TransitionPlayer: ObservableObject {
 
             let effectiveProgress: CGFloat
             if !transition.pathWaypoints.isEmpty && hold > 0 {
-                let thresholds = PathCalculations.waypointProgressThresholds(
-                    from: athlete.position,
-                    to: endAthlete.position,
-                    waypoints: transition.pathWaypoints
-                )
+                let thresholds = cached.thresholds
                 let moveDuration = durationFraction * max(CGFloat(counts), 0.5) * (travel / max(effectiveTime, 0.001))
                 effectiveProgress = PathCalculations.holdAdjustedPathProgress(
                     wallProgress: athleteProgress,

@@ -8,6 +8,7 @@ import UIKit
 
 struct RoutineWorkspaceView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var store = RoutineStore()
     @StateObject private var previewSession = TransitionPreviewSession()
 
@@ -146,6 +147,11 @@ struct RoutineWorkspaceView: View {
         .fullScreenCover(isPresented: $showingRoutinePlayback) {
             RoutinePlaybackView(store: store)
                 .environmentObject(entitlementManager)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .background || newPhase == .inactive {
+                store.saveNow()
+            }
         }
     }
 
