@@ -17,6 +17,7 @@ struct TimingControlsView: View {
                 in: 0...max(duration, 0.5),
                 step: 0.5
             )
+            .accessibilityLabel("\(label) starts after")
             HStack {
                 Text("Moves first")
                 Spacer()

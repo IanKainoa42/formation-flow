@@ -15,15 +15,17 @@
 		DCC44D02B9685B8277F4D198 /* FloorCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 303A4352BC4FD6FB758B338C /* FloorCanvasView.swift */; };
 		F2404D8798687C821CBF4F7C /* TransitionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22EB4E82B510B78E55C92084 /* TransitionViews.swift */; };
 		F4094C4FBEC63EB6C48960EB /* AthleteDetailPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FD34039AE5F73A96066C39B /* AthleteDetailPanel.swift */; };
+		CC220001CC220001CC220001 /* EntitlementManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB110001BB110001BB110001 /* EntitlementManager.swift */; };
+		CC220002CC220002CC220002 /* FreeTierLimits.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB110002BB110002BB110002 /* FreeTierLimits.swift */; };
+		CC220003CC220003CC220003 /* ProUpgradeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB110003BB110003BB110003 /* ProUpgradeSheet.swift */; };
+		DD330001DD330001DD330001 /* RoutinePlaybackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC440001CC440001CC440001 /* RoutinePlaybackView.swift */; };
 		AA000001AA000001AA000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1F08C9AC2F57AAC400425930 /* Assets.xcassets */; };
-		AA000002AA000002AA000002 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 1FEE78922F3E5EB100012373 /* LaunchScreen.storyboard */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		1F08C9AC2F57AAC400425930 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = FormationFlow/Assets.xcassets; sourceTree = SOURCE_ROOT; };
 		1F08C9AD2F57AAED00425930 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = FormationFlow/Info.plist; sourceTree = SOURCE_ROOT; };
 		1FEE788C2F3E5E9900012373 /* FormationFlow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FormationFlow.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		1FEE78912F3E5EB100012373 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		21E94990B494F1D3D617A4E7 /* FormationFlowApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FormationFlowApp.swift; path = FormationFlow/FormationFlowApp.swift; sourceTree = SOURCE_ROOT; };
 		22EB4E82B510B78E55C92084 /* TransitionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TransitionViews.swift; path = FormationFlow/TransitionViews.swift; sourceTree = SOURCE_ROOT; };
 		303A4352BC4FD6FB758B338C /* FloorCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FloorCanvasView.swift; path = FormationFlow/FloorCanvasView.swift; sourceTree = SOURCE_ROOT; };
@@ -32,6 +34,11 @@
 		4FD34039AE5F73A96066C39B /* AthleteDetailPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AthleteDetailPanel.swift; path = FormationFlow/AthleteDetailPanel.swift; sourceTree = SOURCE_ROOT; };
 		B2C3D4E5F6A7B8C9D0E1F2A3 /* FormationHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FormationHomeView.swift; path = FormationFlow/FormationHomeView.swift; sourceTree = SOURCE_ROOT; };
 		EFC34761911C80E5631C8341 /* FloorGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FloorGridView.swift; path = FormationFlow/FloorGridView.swift; sourceTree = SOURCE_ROOT; };
+		BB110001BB110001BB110001 /* EntitlementManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EntitlementManager.swift; path = FormationFlow/EntitlementManager.swift; sourceTree = SOURCE_ROOT; };
+		BB110002BB110002BB110002 /* FreeTierLimits.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FreeTierLimits.swift; path = FormationFlow/FreeTierLimits.swift; sourceTree = SOURCE_ROOT; };
+		BB110003BB110003BB110003 /* ProUpgradeSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ProUpgradeSheet.swift; path = FormationFlow/ProUpgradeSheet.swift; sourceTree = SOURCE_ROOT; };
+		CC440001CC440001CC440001 /* RoutinePlaybackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RoutinePlaybackView.swift; path = FormationFlow/RoutinePlaybackView.swift; sourceTree = SOURCE_ROOT; };
+		BB110004BB110004BB110004 /* FormationFlow.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; name = FormationFlow.storekit; path = FormationFlow.storekit; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -40,6 +47,7 @@
 			children = (
 				1FEE78952F3E5EB100012373 /* FormationFlow */,
 				1FEE788D2F3E5E9900012373 /* Products */,
+				BB110004BB110004BB110004 /* FormationFlow.storekit */,
 			);
 			sourceTree = "<group>";
 		};
@@ -56,7 +64,6 @@
 			children = (
 				1F08C9AC2F57AAC400425930 /* Assets.xcassets */,
 				1F08C9AD2F57AAED00425930 /* Info.plist */,
-				1FEE78922F3E5EB100012373 /* LaunchScreen.storyboard */,
 				B2C3D4E5F6A7B8C9D0E1F2A3 /* FormationHomeView.swift */,
 				303A4352BC4FD6FB758B338C /* FloorCanvasView.swift */,
 				EFC34761911C80E5631C8341 /* FloorGridView.swift */,
@@ -65,6 +72,10 @@
 				4FD34039AE5F73A96066C39B /* AthleteDetailPanel.swift */,
 				4F4F48ABA5AD5A9438964E6B /* Models.swift */,
 				21E94990B494F1D3D617A4E7 /* FormationFlowApp.swift */,
+				BB110001BB110001BB110001 /* EntitlementManager.swift */,
+				BB110002BB110002BB110002 /* FreeTierLimits.swift */,
+				BB110003BB110003BB110003 /* ProUpgradeSheet.swift */,
+				CC440001CC440001CC440001 /* RoutinePlaybackView.swift */,
 			);
 			path = FormationFlow;
 			sourceTree = "<group>";
@@ -121,7 +132,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA000001AA000001AA000001 /* Assets.xcassets in Resources */,
-				AA000002AA000002AA000002 /* LaunchScreen.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -140,20 +150,16 @@
 				F4094C4FBEC63EB6C48960EB /* AthleteDetailPanel.swift in Sources */,
 				334C42A5B839654CCBC14ACF /* Models.swift in Sources */,
 				5A25437D9A0BBC0AC8856EE5 /* FormationFlowApp.swift in Sources */,
+				CC220001CC220001CC220001 /* EntitlementManager.swift in Sources */,
+				CC220002CC220002CC220002 /* FreeTierLimits.swift in Sources */,
+				CC220003CC220003CC220003 /* ProUpgradeSheet.swift in Sources */,
+				DD330001DD330001DD330001 /* RoutinePlaybackView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXVariantGroup section */
-		1FEE78922F3E5EB100012373 /* LaunchScreen.storyboard */ = {
-			isa = PBXVariantGroup;
-			children = (
-				1FEE78912F3E5EB100012373 /* Base */,
-			);
-			name = LaunchScreen.storyboard;
-			sourceTree = "<group>";
-		};
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
@@ -164,7 +170,7 @@
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 11;
 				INFOPLIST_FILE = FormationFlow/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = FormationFlow;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.sports";
@@ -271,7 +277,7 @@
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 11;
 				INFOPLIST_FILE = FormationFlow/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = FormationFlow;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.sports";

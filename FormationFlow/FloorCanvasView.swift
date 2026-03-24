@@ -1,4 +1,10 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
+
 
 // MARK: - Floor Canvas View
 
@@ -20,14 +26,30 @@ struct FloorCanvasView: View {
     var endFormationColor: Color = .clear
     var transitionProgress: CGFloat = 0
     var formationColor: Color = .white
+    var useRoleColors: Bool = false
     var ghostAthletes: [RenderedAthlete] = []
+    var trailPositions: [UUID: [CGPoint]] = [:]
+    var hoveredHandlePosition: CGPoint? = nil
+    var hoveredAthleteID: UUID? = nil
+    var focusedPathHandle: CGPoint? = nil
 
     var body: some View {
+        mainCanvas
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(.background)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Formation court grid")
+            .accessibilityValue("\(athletes.count) athletes on the court")
+            .overlay { accessibilityOverlay }
+    }
+
+    private var mainCanvas: some View {
         Canvas { context, _ in
             var context = context
             context.translateBy(x: offset.x, y: offset.y)
             drawGrid(in: &context)
             drawGhostAthletes(in: &context)
+            drawTrails(in: &context)
             drawAlignmentGuides(in: &context)
             drawTransitionPaths(in: &context)
             drawEndpointMarkers(in: &context)
@@ -50,8 +72,18 @@ struct FloorCanvasView: View {
                 )
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.background)
+    }
+
+    private var accessibilityOverlay: some View {
+        ForEach(athletes) { athlete in
+            AthleteAccessibilityElement(
+                athlete: athlete,
+                cellSize: cellSize,
+                offset: offset,
+                isSelected: selectedAthleteIDs.contains(athlete.id),
+                isColliding: collisionIDs.contains(athlete.id)
+            )
+        }
     }
 
     private func drawAlignmentGuides(in context: inout GraphicsContext) {
@@ -86,6 +118,18 @@ struct FloorCanvasView: View {
         }
     }
 
+    private func isHandleHovered(at gridPosition: CGPoint) -> Bool {
+        if let focused = focusedPathHandle {
+            let dx = gridPosition.x - focused.x
+            let dy = gridPosition.y - focused.y
+            if dx * dx + dy * dy < 1.0 { return true }
+        }
+        guard let hovered = hoveredHandlePosition else { return false }
+        let dx = gridPosition.x - hovered.x
+        let dy = gridPosition.y - hovered.y
+        return dx * dx + dy * dy < 1.0
+    }
+
     private func drawTransitionPaths(in context: inout GraphicsContext) {
         let pathOpacityMultiplier: CGFloat = focusedEndpoint != nil ? 0.5 : 1.0
         for item in transitionPaths {
@@ -114,14 +158,7 @@ struct FloorCanvasView: View {
                     if waypointAtEnd?.isSmooth == true {
                         let prev = segmentIndex > 0 ? screenNodes[segmentIndex - 1] : p0
                         let next = segmentIndex + 2 < screenNodes.count ? screenNodes[segmentIndex + 2] : p1
-                        let c1 = CGPoint(
-                            x: p0.x + (p1.x - prev.x) / 6.0,
-                            y: p0.y + (p1.y - prev.y) / 6.0
-                        )
-                        let c2 = CGPoint(
-                            x: p1.x - (next.x - p0.x) / 6.0,
-                            y: p1.y - (next.y - p0.y) / 6.0
-                        )
+                        let (c1, c2) = PathCalculations.catmullRomControlPoints(prev: prev, p0: p0, p1: p1, next: next)
                         segment.addCurve(to: p1, control1: c1, control2: c2)
                     } else {
                         segment.addLine(to: p1)
@@ -135,15 +172,18 @@ struct FloorCanvasView: View {
 
                     if isSelected {
                         let midpoint = CGPoint(x: (p0.x + p1.x) / 2, y: (p0.y + p1.y) / 2)
+                        let midpointGrid = CGPoint(x: midpoint.x / cellSize, y: midpoint.y / cellSize)
+                        let isHovered = isHandleHovered(at: midpointGrid)
+                        let handleRadius: CGFloat = isHovered ? 12 : 8
                         var handleBackground = Path()
                         handleBackground.addEllipse(
-                            in: CGRect(x: midpoint.x - 8, y: midpoint.y - 8, width: 16, height: 16)
+                            in: CGRect(x: midpoint.x - handleRadius, y: midpoint.y - handleRadius, width: handleRadius * 2, height: handleRadius * 2)
                         )
-                        context.fill(handleBackground, with: .color(.white.opacity(0.75)))
-                        context.stroke(handleBackground, with: .color(pathColor.opacity(0.55)), lineWidth: 1)
+                        context.fill(handleBackground, with: .color(.white.opacity(isHovered ? 0.9 : 0.75)))
+                        context.stroke(handleBackground, with: .color(pathColor.opacity(isHovered ? 0.8 : 0.55)), lineWidth: isHovered ? 2 : 1)
                         context.draw(
                             Text("+")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.system(size: isHovered ? 16 : 12, weight: .bold))
                                 .foregroundColor(pathColor),
                             at: midpoint,
                             anchor: .center
@@ -157,11 +197,13 @@ struct FloorCanvasView: View {
                             x: waypoint.position.x * cellSize,
                             y: waypoint.position.y * cellSize
                         )
-                        let size: CGFloat = waypoint.isSmooth ? 14 : 12
+                        let isHovered = isHandleHovered(at: waypoint.position)
+                        let baseSize: CGFloat = waypoint.isSmooth ? 14 : 12
+                        let size: CGFloat = isHovered ? baseSize * 1.6 : baseSize
 
                         // Outer glow for visibility
                         var glow = Path()
-                        let glowSize = size + 6
+                        let glowSize = size + (isHovered ? 10 : 6)
                         glow.addEllipse(
                             in: CGRect(
                                 x: point.x - glowSize / 2,
@@ -170,7 +212,7 @@ struct FloorCanvasView: View {
                                 height: glowSize
                             )
                         )
-                        context.fill(glow, with: .color(pathColor.opacity(0.15)))
+                        context.fill(glow, with: .color(pathColor.opacity(isHovered ? 0.25 : 0.15)))
 
                         var handle = Path()
                         if waypoint.isSmooth {
@@ -189,8 +231,8 @@ struct FloorCanvasView: View {
                             handle.addLine(to: CGPoint(x: point.x - size / 2, y: point.y))
                             handle.closeSubpath()
                         }
-                        context.fill(handle, with: .color(pathColor.opacity(0.18)))
-                        context.stroke(handle, with: .color(pathColor), lineWidth: 2.5)
+                        context.fill(handle, with: .color(pathColor.opacity(isHovered ? 0.3 : 0.18)))
+                        context.stroke(handle, with: .color(pathColor), lineWidth: isHovered ? 3.5 : 2.5)
 
                         if waypoint.holdDuration > 0 {
                             let ringSize = size + 6
@@ -231,12 +273,15 @@ struct FloorCanvasView: View {
                         midpoint = CGPoint(x: (start.x + end.x) / 2, y: (start.y + end.y) / 2)
                     }
 
+                    let midpointGrid = CGPoint(x: midpoint.x / cellSize, y: midpoint.y / cellSize)
+                    let isHovered = isHandleHovered(at: midpointGrid)
+                    let handleRadius: CGFloat = isHovered ? 10 : 6
                     var handle = Path()
                     handle.addEllipse(
-                        in: CGRect(x: midpoint.x - 6, y: midpoint.y - 6, width: 12, height: 12)
+                        in: CGRect(x: midpoint.x - handleRadius, y: midpoint.y - handleRadius, width: handleRadius * 2, height: handleRadius * 2)
                     )
                     context.fill(handle, with: .color(.white))
-                    context.stroke(handle, with: .color(pathColor), lineWidth: 2)
+                    context.stroke(handle, with: .color(pathColor), lineWidth: isHovered ? 3 : 2)
                 }
             }
 
@@ -337,6 +382,36 @@ struct FloorCanvasView: View {
         }
     }
 
+    private func drawTrails(in context: inout GraphicsContext) {
+        guard !trailPositions.isEmpty else { return }
+
+        let athleteLookup = Dictionary(athletes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+
+        for (athleteID, positions) in trailPositions {
+            guard positions.count > 1, let athlete = athleteLookup[athleteID] else { continue }
+            let color: Color = useRoleColors ? athlete.role.color : formationColor
+
+            for (i, position) in positions.enumerated() {
+                let age = positions.count - 1 - i  // 0 = newest, count-1 = oldest
+                guard age > 0 else { continue }  // skip newest (that's the main circle)
+
+                let opacity = 0.06 + 0.04 * CGFloat(positions.count - 1 - age)
+                let scale = 0.5 + 0.08 * CGFloat(positions.count - 1 - age)
+                let radius = athlete.role.markerRadius * scale
+
+                let point = CGPoint(x: position.x * cellSize, y: position.y * cellSize)
+                var trail = Path()
+                trail.addEllipse(in: CGRect(
+                    x: point.x - radius,
+                    y: point.y - radius,
+                    width: radius * 2,
+                    height: radius * 2
+                ))
+                context.fill(trail, with: .color(color.opacity(opacity)))
+            }
+        }
+    }
+
     private func drawGhostCircle(in context: inout GraphicsContext, center: CGPoint) {
         var ghost = Path()
         ghost.addEllipse(in: CGRect(x: center.x - 10, y: center.y - 10, width: 20, height: 20))
@@ -373,33 +448,40 @@ struct FloorCanvasView: View {
             let point = CGPoint(x: athlete.position.x * cellSize, y: athlete.position.y * cellSize)
             let isSelected = selectedAthleteIDs.contains(athlete.id)
             let isColliding = collisionIDs.contains(athlete.id)
+            let isHovered = athlete.id == hoveredAthleteID
+            let hoverScale: CGFloat = isHovered ? 1.3 : 1.0
 
             if hasTransition {
                 // Transition mode: athletes colored by formation, blending start→end
-                let radius = isSelected ? athlete.role.markerRadius - 1 : athlete.role.markerRadius - 2
+                let baseRadius = isSelected ? athlete.role.markerRadius - 1 : athlete.role.markerRadius - 2
+                let radius = baseRadius * hoverScale
                 let formationColor = blendedFormationColor(progress: transitionProgress)
                 let fillColor: Color = isColliding ? .red : formationColor
-                let fillOpacity: CGFloat = isSelected ? 0.92 : 0.78
+                let fillOpacity: CGFloat = isSelected ? 0.92 : (isHovered ? 0.88 : 0.78)
                 let marker = athlete.role.markerPath(center: point, radius: radius)
                 context.fill(marker, with: .color(fillColor.opacity(fillOpacity)))
 
-                if isSelected {
-                    context.stroke(marker, with: .color(.orange.opacity(0.7)), lineWidth: 2)
+                if isSelected || isHovered {
+                    let strokeColor: Color = isSelected ? .orange : .white
+                    context.stroke(marker, with: .color(strokeColor.opacity(0.7)), lineWidth: isHovered ? 2.5 : 2)
                 }
 
                 let label = Text(athlete.label)
-                    .font(.system(.caption2, design: .monospaced))
-                    .foregroundColor(.white.opacity(isSelected ? 0.95 : 0.85))
+                    .font(.system(isHovered ? .caption : .caption2, design: .monospaced))
+                    .foregroundColor(.white.opacity(isSelected || isHovered ? 0.95 : 0.85))
                 context.draw(label, at: point, anchor: .center)
             } else {
                 // Formation-only mode: colored by formation, role conveyed by shape
-                let fillColor: Color = isColliding ? .red : formationColor
-                let radius = isSelected ? athlete.role.selectedMarkerRadius : athlete.role.markerRadius
+                let baseColor: Color = useRoleColors ? athlete.role.color : formationColor
+                let fillColor: Color = isColliding ? .red : baseColor
+                let baseRadius = isSelected ? athlete.role.selectedMarkerRadius : athlete.role.markerRadius
+                let radius = baseRadius * hoverScale
                 let marker = athlete.role.markerPath(center: point, radius: radius)
-                context.fill(marker, with: .color(fillColor.opacity(isSelected ? 0.92 : 0.86)))
+                context.fill(marker, with: .color(fillColor.opacity(isSelected ? 0.92 : (isHovered ? 0.92 : 0.86))))
 
-                if isSelected {
-                    context.stroke(marker, with: .color(.orange.opacity(0.7)), lineWidth: 3)
+                if isSelected || isHovered {
+                    let strokeColor: Color = isSelected ? .orange : .white
+                    context.stroke(marker, with: .color(strokeColor.opacity(0.7)), lineWidth: isHovered ? 3.5 : 3)
                 }
 
                 if isColliding {
@@ -416,26 +498,89 @@ struct FloorCanvasView: View {
                     )
                 }
 
+                let labelColor = contrastingLabelColor(for: fillColor)
                 let label = Text(athlete.label)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(.black.opacity(isSelected ? 0.8 : 0.6))
+                    .font(.system(isHovered ? .caption : .caption, design: .monospaced))
+                    .foregroundColor(labelColor.opacity(isSelected || isHovered ? 0.95 : 0.85))
                 context.draw(label, at: point, anchor: .center)
             }
         }
     }
 
     private func blendedFormationColor(progress: CGFloat) -> Color {
+        #if canImport(UIKit)
         let resolved1 = UIColor(startFormationColor)
         let resolved2 = UIColor(endFormationColor)
+        #elseif canImport(AppKit)
+        let resolved1 = NSColor(startFormationColor).usingColorSpace(.extendedSRGB) ?? NSColor()
+        let resolved2 = NSColor(endFormationColor).usingColorSpace(.extendedSRGB) ?? NSColor()
+        #else
+        return startFormationColor
+        #endif
+        
         var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
         var r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
+        
+        #if canImport(UIKit) || canImport(AppKit)
         resolved1.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
         resolved2.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        #endif
+        
         let t = min(max(progress, 0), 1)
         return Color(
             red: r1 + (r2 - r1) * t,
             green: g1 + (g2 - g1) * t,
             blue: b1 + (b2 - b1) * t
         )
+    }
+
+    /// Returns white or black depending on the perceived brightness of the fill color.
+    /// Uses relative luminance formula: 0.299*R + 0.587*G + 0.114*B
+    private func contrastingLabelColor(for fillColor: Color) -> Color {
+        #if canImport(UIKit)
+        let uiColor = UIColor(fillColor)
+        #elseif canImport(AppKit)
+        let uiColor = NSColor(fillColor).usingColorSpace(.extendedSRGB) ?? NSColor()
+        #else
+        return .white
+        #endif
+        
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        #if canImport(UIKit) || canImport(AppKit)
+        uiColor.getRed(&r, green: &g, blue: &b, alpha: &a)
+        #endif
+        
+        let luminance = 0.299 * r + 0.587 * g + 0.114 * b
+        return luminance > 0.5 ? .black : .white
+    }
+}
+
+// MARK: - Athlete Accessibility Element
+
+private struct AthleteAccessibilityElement: View {
+    let athlete: RenderedAthlete
+    let cellSize: CGFloat
+    let offset: CGPoint
+    let isSelected: Bool
+    let isColliding: Bool
+
+    private var accessibilityValue: String {
+        var value = "Position: \(Int(athlete.position.x)) feet, \(Int(athlete.position.y)) feet"
+        if isSelected { value += ", selected" }
+        if isColliding { value += ", spacing alert" }
+        return value
+    }
+
+    var body: some View {
+        Color.clear
+            .frame(width: 44, height: 44)
+            .position(
+                x: athlete.position.x * cellSize + offset.x,
+                y: athlete.position.y * cellSize + offset.y
+            )
+            .allowsHitTesting(false)
+            .accessibilityElement()
+            .accessibilityLabel("\(athlete.label), \(athlete.role.displayName)")
+            .accessibilityValue(accessibilityValue)
     }
 }
