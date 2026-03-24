@@ -733,6 +733,23 @@ struct RoutineWorkspaceView: View {
 
     // MARK: - Actions
 
+    private func authenticateForDestructiveAction(completion: @escaping () -> Void) {
+        let context = LAContext()
+        var error: NSError?
+
+        if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
+            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Authentication is required to perform this destructive action.") { success, _ in
+                DispatchQueue.main.async {
+                    if success {
+                        completion()
+                    }
+                }
+            }
+        } else {
+            completion()
+        }
+    }
+
     private func addFormation() {
         guard canAddFormation else {
             showingUpgradeSheet = true
