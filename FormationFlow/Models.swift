@@ -2106,6 +2106,10 @@ final class TransitionPlayer: ObservableObject {
     private var timingCache: [UUID: (endAthlete: RenderedAthlete, transition: AthleteTransition, travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat, thresholds: [CGFloat])] = [:]
     private var maxEffectiveTime: CGFloat = 1
 
+    // ⚡ Bolt: Cache path generation and spatial collisions outside the animation loop
+    private(set) var cachedTransitionPaths: [TransitionPathRenderItem] = []
+    private(set) var cachedPathCollisionIDs: Set<UUID> = []
+
     private var animationTimer: AnimationTimer?
 
     init(
@@ -2162,6 +2166,27 @@ final class TransitionPlayer: ObservableObject {
 
         self.timingCache = newTimingCache
         self.maxEffectiveTime = newMaxEffectiveTime
+
+        updatePathCaches()
+    }
+
+    private func updatePathCaches() {
+        cachedTransitionPaths = startAthletes.compactMap { athlete in
+            guard let cached = timingCache[athlete.id] else { return nil }
+            return TransitionPathRenderItem(
+                athleteID: athlete.id,
+                startPosition: athlete.position,
+                endPosition: cached.endAthlete.position,
+                controlPoint: cached.transition.pathControlPoint,
+                waypoints: cached.transition.pathWaypoints,
+                moveDelay: cached.transition.moveDelay
+            )
+        }
+
+        cachedPathCollisionIDs = PathCalculations.findPathCollisionIDs(
+            paths: cachedTransitionPaths,
+            counts: CGFloat(counts)
+        )
     }
 
     deinit {
