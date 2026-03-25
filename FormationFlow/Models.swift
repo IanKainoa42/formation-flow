@@ -617,7 +617,8 @@ enum AlignmentSnapEngine {
         translation: CGPoint,
         startingPositions: [CGPoint],
         otherAthletePositions: [CGPoint],
-        threshold: CGFloat = 0.8
+        threshold: CGFloat = 0.8,
+        skipLinearGuides: Bool = false
     ) -> AlignmentSnapResult {
         guard !startingPositions.isEmpty else {
             return AlignmentSnapResult(translation: translation, guides: [])
@@ -645,12 +646,14 @@ enum AlignmentSnapEngine {
             CGPoint(x: $0.x + adjustedTranslation.x, y: $0.y + adjustedTranslation.y)
         }
         var guides = [verticalMatch?.guide, horizontalMatch?.guide].compactMap { $0 }
-        guides.append(
-            contentsOf: linearAlignmentGuides(
-                movingPositions: adjustedMovingPositions,
-                otherAthletePositions: otherAthletePositions
+        if !skipLinearGuides {
+            guides.append(
+                contentsOf: linearAlignmentGuides(
+                    movingPositions: adjustedMovingPositions,
+                    otherAthletePositions: otherAthletePositions
+                )
             )
-        )
+        }
 
         return AlignmentSnapResult(
             translation: adjustedTranslation,
@@ -1059,6 +1062,24 @@ enum RoutineMetrics {
 
 // MARK: - Persistence
 
+struct RoutineWorkspace: Codable, Equatable, Hashable {
+    var routines: [Routine]
+    var activeRoutineID: UUID
+
+    init(routines: [Routine], activeRoutineID: UUID) {
+        self.routines = routines
+        self.activeRoutineID = activeRoutineID
+    }
+
+    static func initial() -> RoutineWorkspace {
+        let initialRoutine = Routine.initial()
+        return RoutineWorkspace(
+            routines: [initialRoutine],
+            activeRoutineID: initialRoutine.id
+        )
+    }
+}
+
 @MainActor
 final class RoutineStore: ObservableObject {
     private static let logger = Logger(subsystem: "FormationFlow", category: "Persistence")
@@ -1068,18 +1089,35 @@ final class RoutineStore: ObservableObject {
         let toID: UUID
     }
 
-    @Published var routine: Routine {
+    @Published var workspace: RoutineWorkspace {
         didSet {
             guard !isLoading else { return }
-            save()
+            debouncedSave()
+        }
+    }
+
+    var routine: Routine {
+        get {
+            workspace.routines.first(where: { $0.id == workspace.activeRoutineID }) ?? workspace.routines[0]
+        }
+        set {
+            if let index = workspace.routines.firstIndex(where: { $0.id == newValue.id }) {
+                workspace.routines[index] = newValue
+            } else {
+                workspace.routines.append(newValue)
+            }
         }
     }
 
     private let storageKey = "routine.v1"
+    private let workspaceStorageKey = "workspace.v1"
     private var isLoading = false
+    private var pendingSave: DispatchWorkItem?
+    private var rosterLookup: [UUID: RosterAthlete] = [:]
+    private var formationIndexLookup: [UUID: Int] = [:]
 
     init() {
-        self.routine = Routine.initial()
+        self.workspace = RoutineWorkspace.initial()
         load()
     }
 
@@ -1088,53 +1126,175 @@ final class RoutineStore: ObservableObject {
         return paths[0].appendingPathComponent("\(storageKey).json")
     }
 
+    private var workspaceFileURL: URL {
+        let paths = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+        return paths[0].appendingPathComponent("\(workspaceStorageKey).json")
+    }
+
     func load() {
         isLoading = true
         defer { isLoading = false }
 
+        // Try loading new workspace format
+        if let data = try? Data(contentsOf: workspaceFileURL),
+           let decoded = try? JSONDecoder().decode(RoutineWorkspace.self, from: data) {
+            workspace = decoded
+            reconcileRoutineShape()
+            return
+        }
+
+        // Migration from old routine file
         if let data = try? Data(contentsOf: fileURL),
            let decoded = try? JSONDecoder().decode(Routine.self, from: data) {
-            routine = decoded
+            workspace = RoutineWorkspace(routines: [decoded], activeRoutineID: decoded.id)
             reconcileRoutineShape()
+            if save() {
+                try? FileManager.default.removeItem(at: fileURL) // Clean up
+            }
             return
         }
 
         // Migration from UserDefaults
         if let data = UserDefaults.standard.data(forKey: storageKey),
            let decoded = try? JSONDecoder().decode(Routine.self, from: data) {
-            routine = decoded
+            workspace = RoutineWorkspace(routines: [decoded], activeRoutineID: decoded.id)
             reconcileRoutineShape()
-            if save() { // Save to new fileURL
+            if save() { // Save to new workspaceFileURL
                 UserDefaults.standard.removeObject(forKey: storageKey) // Clean up
             }
             return
         }
 
-        routine = Routine.initial()
+        workspace = RoutineWorkspace.initial()
         reconcileRoutineShape()
         save()
     }
 
     @discardableResult
     func save() -> Bool {
-        guard let data = try? JSONEncoder().encode(routine) else { return false }
+        guard let data = try? JSONEncoder().encode(workspace) else { return false }
         do {
-            try data.write(to: fileURL, options: [.atomic, .completeFileProtection])
+            try data.write(to: workspaceFileURL, options: [.atomic, .completeFileProtection])
             return true
         } catch {
-            Self.logger.error("Failed to save routine: \(error.localizedDescription, privacy: .private)")
+            Self.logger.error("Failed to save workspace: \(error.localizedDescription, privacy: .private)")
             return false
         }
+    }
+
+    private func debouncedSave() {
+        pendingSave?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            self?.save()
+        }
+        pendingSave = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: item)
+    }
+
+    func saveNow() {
+        pendingSave?.cancel()
+        pendingSave = nil
+        save()
     }
 
     func resetRoutine() {
         routine = Routine.initial()
         reconcileRoutineShape()
+        saveNow()
     }
+
+    // MARK: - Routine Management
+
+    func switchRoutine(id: UUID) {
+        guard workspace.routines.contains(where: { $0.id == id }) else { return }
+        workspace.activeRoutineID = id
+        reconcileRoutineShape()
+    }
+
+    func addRoutine() -> UUID {
+        var newRoutine = Routine.initial()
+        newRoutine.name = nextRoutineName()
+        workspace.routines.append(newRoutine)
+        workspace.activeRoutineID = newRoutine.id
+        reconcileRoutineShape()
+        return newRoutine.id
+    }
+
+    func duplicateRoutine(id: UUID) -> UUID? {
+        guard let sourceIndex = workspace.routines.firstIndex(where: { $0.id == id }) else { return nil }
+        var duplicated = workspace.routines[sourceIndex]
+        duplicated.id = UUID()
+        duplicated.name = nextRoutineName()
+
+        // Give new UUIDs to formations to avoid sharing IDs across routines
+        let idMap = Dictionary(uniqueKeysWithValues: duplicated.formations.map { ($0.id, UUID()) })
+        for i in duplicated.formations.indices {
+            if let newID = idMap[duplicated.formations[i].id] {
+                duplicated.formations[i].id = newID
+            }
+        }
+        for i in duplicated.transitionSpecs.indices {
+            if let newFromID = idMap[duplicated.transitionSpecs[i].fromFormationID] {
+                duplicated.transitionSpecs[i].fromFormationID = newFromID
+            }
+            if let newToID = idMap[duplicated.transitionSpecs[i].toFormationID] {
+                duplicated.transitionSpecs[i].toFormationID = newToID
+            }
+        }
+
+        workspace.routines.insert(duplicated, at: sourceIndex + 1)
+        workspace.activeRoutineID = duplicated.id
+        reconcileRoutineShape()
+        return duplicated.id
+    }
+
+    func deleteRoutine(id: UUID) {
+        guard workspace.routines.count > 1 else { return }
+        if let index = workspace.routines.firstIndex(where: { $0.id == id }) {
+            workspace.routines.remove(at: index)
+            if workspace.activeRoutineID == id {
+                workspace.activeRoutineID = workspace.routines.first?.id ?? UUID()
+            }
+            reconcileRoutineShape()
+        }
+    }
+
+    func renameRoutine(id: UUID, newName: String) {
+        if let index = workspace.routines.firstIndex(where: { $0.id == id }) {
+            workspace.routines[index].name = newName
+        }
+    }
+
+    private func nextRoutineName() -> String {
+        let existing = Set(workspace.routines.map(\.name))
+        var index = workspace.routines.count + 1
+        var candidate = "Routine \(index)"
+        while existing.contains(candidate) {
+            index += 1
+            candidate = "Routine \(index)"
+        }
+        return candidate
+    }
+
+    // MARK: - Formation Management
 
     func formationIndex(id: UUID?) -> Int? {
         guard let id else { return nil }
+        if let index = formationIndexLookup[id],
+           index < routine.formations.count,
+           routine.formations[index].id == id {
+            return index
+        }
         return routine.formations.firstIndex(where: { $0.id == id })
+    }
+
+    func formation(id: UUID) -> Formation? {
+        guard let index = formationIndexLookup[id],
+              index < routine.formations.count,
+              routine.formations[index].id == id else {
+            return routine.formations.first(where: { $0.id == id })
+        }
+        return routine.formations[index]
     }
 
     func rosterIndex(id: UUID) -> Int? {
@@ -1166,7 +1326,6 @@ final class RoutineStore: ObservableObject {
     }
 
     func renderedAthletes(for formation: Formation) -> [RenderedAthlete] {
-        let rosterLookup = Dictionary(routine.roster.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         return formation.placements.compactMap { placement in
             guard let rosterAthlete = rosterLookup[placement.athleteID] else { return nil }
             return RenderedAthlete(
@@ -1288,6 +1447,7 @@ final class RoutineStore: ObservableObject {
         }
 
         reconcileTransitionSpecs()
+        rebuildRosterLookup()
         return newAthlete.id
     }
 
@@ -1344,6 +1504,7 @@ final class RoutineStore: ObservableObject {
             routine.transitionSpecs[transitionIndex].athleteTransitions.removeAll { $0.athleteID == id }
         }
         reconcileTransitionSpecs()
+        rebuildRosterLookup()
     }
 
     func swapPositions(in formationID: UUID, id1: UUID, id2: UUID) {
@@ -1368,6 +1529,7 @@ final class RoutineStore: ObservableObject {
     func mutateRosterAthlete(id: UUID, _ update: (inout RosterAthlete) -> Void) {
         guard let index = rosterIndex(id: id) else { return }
         update(&routine.roster[index])
+        rebuildRosterLookup()
     }
 
     func mutateTransitionSpec(from fromID: UUID, to toID: UUID, _ update: (inout TransitionSpec) -> Void) {
@@ -1418,6 +1580,10 @@ final class RoutineStore: ObservableObject {
         return candidate
     }
 
+    private func rebuildRosterLookup() {
+        rosterLookup = Dictionary(routine.roster.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+
     private func reconcileRoutineShape() {
         if routine.formations.isEmpty {
             routine.formations = [Formation(name: "Formation 1")]
@@ -1439,9 +1605,19 @@ final class RoutineStore: ObservableObject {
         }
 
         reconcileTransitionSpecs()
+        rebuildRosterLookup()
+    }
+
+    private func rebuildFormationLookup() {
+        formationIndexLookup = Dictionary(
+            routine.formations.enumerated().map { ($0.element.id, $0.offset) },
+            uniquingKeysWith: { first, _ in first }
+        )
     }
 
     private func reconcileTransitionSpecs() {
+        rebuildFormationLookup()
+
         let existing = Dictionary(
             routine.transitionSpecs.map {
                 (TransitionEdge(fromID: $0.fromFormationID, toID: $0.toFormationID), $0)
@@ -1927,7 +2103,7 @@ final class TransitionPlayer: ObservableObject {
     private var transitionLookup: [UUID: AthleteTransition] = [:]
 
     // ⚡ Bolt: Cache timing calculations outside the animation loop to avoid O(N) operations per frame.
-    private var timingCache: [UUID: (endAthlete: RenderedAthlete, transition: AthleteTransition, travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat)] = [:]
+    private var timingCache: [UUID: (endAthlete: RenderedAthlete, transition: AthleteTransition, travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat, thresholds: [CGFloat])] = [:]
     private var maxEffectiveTime: CGFloat = 1
 
     // ⚡ Bolt: Cache path generation and spatial collisions outside the animation loop
@@ -1963,7 +2139,7 @@ final class TransitionPlayer: ObservableObject {
     }
 
     private func updateTimingCache() {
-        var newTimingCache: [UUID: (endAthlete: RenderedAthlete, transition: AthleteTransition, travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat)] = [:]
+        var newTimingCache: [UUID: (endAthlete: RenderedAthlete, transition: AthleteTransition, travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat, thresholds: [CGFloat])] = [:]
         newTimingCache.reserveCapacity(startAthletes.count)
 
         let newMaxEffectiveTime = startAthletes.compactMap { athlete -> CGFloat? in
@@ -1976,8 +2152,15 @@ final class TransitionPlayer: ObservableObject {
             )
             let hold = transition.pathWaypoints.reduce(CGFloat(0)) { $0 + $1.holdCounts }
             let effectiveTime = travel + hold
+            let thresholds = !transition.pathWaypoints.isEmpty
+                ? PathCalculations.waypointProgressThresholds(
+                    from: athlete.position,
+                    to: endAthlete.position,
+                    waypoints: transition.pathWaypoints
+                )
+                : []
 
-            newTimingCache[athlete.id] = (endAthlete, transition, travel, hold, effectiveTime)
+            newTimingCache[athlete.id] = (endAthlete, transition, travel, hold, effectiveTime, thresholds)
             return effectiveTime
         }.max() ?? 1
 
@@ -2082,11 +2265,7 @@ final class TransitionPlayer: ObservableObject {
 
             let effectiveProgress: CGFloat
             if !transition.pathWaypoints.isEmpty && hold > 0 {
-                let thresholds = PathCalculations.waypointProgressThresholds(
-                    from: athlete.position,
-                    to: endAthlete.position,
-                    waypoints: transition.pathWaypoints
-                )
+                let thresholds = cached.thresholds
                 let moveDuration = durationFraction * max(CGFloat(counts), 0.5) * (travel / max(effectiveTime, 0.001))
                 effectiveProgress = PathCalculations.holdAdjustedPathProgress(
                     wallProgress: athleteProgress,

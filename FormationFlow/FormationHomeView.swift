@@ -8,6 +8,7 @@ import UIKit
 
 struct RoutineWorkspaceView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var store = RoutineStore()
     @StateObject private var previewSession = TransitionPreviewSession()
 
@@ -19,6 +20,8 @@ struct RoutineWorkspaceView: View {
     @State private var showingCompactFormationPicker = false
     @State private var renamingFormationID: UUID?
     @State private var formationNameDraft = ""
+    @State private var showingRoutineRenamePrompt = false
+    @State private var routineNameDraft = ""
     @EnvironmentObject private var entitlementManager: EntitlementManager
     @State private var showingUpgradeSheet = false
     @State private var isFullScreen = false
@@ -109,6 +112,13 @@ struct RoutineWorkspaceView: View {
             reconcileSelection(with: formations)
             refreshPreviewSession()
         }
+        .onChange(of: store.workspace.activeRoutineID) { _, _ in
+            selectedAthleteIDs = []
+            isSwapMode = false
+            triggerDeleteAthlete = false
+            previewReferenceMode = smartPickReferenceMode()
+            refreshPreviewSession()
+        }
         .onChange(of: selectedFormationID) { _, _ in
             selectedAthleteIDs = []
             isSwapMode = false
@@ -139,6 +149,18 @@ struct RoutineWorkspaceView: View {
         } message: {
             Text("Use the routine list or toolbar menu to rename formations without covering the floor.")
         }
+        .alert("Rename Routine", isPresented: $showingRoutineRenamePrompt) {
+            TextField("Routine name", text: $routineNameDraft)
+
+            Button("Save") {
+                commitRoutineRename()
+            }
+            .disabled(routineNameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Enter a new name for this routine.")
+        }
         .sheet(isPresented: $showingUpgradeSheet) {
             ProUpgradeSheet()
                 .environmentObject(entitlementManager)
@@ -146,6 +168,11 @@ struct RoutineWorkspaceView: View {
         .fullScreenCover(isPresented: $showingRoutinePlayback) {
             RoutinePlaybackView(store: store)
                 .environmentObject(entitlementManager)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .background || newPhase == .inactive {
+                store.saveNow()
+            }
         }
     }
 
@@ -257,7 +284,7 @@ struct RoutineWorkspaceView: View {
                             store.moveFormations(fromOffsets: from, toOffset: to)
                         }
                     } header: {
-                        Text(store.routine.name)
+                        routinePickerMenu
                     }
                 }
             }
@@ -342,7 +369,7 @@ struct RoutineWorkspaceView: View {
                             store.moveFormations(fromOffsets: from, toOffset: to)
                         }
                     } header: {
-                        Text(store.routine.name)
+                        routinePickerMenu
                     }
                 }
             }
@@ -400,7 +427,7 @@ struct RoutineWorkspaceView: View {
 
     @ViewBuilder
     private func compactDetailView(for formationID: UUID) -> some View {
-        if let formation = store.routine.formations.first(where: { $0.id == formationID }) {
+        if let formation = store.formation(id: formationID) {
             detailContent(for: formation, formationID: formationID, compact: true)
                 .onAppear {
                     selectedFormationID = formationID
@@ -548,7 +575,7 @@ struct RoutineWorkspaceView: View {
                         store.moveFormations(fromOffsets: from, toOffset: to)
                     }
                 } header: {
-                    Text(store.routine.name)
+                    routinePickerMenu
                 }
             }
             .navigationTitle("Formations")
@@ -729,6 +756,103 @@ struct RoutineWorkspaceView: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
         }
+    }
+
+    // MARK: - Routine Actions
+
+    private var routinePickerMenu: some View {
+        Menu {
+            Section("Switch Routine") {
+                ForEach(store.workspace.routines) { routine in
+                    Button {
+                        switchRoutine(to: routine.id)
+                    } label: {
+                        HStack {
+                            Text(routine.name)
+                            if store.workspace.activeRoutineID == routine.id {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            }
+
+            Section("Actions") {
+                Button {
+                    routineNameDraft = store.routine.name
+                    showingRoutineRenamePrompt = true
+                } label: {
+                    Label("Rename Routine", systemImage: "pencil")
+                }
+
+                Button {
+                    duplicateCurrentRoutine()
+                } label: {
+                    Label(canAddFormation ? "Duplicate Routine" : "Duplicate Routine (Pro)", systemImage: canAddFormation ? "plus.square.on.square" : "lock.fill")
+                }
+
+                Button(role: .destructive) {
+                    deleteCurrentRoutine()
+                } label: {
+                    Label("Delete Routine", systemImage: "trash")
+                }
+                .disabled(store.workspace.routines.count <= 1)
+            }
+
+            Section {
+                Button {
+                    createNewRoutine()
+                } label: {
+                    Label(canAddFormation ? "New Routine" : "New Routine (Pro)", systemImage: canAddFormation ? "plus" : "lock.fill")
+                }
+            }
+        } label: {
+            HStack {
+                Text(store.routine.name)
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .accessibilityLabel("Routine Menu")
+    }
+
+    private func switchRoutine(to id: UUID) {
+        store.switchRoutine(id: id)
+        selectedFormationID = store.routine.formations.first?.id
+    }
+
+    private func commitRoutineRename() {
+        let trimmedName = routineNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return }
+        store.renameRoutine(id: store.workspace.activeRoutineID, newName: trimmedName)
+        routineNameDraft = ""
+    }
+
+    private func duplicateCurrentRoutine() {
+        guard canAddFormation else {
+            showingUpgradeSheet = true
+            return
+        }
+        if store.duplicateRoutine(id: store.workspace.activeRoutineID) != nil {
+            selectedFormationID = store.routine.formations.first?.id
+        }
+    }
+
+    private func createNewRoutine() {
+        guard canAddFormation else {
+            showingUpgradeSheet = true
+            return
+        }
+        _ = store.addRoutine()
+        selectedFormationID = store.routine.formations.first?.id
+    }
+
+    private func deleteCurrentRoutine() {
+        store.deleteRoutine(id: store.workspace.activeRoutineID)
+        selectedFormationID = store.routine.formations.first?.id
     }
 
     // MARK: - Actions
