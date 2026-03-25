@@ -15,3 +15,9 @@
 **Learning:** Allocating dictionaries inside highly iterative animation frame functions (e.g., `updateAthletesForProgress`) forces O(N) array mappings and dictionary allocations on every single screen update. This creates excessive memory pressure and high CPU usage overhead in the critical animation path.
 
 **Action:** Whenever generating an O(1) lookup dictionary from an array that doesn't change during the animation loop itself, move the dictionary creation out of the hot path. Cache the resulting dictionary as a private class property and update it via `didSet` property observers on the source arrays (and once in `init()`). This eliminates O(N) repetitive work and memory spikes per frame.
+
+## 2024-05-26 - [O(N^2) Array Lookups in RoutineStore]
+
+**Learning:** `formationIndex(id:)` used `firstIndex(where:)` which is an O(N) operation. This is problematic when it is called repeatedly from functions that loop over formations or athletes, creating an O(N^2) complexity pattern.
+
+**Action:** Maintain an O(1) `formationIndexLookup: [UUID: Int]` dictionary in `RoutineStore` and update it whenever the array of formations changes (e.g. in `reconcileTransitionSpecs()`). Use this dictionary in `formationIndex(id:)` and expose `formation(id:)` to prevent the O(N) overhead.
