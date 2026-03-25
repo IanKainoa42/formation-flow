@@ -1318,7 +1318,6 @@ struct FloorGridView: View {
                         step: 0.5
                     )
                     .accessibilityLabel("Start Delay")
-                    .accessibilityValue(TransitionCountFormatting.label(transition.moveDelayCounts))
                 } else {
                     HStack {
                         Slider(value: .constant(0), in: 0...CGFloat(player.counts))
@@ -1329,6 +1328,7 @@ struct FloorGridView: View {
                             Image(systemName: "lock.fill")
                                 .foregroundColor(.secondary)
                         }
+                        .accessibilityLabel("Upgrade to Pro to adjust start delay")
                     }
                 }
                 Text(TransitionCountFormatting.label(transition.moveDelayCounts))
