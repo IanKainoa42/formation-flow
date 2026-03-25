@@ -1114,6 +1114,7 @@ final class RoutineStore: ObservableObject {
     private var isLoading = false
     private var pendingSave: DispatchWorkItem?
     private var rosterLookup: [UUID: RosterAthlete] = [:]
+    private var formationIndexLookup: [UUID: Int] = [:]
 
     init() {
         self.workspace = RoutineWorkspace.initial()
@@ -1279,7 +1280,21 @@ final class RoutineStore: ObservableObject {
 
     func formationIndex(id: UUID?) -> Int? {
         guard let id else { return nil }
+        if let index = formationIndexLookup[id],
+           index < routine.formations.count,
+           routine.formations[index].id == id {
+            return index
+        }
         return routine.formations.firstIndex(where: { $0.id == id })
+    }
+
+    func formation(id: UUID) -> Formation? {
+        guard let index = formationIndexLookup[id],
+              index < routine.formations.count,
+              routine.formations[index].id == id else {
+            return routine.formations.first(where: { $0.id == id })
+        }
+        return routine.formations[index]
     }
 
     func rosterIndex(id: UUID) -> Int? {
@@ -1593,7 +1608,16 @@ final class RoutineStore: ObservableObject {
         rebuildRosterLookup()
     }
 
+    private func rebuildFormationLookup() {
+        formationIndexLookup = Dictionary(
+            routine.formations.enumerated().map { ($0.element.id, $0.offset) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
     private func reconcileTransitionSpecs() {
+        rebuildFormationLookup()
+
         let existing = Dictionary(
             routine.transitionSpecs.map {
                 (TransitionEdge(fromID: $0.fromFormationID, toID: $0.toFormationID), $0)
@@ -2082,6 +2106,10 @@ final class TransitionPlayer: ObservableObject {
     private var timingCache: [UUID: (endAthlete: RenderedAthlete, transition: AthleteTransition, travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat, thresholds: [CGFloat])] = [:]
     private var maxEffectiveTime: CGFloat = 1
 
+    // ⚡ Bolt: Cache path generation and spatial collisions outside the animation loop
+    private(set) var cachedTransitionPaths: [TransitionPathRenderItem] = []
+    private(set) var cachedPathCollisionIDs: Set<UUID> = []
+
     private var animationTimer: AnimationTimer?
 
     init(
@@ -2138,6 +2166,27 @@ final class TransitionPlayer: ObservableObject {
 
         self.timingCache = newTimingCache
         self.maxEffectiveTime = newMaxEffectiveTime
+
+        updatePathCaches()
+    }
+
+    private func updatePathCaches() {
+        cachedTransitionPaths = startAthletes.compactMap { athlete in
+            guard let cached = timingCache[athlete.id] else { return nil }
+            return TransitionPathRenderItem(
+                athleteID: athlete.id,
+                startPosition: athlete.position,
+                endPosition: cached.endAthlete.position,
+                controlPoint: cached.transition.pathControlPoint,
+                waypoints: cached.transition.pathWaypoints,
+                moveDelay: cached.transition.moveDelay
+            )
+        }
+
+        cachedPathCollisionIDs = PathCalculations.findPathCollisionIDs(
+            paths: cachedTransitionPaths,
+            counts: CGFloat(counts)
+        )
     }
 
     deinit {

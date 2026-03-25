@@ -427,7 +427,7 @@ struct RoutineWorkspaceView: View {
 
     @ViewBuilder
     private func compactDetailView(for formationID: UUID) -> some View {
-        if let formation = store.routine.formations.first(where: { $0.id == formationID }) {
+        if let formation = store.formation(id: formationID) {
             detailContent(for: formation, formationID: formationID, compact: true)
                 .onAppear {
                     selectedFormationID = formationID
