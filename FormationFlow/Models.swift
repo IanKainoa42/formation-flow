@@ -1062,6 +1062,24 @@ enum RoutineMetrics {
 
 // MARK: - Persistence
 
+struct RoutineWorkspace: Codable, Equatable, Hashable {
+    var routines: [Routine]
+    var activeRoutineID: UUID
+
+    init(routines: [Routine], activeRoutineID: UUID) {
+        self.routines = routines
+        self.activeRoutineID = activeRoutineID
+    }
+
+    static func initial() -> RoutineWorkspace {
+        let initialRoutine = Routine.initial()
+        return RoutineWorkspace(
+            routines: [initialRoutine],
+            activeRoutineID: initialRoutine.id
+        )
+    }
+}
+
 @MainActor
 final class RoutineStore: ObservableObject {
     private static let logger = Logger(subsystem: "FormationFlow", category: "Persistence")
@@ -1071,22 +1089,35 @@ final class RoutineStore: ObservableObject {
         let toID: UUID
     }
 
-    @Published var routine: Routine {
+    @Published var workspace: RoutineWorkspace {
         didSet {
             guard !isLoading else { return }
             debouncedSave()
         }
     }
 
+    var routine: Routine {
+        get {
+            workspace.routines.first(where: { $0.id == workspace.activeRoutineID }) ?? workspace.routines[0]
+        }
+        set {
+            if let index = workspace.routines.firstIndex(where: { $0.id == newValue.id }) {
+                workspace.routines[index] = newValue
+            } else {
+                workspace.routines.append(newValue)
+            }
+        }
+    }
+
     private let storageKey = "routine.v1"
+    private let workspaceStorageKey = "workspace.v1"
     private var isLoading = false
     private var pendingSave: DispatchWorkItem?
     private var rosterLookup: [UUID: RosterAthlete] = [:]
     private var formationIndexLookup: [UUID: Int] = [:]
 
     init() {
-        self.routine = Routine.initial()
-        rebuildFormationLookup()
+        self.workspace = RoutineWorkspace.initial()
         load()
     }
 
@@ -1095,41 +1126,58 @@ final class RoutineStore: ObservableObject {
         return paths[0].appendingPathComponent("\(storageKey).json")
     }
 
+    private var workspaceFileURL: URL {
+        let paths = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+        return paths[0].appendingPathComponent("\(workspaceStorageKey).json")
+    }
+
     func load() {
         isLoading = true
         defer { isLoading = false }
 
+        // Try loading new workspace format
+        if let data = try? Data(contentsOf: workspaceFileURL),
+           let decoded = try? JSONDecoder().decode(RoutineWorkspace.self, from: data) {
+            workspace = decoded
+            reconcileRoutineShape()
+            return
+        }
+
+        // Migration from old routine file
         if let data = try? Data(contentsOf: fileURL),
            let decoded = try? JSONDecoder().decode(Routine.self, from: data) {
-            routine = decoded
+            workspace = RoutineWorkspace(routines: [decoded], activeRoutineID: decoded.id)
             reconcileRoutineShape()
+            if save() {
+                try? FileManager.default.removeItem(at: fileURL) // Clean up
+            }
             return
         }
 
         // Migration from UserDefaults
         if let data = UserDefaults.standard.data(forKey: storageKey),
            let decoded = try? JSONDecoder().decode(Routine.self, from: data) {
-            routine = decoded
+            workspace = RoutineWorkspace(routines: [decoded], activeRoutineID: decoded.id)
             reconcileRoutineShape()
-            if save() { // Save to new fileURL
+            if save() { // Save to new workspaceFileURL
                 UserDefaults.standard.removeObject(forKey: storageKey) // Clean up
             }
             return
         }
 
-        routine = Routine.initial()
+        workspace = RoutineWorkspace.initial()
         reconcileRoutineShape()
         save()
     }
 
     @discardableResult
     func save() -> Bool {
-        guard let data = try? JSONEncoder().encode(routine) else { return false }
+        guard let data = try? JSONEncoder().encode(workspace) else { return false }
         do {
-            try data.write(to: fileURL, options: [.atomic, .completeFileProtection])
+            try data.write(to: workspaceFileURL, options: [.atomic, .completeFileProtection])
             return true
         } catch {
-            Self.logger.error("Failed to save routine: \(error.localizedDescription, privacy: .private)")
+            Self.logger.error("Failed to save workspace: \(error.localizedDescription, privacy: .private)")
             return false
         }
     }
@@ -1154,6 +1202,81 @@ final class RoutineStore: ObservableObject {
         reconcileRoutineShape()
         saveNow()
     }
+
+    // MARK: - Routine Management
+
+    func switchRoutine(id: UUID) {
+        guard workspace.routines.contains(where: { $0.id == id }) else { return }
+        workspace.activeRoutineID = id
+        reconcileRoutineShape()
+    }
+
+    func addRoutine() -> UUID {
+        var newRoutine = Routine.initial()
+        newRoutine.name = nextRoutineName()
+        workspace.routines.append(newRoutine)
+        workspace.activeRoutineID = newRoutine.id
+        reconcileRoutineShape()
+        return newRoutine.id
+    }
+
+    func duplicateRoutine(id: UUID) -> UUID? {
+        guard let sourceIndex = workspace.routines.firstIndex(where: { $0.id == id }) else { return nil }
+        var duplicated = workspace.routines[sourceIndex]
+        duplicated.id = UUID()
+        duplicated.name = nextRoutineName()
+
+        // Give new UUIDs to formations to avoid sharing IDs across routines
+        let idMap = Dictionary(uniqueKeysWithValues: duplicated.formations.map { ($0.id, UUID()) })
+        for i in duplicated.formations.indices {
+            if let newID = idMap[duplicated.formations[i].id] {
+                duplicated.formations[i].id = newID
+            }
+        }
+        for i in duplicated.transitionSpecs.indices {
+            if let newFromID = idMap[duplicated.transitionSpecs[i].fromFormationID] {
+                duplicated.transitionSpecs[i].fromFormationID = newFromID
+            }
+            if let newToID = idMap[duplicated.transitionSpecs[i].toFormationID] {
+                duplicated.transitionSpecs[i].toFormationID = newToID
+            }
+        }
+
+        workspace.routines.insert(duplicated, at: sourceIndex + 1)
+        workspace.activeRoutineID = duplicated.id
+        reconcileRoutineShape()
+        return duplicated.id
+    }
+
+    func deleteRoutine(id: UUID) {
+        guard workspace.routines.count > 1 else { return }
+        if let index = workspace.routines.firstIndex(where: { $0.id == id }) {
+            workspace.routines.remove(at: index)
+            if workspace.activeRoutineID == id {
+                workspace.activeRoutineID = workspace.routines.first?.id ?? UUID()
+            }
+            reconcileRoutineShape()
+        }
+    }
+
+    func renameRoutine(id: UUID, newName: String) {
+        if let index = workspace.routines.firstIndex(where: { $0.id == id }) {
+            workspace.routines[index].name = newName
+        }
+    }
+
+    private func nextRoutineName() -> String {
+        let existing = Set(workspace.routines.map(\.name))
+        var index = workspace.routines.count + 1
+        var candidate = "Routine \(index)"
+        while existing.contains(candidate) {
+            index += 1
+            candidate = "Routine \(index)"
+        }
+        return candidate
+    }
+
+    // MARK: - Formation Management
 
     func formationIndex(id: UUID?) -> Int? {
         guard let id else { return nil }
