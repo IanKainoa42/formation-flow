@@ -269,12 +269,12 @@ struct FloorGridView: View {
 
     private var startFormationName: String? {
         guard let startFormationID else { return nil }
-        return store.routine.formations.first(where: { $0.id == startFormationID })?.name
+        return store.formation(id: startFormationID)?.name
     }
 
     private var endFormationName: String? {
         guard let endFormationID else { return nil }
-        return store.routine.formations.first(where: { $0.id == endFormationID })?.name
+        return store.formation(id: endFormationID)?.name
     }
 
     private var compactInspectorTitle: String {

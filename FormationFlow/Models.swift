@@ -1082,9 +1082,11 @@ final class RoutineStore: ObservableObject {
     private var isLoading = false
     private var pendingSave: DispatchWorkItem?
     private var rosterLookup: [UUID: RosterAthlete] = [:]
+    private var formationIndexLookup: [UUID: Int] = [:]
 
     init() {
         self.routine = Routine.initial()
+        rebuildFormationLookup()
         load()
     }
 
@@ -1155,7 +1157,21 @@ final class RoutineStore: ObservableObject {
 
     func formationIndex(id: UUID?) -> Int? {
         guard let id else { return nil }
+        if let index = formationIndexLookup[id],
+           index < routine.formations.count,
+           routine.formations[index].id == id {
+            return index
+        }
         return routine.formations.firstIndex(where: { $0.id == id })
+    }
+
+    func formation(id: UUID) -> Formation? {
+        guard let index = formationIndexLookup[id],
+              index < routine.formations.count,
+              routine.formations[index].id == id else {
+            return routine.formations.first(where: { $0.id == id })
+        }
+        return routine.formations[index]
     }
 
     func rosterIndex(id: UUID) -> Int? {
@@ -1469,7 +1485,16 @@ final class RoutineStore: ObservableObject {
         rebuildRosterLookup()
     }
 
+    private func rebuildFormationLookup() {
+        formationIndexLookup = Dictionary(
+            routine.formations.enumerated().map { ($0.element.id, $0.offset) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
     private func reconcileTransitionSpecs() {
+        rebuildFormationLookup()
+
         let existing = Dictionary(
             routine.transitionSpecs.map {
                 (TransitionEdge(fromID: $0.fromFormationID, toID: $0.toFormationID), $0)
