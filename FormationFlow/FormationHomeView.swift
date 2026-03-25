@@ -851,8 +851,10 @@ struct RoutineWorkspaceView: View {
     }
 
     private func deleteCurrentRoutine() {
-        store.deleteRoutine(id: store.workspace.activeRoutineID)
-        selectedFormationID = store.routine.formations.first?.id
+        authenticateForDestructiveAction {
+            self.store.deleteRoutine(id: self.store.workspace.activeRoutineID)
+            self.selectedFormationID = self.store.routine.formations.first?.id
+        }
     }
 
     // MARK: - Actions
@@ -906,12 +908,14 @@ struct RoutineWorkspaceView: View {
     }
 
     private func requestFormationDeletion(_ formationIDs: [UUID]) {
-        deleteFormations(ids: formationIDs)
+        authenticateForDestructiveAction {
+            self.deleteFormations(ids: formationIDs)
+        }
     }
 
     private func deleteSelectedFormation() {
         guard let selectedFormationID else { return }
-        deleteFormations(ids: [selectedFormationID])
+        requestFormationDeletion([selectedFormationID])
     }
 
     private func deleteFormations(ids: [UUID]) {

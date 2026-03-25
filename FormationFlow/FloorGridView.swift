@@ -1,3 +1,4 @@
+import LocalAuthentication
 import Combine
 import SwiftUI
 import UIKit
@@ -1578,11 +1579,27 @@ struct FloorGridView: View {
                 titleVisibility: .visible
             ) {
                 Button("Delete", role: .destructive) {
-                    for id in rosterDeleteIDs {
-                        store.deleteAthlete(id: id)
+                    let context = LAContext()
+                    var error: NSError?
+                    if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
+                        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Authentication is required to perform this destructive action.") { success, _ in
+                            DispatchQueue.main.async {
+                                if success {
+                                    for id in self.rosterDeleteIDs {
+                                        self.store.deleteAthlete(id: id)
+                                    }
+                                    self.selectedAthleteIDs.subtract(self.rosterDeleteIDs)
+                                    self.rosterDeleteIDs = []
+                                }
+                            }
+                        }
+                    } else {
+                        for id in rosterDeleteIDs {
+                            store.deleteAthlete(id: id)
+                        }
+                        selectedAthleteIDs.subtract(rosterDeleteIDs)
+                        rosterDeleteIDs = []
                     }
-                    selectedAthleteIDs.subtract(rosterDeleteIDs)
-                    rosterDeleteIDs = []
                 }
                 Button("Cancel", role: .cancel) {
                     rosterDeleteIDs = []
@@ -2685,6 +2702,22 @@ struct FloorGridView: View {
     }
 
     private func deleteSelectedAthlete() {
+        let context = LAContext()
+        var error: NSError?
+        if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
+            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Authentication is required to perform this destructive action.") { success, _ in
+                DispatchQueue.main.async {
+                    if success {
+                        self.performDeleteSelectedAthlete()
+                    }
+                }
+            }
+        } else {
+            performDeleteSelectedAthlete()
+        }
+    }
+
+    private func performDeleteSelectedAthlete() {
         guard let selectedAthleteID else { return }
         store.deleteAthlete(id: selectedAthleteID)
         selectedAthleteIDs = []
