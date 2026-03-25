@@ -410,6 +410,16 @@ struct FloorGridView: View {
             rotationStartPositions = [:]
             clearTransitionDragState()
             selectedAthleteIDs = []
+            recomputePathCollisionIDs()
+        }
+        .onAppear {
+            recomputePathCollisionIDs()
+        }
+        .onChange(of: startFormationID) { _, _ in
+            recomputePathCollisionIDs()
+        }
+        .onChange(of: endFormationID) { _, _ in
+            recomputePathCollisionIDs()
         }
         .onChange(of: isSwapMode) { _, newValue in
             if newValue, swapSourceAthleteID == nil {
