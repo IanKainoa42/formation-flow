@@ -90,6 +90,8 @@ struct RoutinePlaybackView: View {
                     .onTapGesture {
                         player.jumpToNextSegment()
                     }
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityHint("Jumps to the next formation")
 
                 Spacer()
 
