@@ -174,7 +174,18 @@ All positions use **floor feet** (not pixels). The standard court is **72ft wide
 2. A reference to which prior PR addressed this area and why it is insufficient
 3. An acceptance criterion verifiable in under 60 seconds
 
-If your task says "optimize", "cache", "reduce allocations", or "refactor" without a failing assertion, **stop immediately**. Comment: "Task rejected: Models.swift is locked per Known Fragile Areas."
+If your task says "optimize", "cache", "reduce allocations", "O(1)", "O(N)", or "refactor" without a failing assertion, **stop immediately**. Comment: "Task rejected: Models.swift is locked per Known Fragile Areas."
+
+**Bolt agent sessions are specifically included.** Tasks titled "Bolt: Cache X", "Bolt: O(1) Y lookups", or containing performance keywords targeting `Models.swift` must stop. Last violations after this rule was applied: PR #34 (2026-03-25, "Cache transition path calculations") and PR #38 (2026-03-25, "O(1) RoutineStore Formation Lookups"). Both were optimization passes on code that had already been optimized in prior PRs.
+
+## Commit Hygiene
+
+Before staging any commit, delete all intermediate patch artifacts:
+- `*.orig` files (e.g., `SomeView.swift.orig`)
+- `patch.diff` or any `*.diff` files
+- Temp Swift files not in the Xcode project (e.g., `test_auth.swift` — this file was committed in PR #35 and should be removed)
+
+These are intermediate tools, not source code, and must not be committed.
 
 ## SwiftUI Accessibility: Slider Anti-Pattern
 
