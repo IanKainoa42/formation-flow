@@ -100,7 +100,7 @@ struct FloorGridView: View {
 
     private var renderedAthletes: [RenderedAthlete] {
         _ = playerTick // force redraw on player updates
-        if let player, player.progress > 0 {
+        if let player {
             return player.currentAthletes
         }
         return store.renderedAthletes(for: formationID)
@@ -476,6 +476,54 @@ struct FloorGridView: View {
         .onReceive(player?.objectWillChange.eraseToAnyPublisher() ?? Empty().eraseToAnyPublisher()) { _ in
             playerTick &+= 1
         }
+        .toolbar {
+            if isPhoneLayout {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Menu {
+                        if canShareTransition {
+                            Button(action: shareTransitionPreview) {
+                                Label("Share Preview", systemImage: "square.and.arrow.up")
+                            }
+                        }
+
+                        Button(action: { showingRosterSheet = true }) {
+                            Label("Roster", systemImage: "list.bullet.rectangle")
+                        }
+
+                        Button(action: { showingNotesSheet = true }) {
+                            Label("Notes", systemImage: "note.text")
+                        }
+
+                        if hasTransition {
+                            Button(action: resetSelectedPaths) {
+                                Label(selectedAthleteIDs.count == 1 ? "Reset Path" : "Reset Paths", systemImage: "arrow.counterclockwise")
+                            }
+                        } else {
+                            Button(action: resetView) {
+                                Label("Reset View", systemImage: "arrow.counterclockwise")
+                            }
+                        }
+
+                        Button(action: undoLastMove) {
+                            Label("Undo Move", systemImage: "arrow.uturn.backward")
+                        }
+                        .disabled(undoStack.isEmpty)
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .overlay(alignment: .topTrailing) {
+                                if formation?.notes.isEmpty == false {
+                                    Circle()
+                                        .fill(.orange)
+                                        .frame(width: 7, height: 7)
+                                        .offset(x: 3, y: -3)
+                                }
+                            }
+                    }
+                    .accessibilityLabel("Editing tools")
+                    .accessibilityValue(formation?.notes.isEmpty == false ? "Has notes" : "")
+                }
+            }
+        }
     }
 
     private var editorBody: some View {
@@ -610,11 +658,19 @@ struct FloorGridView: View {
                     .buttonStyle(.bordered)
                     .help("Add, remove, or rename athletes on the team roster")
 
-                    Button(action: resetView) {
-                        Label("Reset View", systemImage: "arrow.counterclockwise")
+                    if hasTransition {
+                        Button(action: resetSelectedPaths) {
+                            Label(selectedAthleteIDs.count == 1 ? "Reset Path" : "Reset Paths", systemImage: "arrow.counterclockwise")
+                        }
+                        .buttonStyle(.bordered)
+                        .help(selectedAthleteIDs.count == 1 ? "Reset this athlete's path to straight" : "Reset all athlete paths to straight")
+                    } else {
+                        Button(action: resetView) {
+                            Label("Reset View", systemImage: "arrow.counterclockwise")
+                        }
+                        .buttonStyle(.bordered)
+                        .help("Reset zoom and pan back to the default view")
                     }
-                    .buttonStyle(.bordered)
-                    .help("Reset zoom and pan back to the default view")
 
                     Button(action: { showingNotesSheet = true }) {
                         Label("Notes", systemImage: "note.text")
@@ -656,8 +712,14 @@ struct FloorGridView: View {
                 Label("Notes", systemImage: "note.text")
             }
 
-            Button(action: resetView) {
-                Label("Reset View", systemImage: "arrow.counterclockwise")
+            if hasTransition {
+                Button(action: resetSelectedPaths) {
+                    Label(selectedAthleteIDs.count == 1 ? "Reset Path" : "Reset Paths", systemImage: "arrow.counterclockwise")
+                }
+            } else {
+                Button(action: resetView) {
+                    Label("Reset View", systemImage: "arrow.counterclockwise")
+                }
             }
 
             Button(action: undoLastMove) {
@@ -900,8 +962,10 @@ struct FloorGridView: View {
             }
             .overlay(alignment: .top) {
                 if isPhoneLayout {
-                    VStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 8) {
                         phoneTopOverlay
+
+                        formationContextBadge
 
                         if let compactBannerConfiguration {
                             banner(text: compactBannerConfiguration.text, color: compactBannerConfiguration.color)
@@ -980,9 +1044,11 @@ struct FloorGridView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             canvasContent
-                .overlay(alignment: isPhoneLayout ? .topLeading : .bottomLeading) {
-                    formationContextBadge
-                        .padding(isPhoneLayout ? .init(top: isPhoneLandscape ? 4 : 52, leading: 12, bottom: 0, trailing: 0) : .init(top: 0, leading: 12, bottom: 12, trailing: 0))
+                .overlay(alignment: .bottomLeading) {
+                    if !isPhoneLayout {
+                        formationContextBadge
+                            .padding(.init(top: 0, leading: 12, bottom: 12, trailing: 0))
+                    }
                 }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1103,15 +1169,11 @@ struct FloorGridView: View {
     }
 
     private var phoneTopOverlay: some View {
-        HStack(spacing: 8) {
+        HStack {
             Button(action: addAthlete) {
                 Label("Add", systemImage: "plus.circle.fill")
             }
             .buttonStyle(.borderedProminent)
-
-            Spacer(minLength: 0)
-
-            phoneOverflowMenu
         }
         .controlSize(.small)
     }
@@ -1132,8 +1194,14 @@ struct FloorGridView: View {
                 Label("Notes", systemImage: "note.text")
             }
 
-            Button(action: resetView) {
-                Label("Reset View", systemImage: "arrow.counterclockwise")
+            if hasTransition {
+                Button(action: resetSelectedPaths) {
+                    Label(selectedAthleteIDs.count == 1 ? "Reset Path" : "Reset Paths", systemImage: "arrow.counterclockwise")
+                }
+            } else {
+                Button(action: resetView) {
+                    Label("Reset View", systemImage: "arrow.counterclockwise")
+                }
             }
 
             Button(action: undoLastMove) {
@@ -2604,6 +2672,20 @@ struct FloorGridView: View {
             t.pathWaypoints.remove(at: waypointIndex)
         }
         refreshTransitionFromStore()
+    }
+
+    private func resetSelectedPaths() {
+        if selectedAthleteIDs.count == 1, let athleteID = selectedAthleteIDs.first {
+            guard let startFormationID, let endFormationID else { return }
+            clearTransitionDragState()
+            store.mutateAthleteTransition(from: startFormationID, to: endFormationID, athleteID: athleteID) { t in
+                t.pathControlPoint = nil
+                t.pathWaypoints = []
+            }
+            refreshTransitionFromStore()
+        } else {
+            showingResetAllPathsConfirmation = true
+        }
     }
 
     private func resetAllPaths() {
