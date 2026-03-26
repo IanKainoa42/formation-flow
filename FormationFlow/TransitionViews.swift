@@ -220,13 +220,40 @@ struct CompactTransitionPlaybackRailView: View {
     var isSwapMode: Bool = false
     var canSwap: Bool = false
     var canEditPath: Bool = false
+    var onAdd: (() -> Void)? = nil
+    var formationLabel: String? = nil
+    var formationColor: Color = .accentColor
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
+            // Formation context (replaces the canvas overlay that was covering the floor)
+            if let formationLabel {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(formationColor)
+                        .frame(width: 7, height: 7)
+                    Text(formationLabel)
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                }
+            }
+
             Text("\(startFormationName) \u{2192} \(endFormationName)")
-                .font(.caption.weight(.semibold))
+                .font(.caption)
                 .foregroundColor(.secondary)
                 .lineLimit(2)
+
+            // Add athlete button
+            if let onAdd {
+                Button(action: onAdd) {
+                    Label("Add", systemImage: "plus.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+
+            Divider()
 
             HStack(spacing: 8) {
                 TransportControls.resetButton(player: player, size: 30)
@@ -234,14 +261,17 @@ struct CompactTransitionPlaybackRailView: View {
                 TransportControls.loopButton(player: player, size: 30)
             }
 
+            // Swap and path buttons fill the full row width
             HStack(spacing: 8) {
                 TransportControls.swapButton(isActive: isSwapMode, size: 30, action: onSwap)
                     .disabled(!canSwap)
+                    .frame(maxWidth: .infinity)
                 TransportControls.pathButton(size: 30, action: onPath)
                     .disabled(!canEditPath)
+                    .frame(maxWidth: .infinity)
             }
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
                     Text("Progress")
                         .font(.caption.weight(.semibold))

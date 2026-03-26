@@ -20,6 +20,9 @@ struct FloorGridView: View {
     let formationID: UUID
     var onCycleFormation: (() -> Void)?
     var onDuplicateAsNext: () -> Void
+    var onRenameFormation: (() -> Void)?
+    var onDeleteFormation: (() -> Void)?
+    var onResetRoutine: (() -> Void)?
 
     // Transition parameters (nil when no adjacent formation)
     var player: TransitionPlayer?
@@ -96,6 +99,10 @@ struct FloorGridView: View {
 
     private var isHeightConstrained: Bool {
         verticalSizeClass == .compact
+    }
+
+    private var canAddFormation: Bool {
+        entitlementManager.isPro || store.routine.formations.count < FreeTierLimits.maxFormations
     }
 
     private var renderedAthletes: [RenderedAthlete] {
@@ -494,6 +501,32 @@ struct FloorGridView: View {
                             Label("Notes", systemImage: "note.text")
                         }
 
+                        Divider()
+
+                        Button(action: onDuplicateAsNext) {
+                            Label(
+                                canAddFormation ? "Duplicate as Next" : "Duplicate as Next (Pro)",
+                                systemImage: canAddFormation ? "plus.square.on.square" : "lock.fill"
+                            )
+                        }
+
+                        Button(action: { onRenameFormation?() }) {
+                            Label("Rename Formation", systemImage: "pencil")
+                        }
+
+                        let idx = formationIndex ?? 0
+                        Button(action: { store.moveFormationEarlier(id: formationID) }) {
+                            Label("Move Earlier", systemImage: "arrow.up")
+                        }
+                        .disabled(idx == 0)
+
+                        Button(action: { store.moveFormationLater(id: formationID) }) {
+                            Label("Move Later", systemImage: "arrow.down")
+                        }
+                        .disabled(idx >= store.routine.formations.count - 1)
+
+                        Divider()
+
                         if hasTransition {
                             Button(action: resetSelectedPaths) {
                                 Label(selectedAthleteIDs.count == 1 ? "Reset Path" : "Reset Paths", systemImage: "arrow.counterclockwise")
@@ -508,6 +541,16 @@ struct FloorGridView: View {
                             Label("Undo Move", systemImage: "arrow.uturn.backward")
                         }
                         .disabled(undoStack.isEmpty)
+
+                        Divider()
+
+                        Button(role: .destructive, action: { onDeleteFormation?() }) {
+                            Label("Delete Formation", systemImage: "trash")
+                        }
+
+                        Button(role: .destructive, action: { onResetRoutine?() }) {
+                            Label("Reset Routine", systemImage: "arrow.counterclockwise")
+                        }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .overlay(alignment: .topTrailing) {
@@ -841,11 +884,8 @@ struct FloorGridView: View {
                 viewportSize: geometry.size,
                 canvasSize: canvasSize
             )
-            let offset = CGPoint(
-                x: (geometry.size.width - canvasWidth) / 2 + displayPanOffset.width,
-                y: (geometry.size.height - canvasHeight) / 2 + displayPanOffset.height
-            )
-            let availableLeadingSideSpace = max(0, offset.x)
+            let baseOffsetX = (geometry.size.width - canvasWidth) / 2 + displayPanOffset.width
+            let availableLeadingSideSpace = max(0, baseOffsetX)
             let phonePlaybackRailWidth = max(0, availableLeadingSideSpace - 16)
             let phoneUsesPlaybackRail =
                 isPhoneLandscape
@@ -853,6 +893,17 @@ struct FloorGridView: View {
                 && player != nil
                 && startFormationName != nil
                 && endFormationName != nil
+
+            // When rail is present, center canvas in the space to the right of the rail
+            // instead of the full viewport, eliminating the empty gap on the right side.
+            let railRegionWidth: CGFloat = phoneUsesPlaybackRail ? (8 + phonePlaybackRailWidth) : 0
+            let adjustedOffsetX = phoneUsesPlaybackRail
+                ? railRegionWidth + (geometry.size.width - railRegionWidth - canvasWidth) / 2 + displayPanOffset.width
+                : baseOffsetX
+            let offset = CGPoint(
+                x: adjustedOffsetX,
+                y: (geometry.size.height - canvasHeight) / 2 + displayPanOffset.height
+            )
 
             let baseCanvasContent = FloorCanvasView(
                 athletes: renderedAthletes,
@@ -962,17 +1013,23 @@ struct FloorGridView: View {
             }
             .overlay(alignment: .top) {
                 if isPhoneLayout {
-                    VStack(alignment: .leading, spacing: 8) {
-                        phoneTopOverlay
+                    // In landscape, keep the floor fully visible — no top overlay.
+                    // When the playback rail is showing on the left side, it contains
+                    // the Add button and formation context — skip the canvas overlay to
+                    // avoid covering the floor.
+                    if !phoneUsesPlaybackRail && !isPhoneLandscape {
+                        VStack(alignment: .leading, spacing: 8) {
+                            phoneTopOverlay
 
-                        formationContextBadge
+                            formationContextBadge
 
-                        if let compactBannerConfiguration {
-                            banner(text: compactBannerConfiguration.text, color: compactBannerConfiguration.color)
+                            if let compactBannerConfiguration {
+                                banner(text: compactBannerConfiguration.text, color: compactBannerConfiguration.color)
+                            }
                         }
+                        .padding(.horizontal, 12)
+                        .padding(.top, 12)
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.top, 12)
                 } else {
                     VStack(spacing: isCompactLayout ? 8 : 10) {
                         if isSwapMode, let athlete = swapSourceRosterAthlete {
@@ -995,7 +1052,8 @@ struct FloorGridView: View {
             .overlay(alignment: .bottom) {
                 if isPhoneLayout {
                     VStack(spacing: 10) {
-                        if selectedRosterAthlete != nil || selectedAthleteIDs.count > 1 {
+                        // In landscape the selection overlay moves to the right side.
+                        if !isPhoneLandscape, (selectedRosterAthlete != nil || selectedAthleteIDs.count > 1) {
                             phoneSelectionOverlay
                         }
 
@@ -1020,6 +1078,14 @@ struct FloorGridView: View {
                     .padding(.bottom, 12)
                 }
             }
+            .overlay(alignment: .trailing) {
+                if isPhoneLandscape, (selectedRosterAthlete != nil || selectedAthleteIDs.count > 1) {
+                    phoneSelectionOverlay
+                        .frame(width: 210)
+                        .padding(.trailing, 12)
+                        .padding(.vertical, 12)
+                }
+            }
             .overlay(alignment: .topLeading) {
                 if phoneUsesPlaybackRail,
                     let player,
@@ -1035,7 +1101,10 @@ struct FloorGridView: View {
                         onPath: { showingInspectorSheet = true },
                         isSwapMode: isSwapMode,
                         canSwap: selectedAthleteID != nil,
-                        canEditPath: selectedAthleteID != nil
+                        canEditPath: selectedAthleteID != nil,
+                        onAdd: addAthlete,
+                        formationLabel: formationContextLabel,
+                        formationColor: currentFormationColor
                     )
                     .padding(.leading, 8)
                     .padding(.top, 12)

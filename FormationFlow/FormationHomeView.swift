@@ -447,6 +447,9 @@ struct RoutineWorkspaceView: View {
             formationID: formationID,
             onCycleFormation: cycleToNextFormation,
             onDuplicateAsNext: duplicateSelectedFormation,
+            onRenameFormation: { beginRenaming(formation) },
+            onDeleteFormation: { requestFormationDeletion([formationID]) },
+            onResetRoutine: { showingResetConfirmation = true },
             player: previewSession.player,
             startFormationID: previewTransitionPair?.start.id,
             endFormationID: previewTransitionPair?.end.id
@@ -526,22 +529,25 @@ struct RoutineWorkspaceView: View {
             .accessibilityLabel("Show formations")
         }
 
-        ToolbarItem(placement: .navigationBarTrailing) {
-            Menu {
-                Button(action: duplicateSelectedFormation) {
-                    Label(
-                        canAddFormation ? "Duplicate as Next" : "Duplicate as Next (Pro)",
-                        systemImage: canAddFormation ? "plus.square.on.square" : "lock.fill"
-                    )
+        // On phone, FloorGridView contributes the merged trailing menu — skip here.
+        if !isPhoneLayout {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    Button(action: duplicateSelectedFormation) {
+                        Label(
+                            canAddFormation ? "Duplicate as Next" : "Duplicate as Next (Pro)",
+                            systemImage: canAddFormation ? "plus.square.on.square" : "lock.fill"
+                        )
+                    }
+
+                    Divider()
+
+                    formationOverflowMenu(for: formation)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
                 }
-
-                Divider()
-
-                formationOverflowMenu(for: formation)
-            } label: {
-                Image(systemName: isPhoneLayout ? "ellipsis.circle.fill" : "ellipsis.circle")
+                .accessibilityLabel("More actions")
             }
-            .accessibilityLabel("More actions")
         }
     }
 
