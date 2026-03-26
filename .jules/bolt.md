@@ -21,3 +21,9 @@
 **Learning:** `formationIndex(id:)` used `firstIndex(where:)` which is an O(N) operation. This is problematic when it is called repeatedly from functions that loop over formations or athletes, creating an O(N^2) complexity pattern.
 
 **Action:** Maintain an O(1) `formationIndexLookup: [UUID: Int]` dictionary in `RoutineStore` and update it whenever the array of formations changes (e.g. in `reconcileTransitionSpecs()`). Use this dictionary in `formationIndex(id:)` and expose `formation(id:)` to prevent the O(N) overhead.
+
+## 2024-11-20 - Prevent O(N^2) Math During Animation Loop
+
+**Learning:** SwiftUI computed properties are evaluated on every render loop. In `FloorGridView.swift`, calculating the static collision summary (`collisionSummary`) during an animation loop caused O(N^2) spatial math to run on every single frame, leading to CPU spikes. Because the UI uses a separate mechanism (`pathCollidingAthletes`) to track collisions *during* transitions, evaluating the static frame collisions while scrubbing or playing is redundant and computationally expensive.
+
+**Action:** Add an early return to expensive computed properties when the application is actively animating (e.g., `if let player, player.progress > 0 && player.progress < 1 { return (0, []) }`). This prevents O(N^2) logic from running continuously during 60fps frame ticks.

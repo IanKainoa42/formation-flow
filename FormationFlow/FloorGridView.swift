@@ -107,7 +107,11 @@ struct FloorGridView: View {
     }
 
     private var collisionSummary: (count: Int, ids: Set<UUID>) {
-        PathCalculations.collisionSummary(in: renderedAthletes)
+        // ⚡ Bolt: Avoid O(N^2) spatial math per frame during playback.
+        if let player, player.progress > 0 && player.progress < 1 {
+            return (0, [])
+        }
+        return PathCalculations.collisionSummary(in: renderedAthletes)
     }
 
     private var collidingAthletes: [RenderedAthlete] {
