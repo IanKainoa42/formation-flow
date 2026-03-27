@@ -620,6 +620,7 @@ struct FloorGridView: View {
                         Label("Notes", systemImage: "note.text")
                     }
                     .buttonStyle(.bordered)
+                    .accessibilityValue(formation?.notes.isEmpty == false ? "Has notes" : "")
                     .help("Add notes or reminders for this formation")
                     .overlay(alignment: .topTrailing) {
                         if formation?.notes.isEmpty == false {
@@ -668,6 +669,7 @@ struct FloorGridView: View {
         }
         .buttonStyle(.bordered)
         .accessibilityLabel("More actions")
+        .accessibilityValue(formation?.notes.isEmpty == false ? "Has notes" : "")
     }
 
     private var compactOverflowMenuLabel: some View {
@@ -1152,6 +1154,7 @@ struct FloorGridView: View {
         }
         .buttonStyle(.bordered)
         .accessibilityLabel("More actions")
+        .accessibilityValue(formation?.notes.isEmpty == false ? "Has notes" : "")
         .controlSize(.small)
     }
 
