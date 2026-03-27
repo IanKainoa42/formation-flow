@@ -27,3 +27,9 @@
 **Learning:** SwiftUI computed properties are evaluated on every render loop. In `FloorGridView.swift`, calculating the static collision summary (`collisionSummary`) during an animation loop caused O(N^2) spatial math to run on every single frame, leading to CPU spikes. Because the UI uses a separate mechanism (`pathCollidingAthletes`) to track collisions *during* transitions, evaluating the static frame collisions while scrubbing or playing is redundant and computationally expensive.
 
 **Action:** Add an early return to expensive computed properties when the application is actively animating (e.g., `if let player, player.progress > 0 && player.progress < 1 { return (0, []) }`). This prevents O(N^2) logic from running continuously during 60fps frame ticks.
+
+## 2026-03-27 - Prevent O(N) Array Allocations in Render Loop
+
+**Learning:** Re-calculating array segment nodes and lengths on every frame of an animation loop (like `waypointNodes` and `segmentLengths` inside `interpolateWaypointPath`) creates significant memory pressure and GC overhead due to O(N) array allocations at 60fps.
+
+**Action:** When interpolating positions along a segmented path, pre-calculate and cache the static geometric data (nodes, lengths, totalLength) outside the render loop. Pass the cached arrays into the interpolation function to perform pure math without heap allocations per frame.

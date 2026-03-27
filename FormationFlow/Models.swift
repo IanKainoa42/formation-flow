@@ -1801,7 +1801,25 @@ struct PathCalculations {
         let nodes = waypointNodes(from: start, to: end, waypoints: waypoints)
         let lengths = segmentLengths(nodes)
         let totalLength = lengths.reduce(0, +)
-        guard totalLength > 0 else { return start }
+        return interpolateWaypointPath(
+            nodes: nodes,
+            lengths: lengths,
+            totalLength: totalLength,
+            waypoints: waypoints,
+            progress: progress
+        )
+    }
+
+    static func interpolateWaypointPath(
+        nodes: [CGPoint],
+        lengths: [CGFloat],
+        totalLength: CGFloat,
+        waypoints: [PathWaypoint],
+        progress: CGFloat
+    ) -> CGPoint {
+        guard totalLength > 0, let start = nodes.first, let end = nodes.last else {
+            return nodes.first ?? CGPoint(x: 0, y: 0)
+        }
 
         let targetDistance = progress * totalLength
         var accumulated: CGFloat = 0
@@ -1964,6 +1982,10 @@ struct PathCalculations {
             let travel: CGFloat
             let hold: CGFloat
             let effectiveTime: CGFloat
+            let thresholds: [CGFloat]
+            let nodes: [CGPoint]
+            let lengths: [CGFloat]
+            let totalLength: CGFloat
         }
 
         let timings: [AthleteTiming] = paths.map { item in
@@ -1975,12 +1997,28 @@ struct PathCalculations {
             )
             let travel = travelDistance(from: item.startPosition, to: item.endPosition, transition: transition)
             let hold = item.waypoints.reduce(CGFloat(0)) { $0 + $1.holdCounts }
+            let thresholds = !item.waypoints.isEmpty
+                ? waypointProgressThresholds(
+                    from: item.startPosition,
+                    to: item.endPosition,
+                    waypoints: item.waypoints
+                )
+                : []
+
+            let nodes = waypointNodes(from: item.startPosition, to: item.endPosition, waypoints: item.waypoints)
+            let lengths = segmentLengths(nodes)
+            let totalLength = lengths.reduce(0, +)
+
             return AthleteTiming(
                 item: item,
                 transition: transition,
                 travel: travel,
                 hold: hold,
-                effectiveTime: travel + hold
+                effectiveTime: travel + hold,
+                thresholds: thresholds,
+                nodes: nodes,
+                lengths: lengths,
+                totalLength: totalLength
             )
         }
 
@@ -1999,16 +2037,11 @@ struct PathCalculations {
 
                 let effectiveProgress: CGFloat
                 if !timing.item.waypoints.isEmpty && timing.hold > 0 {
-                    let thresholds = waypointProgressThresholds(
-                        from: timing.item.startPosition,
-                        to: timing.item.endPosition,
-                        waypoints: timing.item.waypoints
-                    )
                     let moveDuration = durationFraction * effectiveCounts * (timing.travel / max(timing.effectiveTime, 0.001))
                     effectiveProgress = holdAdjustedPathProgress(
                         wallProgress: athleteProgress,
                         waypoints: timing.item.waypoints,
-                        thresholds: thresholds,
+                        thresholds: timing.thresholds,
                         moveDuration: moveDuration,
                         totalHoldTime: timing.hold
                     )
@@ -2019,8 +2052,9 @@ struct PathCalculations {
                 let position: CGPoint
                 if !timing.item.waypoints.isEmpty {
                     position = interpolateWaypointPath(
-                        from: timing.item.startPosition,
-                        to: timing.item.endPosition,
+                        nodes: timing.nodes,
+                        lengths: timing.lengths,
+                        totalLength: timing.totalLength,
                         waypoints: timing.item.waypoints,
                         progress: effectiveProgress
                     )
@@ -2103,7 +2137,7 @@ final class TransitionPlayer: ObservableObject {
     private var transitionLookup: [UUID: AthleteTransition] = [:]
 
     // ⚡ Bolt: Cache timing calculations outside the animation loop to avoid O(N) operations per frame.
-    private var timingCache: [UUID: (endAthlete: RenderedAthlete, transition: AthleteTransition, travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat, thresholds: [CGFloat])] = [:]
+    private var timingCache: [UUID: (endAthlete: RenderedAthlete, transition: AthleteTransition, travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat, thresholds: [CGFloat], nodes: [CGPoint], lengths: [CGFloat], totalLength: CGFloat)] = [:]
     private var maxEffectiveTime: CGFloat = 1
 
     // ⚡ Bolt: Cache path generation and spatial collisions outside the animation loop
@@ -2139,7 +2173,7 @@ final class TransitionPlayer: ObservableObject {
     }
 
     private func updateTimingCache() {
-        var newTimingCache: [UUID: (endAthlete: RenderedAthlete, transition: AthleteTransition, travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat, thresholds: [CGFloat])] = [:]
+        var newTimingCache: [UUID: (endAthlete: RenderedAthlete, transition: AthleteTransition, travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat, thresholds: [CGFloat], nodes: [CGPoint], lengths: [CGFloat], totalLength: CGFloat)] = [:]
         newTimingCache.reserveCapacity(startAthletes.count)
 
         let newMaxEffectiveTime = startAthletes.compactMap { athlete -> CGFloat? in
@@ -2160,7 +2194,11 @@ final class TransitionPlayer: ObservableObject {
                 )
                 : []
 
-            newTimingCache[athlete.id] = (endAthlete, transition, travel, hold, effectiveTime, thresholds)
+            let nodes = PathCalculations.waypointNodes(from: athlete.position, to: endAthlete.position, waypoints: transition.pathWaypoints)
+            let lengths = PathCalculations.segmentLengths(nodes)
+            let totalLength = lengths.reduce(0, +)
+
+            newTimingCache[athlete.id] = (endAthlete, transition, travel, hold, effectiveTime, thresholds, nodes, lengths, totalLength)
             return effectiveTime
         }.max() ?? 1
 
@@ -2281,8 +2319,9 @@ final class TransitionPlayer: ObservableObject {
             let nextPosition: CGPoint
             if !transition.pathWaypoints.isEmpty {
                 nextPosition = PathCalculations.interpolateWaypointPath(
-                    from: athlete.position,
-                    to: endAthlete.position,
+                    nodes: cached.nodes,
+                    lengths: cached.lengths,
+                    totalLength: cached.totalLength,
                     waypoints: transition.pathWaypoints,
                     progress: effectiveProgress
                 )
