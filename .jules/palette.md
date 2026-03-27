@@ -18,3 +18,7 @@
 **Learning:** Custom tap gestures on text elements (like `.onTapGesture` on a `Text` view) are completely missed by VoiceOver users unless explicitly marked as interactive. This leaves users unaware that they can tap the text to perform an action. Additionally, `.accessibilityHint` should describe the result of the action, not the interaction itself, as VoiceOver automatically adds "Double tap to activate" for elements with `.isButton` trait.
 
 **Action:** Whenever using `.onTapGesture` on a non-interactive element like `Text`, always attach `.accessibilityAddTraits(.isButton)` so VoiceOver announces it as a button, and provide an `.accessibilityHint` (e.g., "Jumps to the next formation") to explain the result of the action.
+
+**Learning:** When attaching `.accessibilityLabel` to a container view (like an `HStack` inside a `Menu` or `Button` label) that contains dynamic text, VoiceOver will *only* read the hardcoded label and completely ignore the dynamic text inside. This inadvertently hides important state (like the currently selected Routine) from screen reader users.
+
+**Action:** To provide accessible context while preserving dynamic data, use `.accessibilityLabel` for the component's name/purpose and `.accessibilityValue` to expose its current dynamic state (e.g., `.accessibilityLabel("Routine Menu")` and `.accessibilityValue(store.routine.name)`).

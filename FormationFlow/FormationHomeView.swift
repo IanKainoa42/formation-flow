@@ -623,6 +623,7 @@ struct RoutineWorkspaceView: View {
             if !formation.notes.isEmpty {
                 Image(systemName: "note.text")
                     .foregroundColor(.secondary)
+                    .accessibilityLabel("Has notes")
             }
 
             if showsDisclosure {
@@ -817,6 +818,7 @@ struct RoutineWorkspaceView: View {
             }
         }
         .accessibilityLabel("Routine Menu")
+        .accessibilityValue(store.routine.name)
     }
 
     private func switchRoutine(to id: UUID) {
