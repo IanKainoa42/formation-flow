@@ -51,6 +51,7 @@ enum TransportControls {
         }
         .buttonStyle(.borderedProminent)
         .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
+        .accessibilityValue(player.isPlaying ? "Playing" : "Paused")
         .help(player.isPlaying ? "Pause the transition preview" : "Play the transition animation")
     }
 
@@ -100,6 +101,7 @@ enum TransportControls {
         .tint(isActive ? .blue : .secondary)
         .accessibilityLabel(isActive ? "Cancel Swap" : "Swap Position")
         .accessibilityValue(isActive ? "Active" : "Inactive")
+        .accessibilityHint(isActive ? "Cancel the swap operation" : "Swap start or end positions between two athletes")
         .help(isActive ? "Cancel the swap operation" : "Swap start or end positions between two athletes")
     }
 
