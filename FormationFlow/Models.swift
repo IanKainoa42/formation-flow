@@ -482,6 +482,7 @@ struct TransitionPathRenderItem: Identifiable, Equatable, Hashable {
     let controlPoint: CGPoint?
     let waypoints: [PathWaypoint]
     let moveDelay: CGFloat
+    let nodes: [CGPoint]
 
     var id: UUID { athleteID }
 
@@ -499,6 +500,7 @@ struct TransitionPathRenderItem: Identifiable, Equatable, Hashable {
         self.controlPoint = controlPoint
         self.waypoints = waypoints
         self.moveDelay = moveDelay
+        self.nodes = PathCalculations.waypointNodes(from: startPosition, to: endPosition, waypoints: waypoints)
     }
 }
 

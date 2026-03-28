@@ -146,23 +146,20 @@ struct FloorCanvasView: View {
             let lineWidth: CGFloat = isSelected ? 3 : 1.5
 
             if !item.waypoints.isEmpty {
-                let nodes = PathCalculations.waypointNodes(
-                    from: item.startPosition,
-                    to: item.endPosition,
-                    waypoints: item.waypoints
-                )
-                let screenNodes = nodes.map { CGPoint(x: $0.x * cellSize, y: $0.y * cellSize) }
+                let nodes = item.nodes
 
-                for segmentIndex in 0..<(screenNodes.count - 1) {
-                    let p0 = screenNodes[segmentIndex]
-                    let p1 = screenNodes[segmentIndex + 1]
+                for segmentIndex in 0..<(nodes.count - 1) {
+                    let p0 = CGPoint(x: nodes[segmentIndex].x * cellSize, y: nodes[segmentIndex].y * cellSize)
+                    let p1 = CGPoint(x: nodes[segmentIndex + 1].x * cellSize, y: nodes[segmentIndex + 1].y * cellSize)
                     let waypointAtEnd = segmentIndex < item.waypoints.count ? item.waypoints[segmentIndex] : nil
 
                     var segment = Path()
                     segment.move(to: p0)
                     if waypointAtEnd?.isSmooth == true {
-                        let prev = segmentIndex > 0 ? screenNodes[segmentIndex - 1] : p0
-                        let next = segmentIndex + 2 < screenNodes.count ? screenNodes[segmentIndex + 2] : p1
+                        let prevNode = segmentIndex > 0 ? nodes[segmentIndex - 1] : nodes[segmentIndex]
+                        let nextNode = segmentIndex + 2 < nodes.count ? nodes[segmentIndex + 2] : nodes[segmentIndex + 1]
+                        let prev = CGPoint(x: prevNode.x * cellSize, y: prevNode.y * cellSize)
+                        let next = CGPoint(x: nextNode.x * cellSize, y: nextNode.y * cellSize)
                         let (c1, c2) = PathCalculations.catmullRomControlPoints(prev: prev, p0: p0, p1: p1, next: next)
                         segment.addCurve(to: p1, control1: c1, control2: c2)
                     } else {
@@ -390,10 +387,8 @@ struct FloorCanvasView: View {
     private func drawTrails(in context: inout GraphicsContext) {
         guard !trailPositions.isEmpty else { return }
 
-        let athleteLookup = Dictionary(athletes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-
-        for (athleteID, positions) in trailPositions {
-            guard positions.count > 1, let athlete = athleteLookup[athleteID] else { continue }
+        for athlete in athletes {
+            guard let positions = trailPositions[athlete.id], positions.count > 1 else { continue }
             let color: Color = useRoleColors ? athlete.role.color : formationColor
 
             for (i, position) in positions.enumerated() {
