@@ -948,26 +948,8 @@ struct RoutineWorkspaceView: View {
     }
 
     private func authenticateAndResetRoutine() {
-        let context = LAContext()
-        var error: NSError?
-        if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) {
-            context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: "Authenticate to reset the routine") { success, _ in
-                DispatchQueue.main.async {
-                    if success {
-                        resetRoutine()
-                    }
-                }
-            }
-        } else if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
-            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Authenticate to reset the routine") { success, _ in
-                DispatchQueue.main.async {
-                    if success {
-                        resetRoutine()
-                    }
-                }
-            }
-        } else {
-            resetRoutine()
+        authenticateForDestructiveAction {
+            self.resetRoutine()
         }
     }
 
