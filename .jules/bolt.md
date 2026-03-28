@@ -33,3 +33,9 @@
 **Learning:** Re-calculating array segment nodes and lengths on every frame of an animation loop (like `waypointNodes` and `segmentLengths` inside `interpolateWaypointPath`) creates significant memory pressure and GC overhead due to O(N) array allocations at 60fps.
 
 **Action:** When interpolating positions along a segmented path, pre-calculate and cache the static geometric data (nodes, lengths, totalLength) outside the render loop. Pass the cached arrays into the interpolation function to perform pure math without heap allocations per frame.
+
+## 2026-03-28 - Prevent O(N) Dictionary Allocations and Maps in Rendering Loop
+
+**Learning:** Allocating dictionaries and performing maps within high-frequency rendering functions, like `drawTrails` and `drawTransitionPaths` in `FloorCanvasView.swift`, leads to unnecessary CPU and memory overhead during animation loops. This issue manifests in redundant `Dictionary(uniqueKeysWithValues:)` operations inside iterative updates and `map` functions applied on geometric path arrays over every frame.
+
+**Action:** Eliminate the need to construct a dictionary by iterating directly over the list that contains the full details or caching geometric nodes (like path waypoints) in models. Utilize properties cached in corresponding structs (e.g. adding `nodes` to `TransitionPathRenderItem`) to sidestep calculating path allocations on each frame.
