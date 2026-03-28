@@ -22,3 +22,9 @@
 **Learning:** When attaching `.accessibilityLabel` to a container view (like an `HStack` inside a `Menu` or `Button` label) that contains dynamic text, VoiceOver will *only* read the hardcoded label and completely ignore the dynamic text inside. This inadvertently hides important state (like the currently selected Routine) from screen reader users.
 
 **Action:** To provide accessible context while preserving dynamic data, use `.accessibilityLabel` for the component's name/purpose and `.accessibilityValue` to expose its current dynamic state (e.g., `.accessibilityLabel("Routine Menu")` and `.accessibilityValue(store.routine.name)`).
+
+## 2024-05-14 - Transport accessibility labels
+
+**Learning:** Important transport buttons like play/pause and swap were missing specific accessibility states (values and hints) to communicate their dynamic function effectively.
+
+**Action:** Added `.accessibilityValue` to communicate the active playing state and `.accessibilityHint` to clarify the toggle action of the swap button.
