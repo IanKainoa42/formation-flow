@@ -8,6 +8,7 @@ import UIKit
 
 struct RoutineWorkspaceView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var store = RoutineStore()
     @StateObject private var previewSession = TransitionPreviewSession()
 
@@ -16,10 +17,11 @@ struct RoutineWorkspaceView: View {
     @State private var splitViewVisibility: NavigationSplitViewVisibility = .all
     @State private var previewReferenceMode: PreviewReferenceMode = .outOfSelected
     @State private var showingResetConfirmation = false
-    @State private var pendingFormationDeleteIDs: [UUID] = []
     @State private var showingCompactFormationPicker = false
     @State private var renamingFormationID: UUID?
     @State private var formationNameDraft = ""
+    @State private var showingRoutineRenamePrompt = false
+    @State private var routineNameDraft = ""
     @EnvironmentObject private var entitlementManager: EntitlementManager
     @State private var showingUpgradeSheet = false
     @State private var isFullScreen = false
@@ -78,33 +80,8 @@ struct RoutineWorkspaceView: View {
         )
     }
 
-    private var showingFormationDeleteConfirmation: Binding<Bool> {
-        Binding(
-            get: { !pendingFormationDeleteIDs.isEmpty },
-            set: { isPresented in
-                if !isPresented {
-                    pendingFormationDeleteIDs = []
-                }
-            }
-        )
-    }
-
     private var canAddFormation: Bool {
         entitlementManager.isPro || store.routine.formations.count < FreeTierLimits.maxFormations
-    }
-
-    private var deleteConfirmationTitle: String {
-        "Delete \(pendingFormationDeleteIDs.count == 1 ? "this formation" : "these formations")?"
-    }
-    
-    private var deleteButtonTitle: String {
-        pendingFormationDeleteIDs.count == 1 ? "Delete Formation" : "Delete Formations"
-    }
-    
-    private var deleteConfirmationMessage: String {
-        pendingFormationDeleteIDs.count == 1
-            ? "This removes the formation and any transition data connected to it. This cannot be undone."
-            : "This removes the selected formations and any transition data connected to them. This cannot be undone."
     }
 
     @ViewBuilder
@@ -135,6 +112,13 @@ struct RoutineWorkspaceView: View {
             reconcileSelection(with: formations)
             refreshPreviewSession()
         }
+        .onChange(of: store.workspace.activeRoutineID) { _, _ in
+            selectedAthleteIDs = []
+            isSwapMode = false
+            triggerDeleteAthlete = false
+            previewReferenceMode = smartPickReferenceMode()
+            refreshPreviewSession()
+        }
         .onChange(of: selectedFormationID) { _, _ in
             selectedAthleteIDs = []
             isSwapMode = false
@@ -153,18 +137,6 @@ struct RoutineWorkspaceView: View {
         } message: {
             Text("This clears the roster, formations, notes, and transition data, then starts over with one empty formation.")
         }
-        .confirmationDialog(
-            deleteConfirmationTitle,
-            isPresented: showingFormationDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button(deleteButtonTitle, role: .destructive) {
-                deletePendingFormations()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(deleteConfirmationMessage)
-        }
         .alert("Rename Formation", isPresented: showingRenamePrompt) {
             TextField("Formation name", text: $formationNameDraft)
 
@@ -177,6 +149,18 @@ struct RoutineWorkspaceView: View {
         } message: {
             Text("Use the routine list or toolbar menu to rename formations without covering the floor.")
         }
+        .alert("Rename Routine", isPresented: $showingRoutineRenamePrompt) {
+            TextField("Routine name", text: $routineNameDraft)
+
+            Button("Save") {
+                commitRoutineRename()
+            }
+            .disabled(routineNameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Enter a new name for this routine.")
+        }
         .sheet(isPresented: $showingUpgradeSheet) {
             ProUpgradeSheet()
                 .environmentObject(entitlementManager)
@@ -184,6 +168,11 @@ struct RoutineWorkspaceView: View {
         .fullScreenCover(isPresented: $showingRoutinePlayback) {
             RoutinePlaybackView(store: store)
                 .environmentObject(entitlementManager)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .background || newPhase == .inactive {
+                store.saveNow()
+            }
         }
     }
 
@@ -215,6 +204,7 @@ struct RoutineWorkspaceView: View {
                         .padding(10)
                         .background(.ultraThinMaterial, in: Circle())
                 }
+                .accessibilityLabel("Exit full screen")
 
                 if store.routine.formations.count >= 2 {
                     Button {
@@ -226,6 +216,7 @@ struct RoutineWorkspaceView: View {
                             .padding(10)
                             .background(.ultraThinMaterial, in: Circle())
                     }
+                    .accessibilityLabel("Play routine")
                 }
             }
             .padding(16)
@@ -235,7 +226,11 @@ struct RoutineWorkspaceView: View {
                 CompactTransitionPlaybackOverlayView(
                     player: player,
                     startFormationName: previewTransitionPair.start.name,
-                    endFormationName: previewTransitionPair.end.name
+                    endFormationName: previewTransitionPair.end.name,
+                    onSwap: { isSwapMode.toggle() },
+                    isSwapMode: isSwapMode,
+                    canSwap: selectedAthleteIDs.count == 1,
+                    canEditPath: selectedAthleteIDs.count == 1
                 )
                 .padding(.horizontal, 20)
                 .padding(.bottom, 20)
@@ -289,7 +284,7 @@ struct RoutineWorkspaceView: View {
                             store.moveFormations(fromOffsets: from, toOffset: to)
                         }
                     } header: {
-                        Text(store.routine.name)
+                        routinePickerMenu
                     }
                 }
             }
@@ -299,7 +294,11 @@ struct RoutineWorkspaceView: View {
                 SidebarTransportView(
                     player: player,
                     startFormationName: previewTransitionPair.start.name,
-                    endFormationName: previewTransitionPair.end.name
+                    endFormationName: previewTransitionPair.end.name,
+                    onSwap: { isSwapMode.toggle() },
+                    isSwapMode: isSwapMode,
+                    canSwap: selectedAthleteIDs.count == 1,
+                    canEditPath: selectedAthleteIDs.count == 1
                 )
                 .padding(16)
                 .background(.thinMaterial)
@@ -316,13 +315,9 @@ struct RoutineWorkspaceView: View {
                     store: store,
                     formationID: selectedFormationID,
                     selectedAthleteIDs: $selectedAthleteIDs,
-                    onSwap: {
-                        isSwapMode.toggle()
-                    },
                     onDeleteAthlete: {
                         triggerDeleteAthlete = true
-                    },
-                    isSwapMode: isSwapMode
+                    }
                 )
                 .frame(minHeight: 200, maxHeight: 400)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -374,7 +369,7 @@ struct RoutineWorkspaceView: View {
                             store.moveFormations(fromOffsets: from, toOffset: to)
                         }
                     } header: {
-                        Text(store.routine.name)
+                        routinePickerMenu
                     }
                 }
             }
@@ -384,7 +379,11 @@ struct RoutineWorkspaceView: View {
                 SidebarTransportView(
                     player: player,
                     startFormationName: previewTransitionPair.start.name,
-                    endFormationName: previewTransitionPair.end.name
+                    endFormationName: previewTransitionPair.end.name,
+                    onSwap: { isSwapMode.toggle() },
+                    isSwapMode: isSwapMode,
+                    canSwap: selectedAthleteIDs.count == 1,
+                    canEditPath: selectedAthleteIDs.count == 1
                 )
                 .padding(16)
                 .background(.thinMaterial)
@@ -428,7 +427,7 @@ struct RoutineWorkspaceView: View {
 
     @ViewBuilder
     private func compactDetailView(for formationID: UUID) -> some View {
-        if let formation = store.routine.formations.first(where: { $0.id == formationID }) {
+        if let formation = store.formation(id: formationID) {
             detailContent(for: formation, formationID: formationID, compact: true)
                 .onAppear {
                     selectedFormationID = formationID
@@ -448,6 +447,9 @@ struct RoutineWorkspaceView: View {
             formationID: formationID,
             onCycleFormation: cycleToNextFormation,
             onDuplicateAsNext: duplicateSelectedFormation,
+            onRenameFormation: { beginRenaming(formation) },
+            onDeleteFormation: { requestFormationDeletion([formationID]) },
+            onResetRoutine: { showingResetConfirmation = true },
             player: previewSession.player,
             startFormationID: previewTransitionPair?.start.id,
             endFormationID: previewTransitionPair?.end.id
@@ -479,6 +481,7 @@ struct RoutineWorkspaceView: View {
                                     .padding(8)
                                     .background(.ultraThinMaterial, in: Circle())
                             }
+                            .accessibilityLabel("Play routine")
                         }
 
                         Button {
@@ -492,6 +495,7 @@ struct RoutineWorkspaceView: View {
                                 .padding(8)
                                 .background(.ultraThinMaterial, in: Circle())
                         }
+                        .accessibilityLabel("Enter full screen")
                     }
                     .padding(12)
                 }
@@ -525,22 +529,25 @@ struct RoutineWorkspaceView: View {
             .accessibilityLabel("Show formations")
         }
 
-        ToolbarItem(placement: .navigationBarTrailing) {
-            Menu {
-                Button(action: duplicateSelectedFormation) {
-                    Label(
-                        canAddFormation ? "Duplicate as Next" : "Duplicate as Next (Pro)",
-                        systemImage: canAddFormation ? "plus.square.on.square" : "lock.fill"
-                    )
+        // On phone, FloorGridView contributes the merged trailing menu — skip here.
+        if !isPhoneLayout {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    Button(action: duplicateSelectedFormation) {
+                        Label(
+                            canAddFormation ? "Duplicate as Next" : "Duplicate as Next (Pro)",
+                            systemImage: canAddFormation ? "plus.square.on.square" : "lock.fill"
+                        )
+                    }
+
+                    Divider()
+
+                    formationOverflowMenu(for: formation)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
                 }
-
-                Divider()
-
-                formationOverflowMenu(for: formation)
-            } label: {
-                Image(systemName: isPhoneLayout ? "ellipsis.circle.fill" : "ellipsis.circle")
+                .accessibilityLabel("More actions")
             }
-            .accessibilityLabel("More actions")
         }
     }
 
@@ -574,7 +581,7 @@ struct RoutineWorkspaceView: View {
                         store.moveFormations(fromOffsets: from, toOffset: to)
                     }
                 } header: {
-                    Text(store.routine.name)
+                    routinePickerMenu
                 }
             }
             .navigationTitle("Formations")
@@ -604,8 +611,10 @@ struct RoutineWorkspaceView: View {
 
     @ViewBuilder
     private func formationRow(for formation: Formation, showsDisclosure: Bool = false) -> some View {
+        let index = store.routine.formations.firstIndex(where: { $0.id == formation.id }) ?? 0
+        let color = TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: index)
         HStack(spacing: 12) {
-            FormationThumbnailView(athletes: store.renderedAthletes(for: formation))
+            FormationThumbnailView(athletes: store.renderedAthletes(for: formation), color: color)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(formation.name)
@@ -620,6 +629,7 @@ struct RoutineWorkspaceView: View {
             if !formation.notes.isEmpty {
                 Image(systemName: "note.text")
                     .foregroundColor(.secondary)
+                    .accessibilityLabel("Has notes")
             }
 
             if showsDisclosure {
@@ -755,7 +765,124 @@ struct RoutineWorkspaceView: View {
         }
     }
 
+    // MARK: - Routine Actions
+
+    private var routinePickerMenu: some View {
+        Menu {
+            Section("Switch Routine") {
+                ForEach(store.workspace.routines) { routine in
+                    Button {
+                        switchRoutine(to: routine.id)
+                    } label: {
+                        HStack {
+                            Text(routine.name)
+                            if store.workspace.activeRoutineID == routine.id {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            }
+
+            Section("Actions") {
+                Button {
+                    routineNameDraft = store.routine.name
+                    showingRoutineRenamePrompt = true
+                } label: {
+                    Label("Rename Routine", systemImage: "pencil")
+                }
+
+                Button {
+                    duplicateCurrentRoutine()
+                } label: {
+                    Label(canAddFormation ? "Duplicate Routine" : "Duplicate Routine (Pro)", systemImage: canAddFormation ? "plus.square.on.square" : "lock.fill")
+                }
+
+                Button(role: .destructive) {
+                    deleteCurrentRoutine()
+                } label: {
+                    Label("Delete Routine", systemImage: "trash")
+                }
+                .disabled(store.workspace.routines.count <= 1)
+            }
+
+            Section {
+                Button {
+                    createNewRoutine()
+                } label: {
+                    Label(canAddFormation ? "New Routine" : "New Routine (Pro)", systemImage: canAddFormation ? "plus" : "lock.fill")
+                }
+            }
+        } label: {
+            HStack {
+                Text(store.routine.name)
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .accessibilityLabel("Routine Menu")
+        .accessibilityValue(store.routine.name)
+    }
+
+    private func switchRoutine(to id: UUID) {
+        store.switchRoutine(id: id)
+        selectedFormationID = store.routine.formations.first?.id
+    }
+
+    private func commitRoutineRename() {
+        let trimmedName = routineNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return }
+        store.renameRoutine(id: store.workspace.activeRoutineID, newName: trimmedName)
+        routineNameDraft = ""
+    }
+
+    private func duplicateCurrentRoutine() {
+        guard canAddFormation else {
+            showingUpgradeSheet = true
+            return
+        }
+        if store.duplicateRoutine(id: store.workspace.activeRoutineID) != nil {
+            selectedFormationID = store.routine.formations.first?.id
+        }
+    }
+
+    private func createNewRoutine() {
+        guard canAddFormation else {
+            showingUpgradeSheet = true
+            return
+        }
+        _ = store.addRoutine()
+        selectedFormationID = store.routine.formations.first?.id
+    }
+
+    private func deleteCurrentRoutine() {
+        authenticateForDestructiveAction {
+            self.store.deleteRoutine(id: self.store.workspace.activeRoutineID)
+            self.selectedFormationID = self.store.routine.formations.first?.id
+        }
+    }
+
     // MARK: - Actions
+
+    private func authenticateForDestructiveAction(completion: @escaping () -> Void) {
+        let context = LAContext()
+        var error: NSError?
+
+        if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
+            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Authentication is required to perform this destructive action.") { success, _ in
+                DispatchQueue.main.async {
+                    if success {
+                        completion()
+                    }
+                }
+            }
+        } else {
+            completion()
+        }
+    }
 
     private func addFormation() {
         guard canAddFormation else {
@@ -789,22 +916,14 @@ struct RoutineWorkspaceView: View {
     }
 
     private func requestFormationDeletion(_ formationIDs: [UUID]) {
-        pendingFormationDeleteIDs = formationIDs.reduce(into: [UUID]()) { result, formationID in
-            guard store.formationIndex(id: formationID) != nil else { return }
-            guard !result.contains(formationID) else { return }
-            result.append(formationID)
+        authenticateForDestructiveAction {
+            self.deleteFormations(ids: formationIDs)
         }
-    }
-
-    private func deletePendingFormations() {
-        let formationIDs = pendingFormationDeleteIDs
-        pendingFormationDeleteIDs = []
-        deleteFormations(ids: formationIDs)
     }
 
     private func deleteSelectedFormation() {
         guard let selectedFormationID else { return }
-        deleteFormations(ids: [selectedFormationID])
+        requestFormationDeletion([selectedFormationID])
     }
 
     private func deleteFormations(ids: [UUID]) {
@@ -835,26 +954,8 @@ struct RoutineWorkspaceView: View {
     }
 
     private func authenticateAndResetRoutine() {
-        let context = LAContext()
-        var error: NSError?
-        if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) {
-            context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: "Authenticate to reset the routine") { success, _ in
-                DispatchQueue.main.async {
-                    if success {
-                        resetRoutine()
-                    }
-                }
-            }
-        } else if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
-            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Authenticate to reset the routine") { success, _ in
-                DispatchQueue.main.async {
-                    if success {
-                        resetRoutine()
-                    }
-                }
-            }
-        } else {
-            resetRoutine()
+        authenticateForDestructiveAction {
+            self.resetRoutine()
         }
     }
 
@@ -941,96 +1042,11 @@ struct RoutineWorkspaceView: View {
     }
 }
 
-// MARK: - Sidebar Transport View
-
-private struct SidebarTransportView: View {
-    @ObservedObject var player: TransitionPlayer
-    let startFormationName: String
-    let endFormationName: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("\(startFormationName) \u{2192} \(endFormationName)")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-
-            HStack(spacing: 16) {
-                Button(action: player.reset) {
-                    Image(systemName: "backward.end.fill")
-                        .frame(width: 34, height: 34)
-                }
-                .buttonStyle(.bordered)
-                .accessibilityLabel("Reset transition")
-
-                Button {
-                    player.isPlaying ? player.pause() : player.play()
-                } label: {
-                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .frame(width: 34, height: 34)
-                }
-                .buttonStyle(.borderedProminent)
-                .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
-
-                Button {
-                    player.isLooping.toggle()
-                } label: {
-                    Image(systemName: "repeat")
-                        .frame(width: 34, height: 34)
-                }
-                .buttonStyle(.bordered)
-                .tint(player.isLooping ? .accentColor : .secondary)
-                .accessibilityLabel("Toggle loop")
-                .accessibilityValue(player.isLooping ? "On" : "Off")
-            }
-
-            Slider(
-                value: Binding(
-                    get: { player.progress },
-                    set: { player.seek(to: $0) }
-                ),
-                in: 0...1
-            )
-            .accessibilityLabel("Transition progress")
-
-            HStack {
-                Text("Counts")
-                    .font(.caption.weight(.semibold))
-                Spacer()
-                Text(TransitionCountFormatting.label(player.counts))
-                    .font(.system(.caption, design: .monospaced))
-            }
-            HStack(spacing: 8) {
-                ForEach([4, 8, 16, 32], id: \.self) { count in
-                    Button("\(count)") {
-                        player.counts = CGFloat(count)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .tint(player.counts == CGFloat(count) ? .accentColor : .secondary)
-                }
-            }
-
-            Picker("Speed", selection: Binding(
-                get: {
-                    [CGFloat(0.5), 1.0, 1.5, 2.0]
-                        .min(by: { abs($0 - player.speed) < abs($1 - player.speed) }) ?? 1.0
-                },
-                set: { player.speed = $0 }
-            )) {
-                Text("0.5x").tag(CGFloat(0.5))
-                Text("1x").tag(CGFloat(1.0))
-                Text("1.5x").tag(CGFloat(1.5))
-                Text("2x").tag(CGFloat(2.0))
-            }
-            .pickerStyle(.segmented)
-        }
-    }
-}
-
 // MARK: - Formation Thumbnail
 
 private struct FormationThumbnailView: View {
     let athletes: [RenderedAthlete]
+    var color: Color = .white
 
     var body: some View {
         Canvas { context, size in
@@ -1049,7 +1065,7 @@ private struct FormationThumbnailView: View {
                     width: radius * 2,
                     height: radius * 2
                 )
-                context.fill(Path(ellipseIn: rect), with: .color(athlete.role.color))
+                context.fill(Path(ellipseIn: rect), with: .color(color))
             }
         }
         .frame(width: 34, height: 34)

@@ -1,7 +1,9 @@
+import OSLog
 import SwiftUI
 
 struct ProUpgradeSheet: View {
     @EnvironmentObject private var entitlementManager: EntitlementManager
+    private let logger = Logger(subsystem: "FormationFlow", category: "ProUpgrade")
     @Environment(\.dismiss) private var dismiss
 
     @State private var purchaseState: PurchaseState = .idle
@@ -35,44 +37,51 @@ struct ProUpgradeSheet: View {
 
             Spacer()
 
-            switch purchaseState {
-            case .idle:
-                Button {
-                    Task { await handlePurchase() }
-                } label: {
-                    Text("Upgrade — $4.99")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.orange)
-
-            case .loading:
-                ProgressView()
-                    .padding(.vertical, 14)
-
-            case .pending:
+            if case .pending = purchaseState {
                 Label("Waiting for approval", systemImage: "clock")
                     .foregroundColor(.secondary)
                     .padding(.vertical, 14)
-
-            case .error(let message):
-                VStack(spacing: 8) {
+            } else {
+                if case .error(let message) = purchaseState {
                     Text(message)
                         .foregroundColor(.red)
                         .font(.caption)
-                    Button {
-                        Task { await handlePurchase() }
-                    } label: {
-                        Text("Try Again — $4.99")
+                }
+
+                Button {
+                    Task { await handlePurchase() }
+                } label: {
+                    if case .loading = purchaseState {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                    } else {
+                        let buttonText = {
+                            if case .error(_) = purchaseState {
+                                return "Try Again — $4.99"
+                            }
+                            return "Upgrade — $4.99"
+                        }()
+                        Text(buttonText)
                             .font(.headline)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.orange)
                 }
+                .buttonStyle(.borderedProminent)
+                .tint(.orange)
+                .disabled({
+                    if case .loading = purchaseState { return true }
+                    return false
+                }())
+                .accessibilityLabel(
+                    {
+                        if case .loading = purchaseState { return "Upgrading" }
+                        if case .error(_) = purchaseState { return "Try Again" }
+                        return "Upgrade"
+                    }()
+                )
             }
 
             Button("Restore Purchase") {
@@ -116,6 +125,7 @@ struct ProUpgradeSheet: View {
                 purchaseState = .error("Purchase could not be completed.")
             }
         } catch {
+            logger.error("Purchase failed: \(error.localizedDescription, privacy: .private)")
             purchaseState = .error("Something went wrong. Please try again.")
         }
     }

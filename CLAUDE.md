@@ -160,3 +160,38 @@ All positions use **floor feet** (not pixels). The standard court is **72ft wide
 | **Role** | base, flyer, spotter, backspot, or tumbler — determines circle color |
 | **Collision** | Two athletes within 2ft of each other (static or during path traversal) |
 | **8-count** | Choreography timing unit — transitions can display in counts (4, 8, 16) |
+
+---
+
+## Known Fragile Areas
+
+`FormationFlow/Models.swift` is the entire data layer. It has been modified 6 times in a single week (4 optimization passes + 1 security migration + 1 privacy fix). Stability now matters more than micro-optimizations.
+
+- **`FormationFlow/Models.swift`** — Contains `Routine`, `Formation`, `TransitionSpec`, `AthleteTransition`, `TransitionPlayer`, `PathCalculations`. O(N²)→O(N) lookup chains have already been applied 3 times. UserDefaults migration is done. OSLog privacy is fixed. Consider this file **stable**.
+
+**HARD STOP:** Do NOT modify `Models.swift` unless your issue description contains **all three**:
+1. A specific failing test or user-visible regression with repro steps
+2. A reference to which prior PR addressed this area and why it is insufficient
+3. An acceptance criterion verifiable in under 60 seconds
+
+If your task says "optimize", "cache", "reduce allocations", "O(1)", "O(N)", or "refactor" without a failing assertion, **stop immediately**. Comment: "Task rejected: Models.swift is locked per Known Fragile Areas."
+
+**Bolt agent sessions are specifically included.** Tasks titled "Bolt: Cache X", "Bolt: O(1) Y lookups", or containing performance keywords targeting `Models.swift` must stop. Last violations after this rule was applied: PR #34 (2026-03-25, "Cache transition path calculations") and PR #38 (2026-03-25, "O(1) RoutineStore Formation Lookups"). Both were optimization passes on code that had already been optimized in prior PRs.
+
+## Commit Hygiene
+
+Before staging any commit, delete all intermediate patch artifacts:
+- `*.orig` files (e.g., `SomeView.swift.orig`)
+- `patch.diff` or any `*.diff` files
+- Temp Swift files not in the Xcode project (e.g., `test_auth.swift` — this file was committed in PR #35 and should be removed)
+
+These are intermediate tools, not source code, and must not be committed.
+
+## SwiftUI Accessibility: Slider Anti-Pattern
+
+**Do NOT add `.accessibilityValue` to standard SwiftUI `Slider` components.** Sliders already have native VoiceOver support (adjustable actions, announces bounds/percentage). Adding a custom `.accessibilityValue` overrides the native `.adjustable` trait and degrades the VoiceOver experience.
+
+- OK: `.accessibilityLabel("Transition duration")`
+- NOT OK: `.accessibilityValue("3 seconds")` on a `Slider` — this breaks native adjustable behavior
+
+This pattern was introduced in PR #12 and corrected in PR #22. The rule is documented in `.jules/palette.md`.

@@ -29,7 +29,11 @@ struct RoutinePlaybackView: View {
                     athletes: player.currentAthletes,
                     cellSize: cellSize,
                     offset: CGPoint(x: offsetX, y: offsetY),
-                    useRoleColors: true,
+                    hasTransition: true,
+                    startFormationColor: TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: player.currentSegmentIndex),
+                    endFormationColor: TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: player.currentSegmentIndex + 1),
+                    transitionProgress: player.segmentProgress,
+                    useRoleColors: false,
                     trailPositions: player.showTrail ? player.trailPositions : [:]
                 )
                 .ignoresSafeArea()
@@ -86,6 +90,8 @@ struct RoutinePlaybackView: View {
                     .onTapGesture {
                         player.jumpToNextSegment()
                     }
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityHint("Jumps to the next formation")
 
                 Spacer()
 
@@ -103,6 +109,7 @@ struct RoutinePlaybackView: View {
                     ),
                     in: 0...1
                 )
+                .accessibilityLabel("Routine progress")
 
                 // Segment marker ticks
                 GeometryReader { geo in
