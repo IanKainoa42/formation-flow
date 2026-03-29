@@ -1016,9 +1016,9 @@ enum RoutineMetrics {
             .joined(separator: " ")
 
         if metadataSummary.isEmpty {
-            logger.log("metric=\(event.rawValue, privacy: .public)")
+            logger.log("metric=\(event.rawValue, privacy: .private)")
         } else {
-            logger.log("metric=\(event.rawValue, privacy: .public) \(metadataSummary, privacy: .private)")
+            logger.log("metric=\(event.rawValue, privacy: .private) \(metadataSummary, privacy: .private)")
         }
     }
 
