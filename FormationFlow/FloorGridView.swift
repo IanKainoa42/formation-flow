@@ -37,7 +37,9 @@ struct FloorGridView: View {
     @State private var showingTransportSheet = false
     @State private var showingAthleteRenamePrompt = false
     @State private var athleteLabelDraft = ""
+    @State private var rosterAthleteRenameID: UUID?
     @State private var showingAthleteDeleteConfirmation = false
+    @State private var showingRosterDeleteConfirmation = false
     @State private var showTransitionPaths = true
     @State private var isDraggingAthletes = false
     @State private var isPanningCanvas = false
@@ -466,6 +468,11 @@ struct FloorGridView: View {
             if shouldDelete {
                 triggerDeleteAthlete = false
                 deleteSelectedAthlete()
+            }
+        }
+        .onChange(of: showingAthleteRenamePrompt) { _, newValue in
+            if !newValue {
+                rosterAthleteRenameID = nil
             }
         }
         .confirmationDialog(
@@ -1709,22 +1716,29 @@ struct FloorGridView: View {
 
                                 Spacer()
                             }
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                rosterAthleteRenameID = athlete.id
+                                athleteLabelDraft = athlete.label
+                                showingAthleteRenamePrompt = true
+                            }
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel("\(athlete.label), \(athlete.role.displayName)")
+                            .accessibilityHint("Double tap to edit name")
                         }
                         .onMove { from, to in
                             store.moveRoster(fromOffsets: from, toOffset: to)
                         }
                         .onDelete { offsets in
                             rosterDeleteIDs = offsets.map { store.routine.roster[$0].id }
+                            showingRosterDeleteConfirmation = true
                         }
                     }
                 }
             }
             .confirmationDialog(
                 "Delete \(rosterDeleteIDs.count == 1 ? "this athlete" : "these athletes")?",
-                isPresented: Binding(
-                    get: { !rosterDeleteIDs.isEmpty },
-                    set: { if !$0 { rosterDeleteIDs = [] } }
-                ),
+                isPresented: $showingRosterDeleteConfirmation,
                 titleVisibility: .visible
             ) {
                 Button("Delete", role: .destructive) {
@@ -1762,8 +1776,26 @@ struct FloorGridView: View {
                     EditButton()
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") { showingRosterSheet = false }
+                    HStack {
+                        Button(action: {
+                            addAthlete()
+                        }) {
+                            Image(systemName: "plus")
+                        }
+                        .accessibilityLabel("Add Athlete")
+                        Button("Done") { showingRosterSheet = false }
+                    }
                 }
+            }
+            .alert("Rename Athlete", isPresented: $showingAthleteRenamePrompt) {
+                TextField("Label", text: $athleteLabelDraft)
+                Button("Save") {
+                    commitAthleteRename()
+                }
+                .disabled(athleteLabelDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Athlete labels are shared across every formation.")
             }
         }
     }
@@ -2821,15 +2853,17 @@ struct FloorGridView: View {
     }
 
     private func commitAthleteRename() {
-        guard let selectedAthleteID else { return }
+        let targetID = rosterAthleteRenameID ?? selectedAthleteID
+        guard let targetID else { return }
         let trimmedLabel = athleteLabelDraft
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !trimmedLabel.isEmpty else { return }
 
-        store.mutateRosterAthlete(id: selectedAthleteID) { athlete in
+        store.mutateRosterAthlete(id: targetID) { athlete in
             athlete.label = String(trimmedLabel.prefix(4))
         }
+        rosterAthleteRenameID = nil
     }
 
     private func applyTemplate() {
