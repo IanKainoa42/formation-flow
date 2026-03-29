@@ -1078,14 +1078,9 @@ struct FloorGridView: View {
                     .padding(.bottom, 12)
                 }
             }
-            .overlay(alignment: .trailing) {
-                if isPhoneLandscape, (selectedRosterAthlete != nil || selectedAthleteIDs.count > 1) {
-                    phoneSelectionOverlay
-                        .frame(width: 210)
-                        .padding(.trailing, 12)
-                        .padding(.vertical, 12)
-                }
-            }
+            // In phone landscape, skip the selection overlay — screen is too
+            // narrow and it overlaps the floor canvas. The user can still tap
+            // the athlete or use the inspector sheet for edits.
             .overlay(alignment: .topLeading) {
                 if phoneUsesPlaybackRail,
                     let player,
