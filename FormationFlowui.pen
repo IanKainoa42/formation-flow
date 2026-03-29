@@ -3145,7 +3145,7 @@
               "fill": "$text-secondary",
               "textGrowth": "fixed-width",
               "width": 300,
-              "content": "Tap an athlete to edit it. Drag on empty space to box-select.",
+              "content": "Tap an athlete to edit it. Drag on empty space to lasso-select.",
               "textAlign": "center",
               "fontFamily": "Inter",
               "fontSize": 11,

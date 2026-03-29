@@ -37,13 +37,14 @@ struct FloorGridView: View {
     @State private var showingTransportSheet = false
     @State private var showingAthleteRenamePrompt = false
     @State private var athleteLabelDraft = ""
+    @State private var rosterAthleteRenameID: UUID?
     @State private var showingAthleteDeleteConfirmation = false
+    @State private var showingRosterDeleteConfirmation = false
     @State private var showTransitionPaths = true
     @State private var isDraggingAthletes = false
     @State private var isPanningCanvas = false
-    @State private var isDrawingSelectionBox = false
-    @State private var selectionRect: CGRect? = nil
-    @State private var selectionStartPoint: CGPoint = .zero
+    @State private var isDrawingSelectionLasso = false
+    @State private var selectionLasso: FloorSelectionLasso? = nil
     @State private var dragStartPositions: [UUID: CGPoint] = [:]
     @State private var undoStack: [[(id: UUID, position: CGPoint)]] = []
     @State private var rotationStartPositions: [UUID: CGPoint] = [:]
@@ -311,7 +312,7 @@ struct FloorGridView: View {
         }
 
         if !hasMadeFirstSelection {
-            return ("Tap an athlete to edit it. Drag on empty space to box-select.", .accentColor)
+            return ("Tap an athlete to edit it. Drag on empty space to lasso-select.", .accentColor)
         }
 
         return nil
@@ -466,6 +467,11 @@ struct FloorGridView: View {
             if shouldDelete {
                 triggerDeleteAthlete = false
                 deleteSelectedAthlete()
+            }
+        }
+        .onChange(of: showingAthleteRenamePrompt) { _, newValue in
+            if !newValue {
+                rosterAthleteRenameID = nil
             }
         }
         .confirmationDialog(
@@ -916,7 +922,7 @@ struct FloorGridView: View {
                 cellSize: cellSize,
                 offset: offset,
                 swapSourceID: swapSourceAthleteID,
-                selectionRect: selectionRect,
+                selectionLasso: selectionLasso,
                 focusedEndpoint: focusedEndpoint,
                 hasTransition: hasTransition,
                 startFormationColor: transitionStartColor,
@@ -1040,7 +1046,7 @@ struct FloorGridView: View {
                             }
                         } else if !hasMadeFirstSelection {
                             banner(
-                                text: "Tap an athlete to edit it. Drag on empty space to box-select.",
+                                text: "Tap an athlete to edit it. Drag on empty space to lasso-select.",
                                 color: .accentColor
                             )
                         }
@@ -1078,6 +1084,9 @@ struct FloorGridView: View {
                     .padding(.bottom, 12)
                 }
             }
+            // In phone landscape, skip the selection overlay — screen is too
+            // narrow and it overlaps the floor canvas. The user can still tap
+            // the athlete or use the inspector sheet for edits.
             .overlay(alignment: .topLeading) {
                 if phoneUsesPlaybackRail,
                     let player,
@@ -1706,22 +1715,29 @@ struct FloorGridView: View {
 
                                 Spacer()
                             }
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                rosterAthleteRenameID = athlete.id
+                                athleteLabelDraft = athlete.label
+                                showingAthleteRenamePrompt = true
+                            }
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel("\(athlete.label), \(athlete.role.displayName)")
+                            .accessibilityHint("Double tap to edit name")
                         }
                         .onMove { from, to in
                             store.moveRoster(fromOffsets: from, toOffset: to)
                         }
                         .onDelete { offsets in
                             rosterDeleteIDs = offsets.map { store.routine.roster[$0].id }
+                            showingRosterDeleteConfirmation = true
                         }
                     }
                 }
             }
             .confirmationDialog(
                 "Delete \(rosterDeleteIDs.count == 1 ? "this athlete" : "these athletes")?",
-                isPresented: Binding(
-                    get: { !rosterDeleteIDs.isEmpty },
-                    set: { if !$0 { rosterDeleteIDs = [] } }
-                ),
+                isPresented: $showingRosterDeleteConfirmation,
                 titleVisibility: .visible
             ) {
                 Button("Delete", role: .destructive) {
@@ -1759,8 +1775,26 @@ struct FloorGridView: View {
                     EditButton()
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") { showingRosterSheet = false }
+                    HStack {
+                        Button(action: {
+                            addAthlete()
+                        }) {
+                            Image(systemName: "plus")
+                        }
+                        .accessibilityLabel("Add Athlete")
+                        Button("Done") { showingRosterSheet = false }
+                    }
                 }
+            }
+            .alert("Rename Athlete", isPresented: $showingAthleteRenamePrompt) {
+                TextField("Label", text: $athleteLabelDraft)
+                Button("Save") {
+                    commitAthleteRename()
+                }
+                .disabled(athleteLabelDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Athlete labels are shared across every formation.")
             }
         }
     }
@@ -1973,8 +2007,8 @@ struct FloorGridView: View {
                     handleFormationDragContinued(value, cellSize: cellSize)
                     return
                 }
-                if isDrawingSelectionBox {
-                    handleSelectionBoxContinued(value)
+                if isDrawingSelectionLasso {
+                    handleSelectionLassoContinued(value)
                     return
                 }
 
@@ -2164,7 +2198,7 @@ struct FloorGridView: View {
                     }
                 }
 
-                // 2d: Empty space → pan if zoomed on compact, otherwise selection box
+                // 2d: Empty space → pan if zoomed on compact, otherwise lasso select
                 focusedEndpoint = hasTransition ? currentFormationEndpoint : nil
                 guard dragDistance >= dragActivationDistance else { return }
 
@@ -2178,10 +2212,9 @@ struct FloorGridView: View {
                     return
                 }
 
-                selectionStartPoint = value.startLocation
-                selectionRect = CGRect(origin: value.startLocation, size: .zero)
-                isDrawingSelectionBox = true
-                handleSelectionBoxContinued(value)
+                selectionLasso = FloorSelectionLasso(startPoint: value.startLocation)
+                isDrawingSelectionLasso = true
+                handleSelectionLassoContinued(value)
             }
             .onEnded { value in
                 let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize)
@@ -2191,8 +2224,8 @@ struct FloorGridView: View {
                     isDraggingPathHandle = false
                     isPanningCanvas = false
                     draggingWaypointID = nil
-                    isDrawingSelectionBox = false
-                    selectionRect = nil
+                    isDrawingSelectionLasso = false
+                    selectionLasso = nil
                     dragStartPositions = [:]
                     endpointDragStartPosition = nil
                     activeAlignmentGuides = []
@@ -2245,18 +2278,18 @@ struct FloorGridView: View {
                     return
                 }
 
-                if isDrawingSelectionBox, let selectionRect {
+                if isDrawingSelectionLasso, let selectionLasso {
                     let newSelection = Set(
                         renderedAthletes.compactMap { athlete in
                             let screenPoint = CGPoint(
                                 x: athlete.position.x * cellSize + offset.x,
                                 y: athlete.position.y * cellSize + offset.y
                             )
-                            return selectionRect.contains(screenPoint) ? athlete.id : nil
+                            return selectionLasso.contains(screenPoint) ? athlete.id : nil
                         }
                     )
 
-                    if selectionRect.width < 5 && selectionRect.height < 5 {
+                    if selectionLasso.isTapCandidate {
                         // Tap on empty space — also try selecting from transition athletes
                         let tapPoint = CGPoint(
                             x: (value.location.x - offset.x) / cellSize,
@@ -2622,14 +2655,14 @@ struct FloorGridView: View {
         }
     }
 
-    private func handleSelectionBoxContinued(_ value: DragGesture.Value) {
+    private func handleSelectionLassoContinued(_ value: DragGesture.Value) {
         activeAlignmentGuides = []
-        selectionRect = CGRect(
-            x: min(selectionStartPoint.x, value.location.x),
-            y: min(selectionStartPoint.y, value.location.y),
-            width: abs(value.location.x - selectionStartPoint.x),
-            height: abs(value.location.y - selectionStartPoint.y)
-        )
+        if selectionLasso == nil {
+            selectionLasso = FloorSelectionLasso(startPoint: value.startLocation)
+        }
+        guard var selectionLasso else { return }
+        selectionLasso.append(value.location)
+        self.selectionLasso = selectionLasso
     }
 
     // MARK: - Double-Tap Gesture for Waypoints
@@ -2818,15 +2851,17 @@ struct FloorGridView: View {
     }
 
     private func commitAthleteRename() {
-        guard let selectedAthleteID else { return }
+        let targetID = rosterAthleteRenameID ?? selectedAthleteID
+        guard let targetID else { return }
         let trimmedLabel = athleteLabelDraft
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !trimmedLabel.isEmpty else { return }
 
-        store.mutateRosterAthlete(id: selectedAthleteID) { athlete in
+        store.mutateRosterAthlete(id: targetID) { athlete in
             athlete.label = String(trimmedLabel.prefix(4))
         }
+        rosterAthleteRenameID = nil
     }
 
     private func applyTemplate() {

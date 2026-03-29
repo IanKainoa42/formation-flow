@@ -8,6 +8,85 @@ import AppKit
 
 // MARK: - Floor Canvas View
 
+struct FloorSelectionLasso {
+    private(set) var points: [CGPoint]
+
+    init(startPoint: CGPoint) {
+        points = [startPoint]
+    }
+
+    var bounds: CGRect {
+        guard let firstPoint = points.first else { return .null }
+
+        var minX = firstPoint.x
+        var maxX = firstPoint.x
+        var minY = firstPoint.y
+        var maxY = firstPoint.y
+
+        for point in points.dropFirst() {
+            minX = min(minX, point.x)
+            maxX = max(maxX, point.x)
+            minY = min(minY, point.y)
+            maxY = max(maxY, point.y)
+        }
+
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+
+    var isTapCandidate: Bool {
+        let selectionBounds = bounds
+        return selectionBounds.width < 5 && selectionBounds.height < 5
+    }
+
+    mutating func append(_ point: CGPoint, minimumDistance: CGFloat = 6) {
+        guard let lastPoint = points.last else {
+            points = [point]
+            return
+        }
+
+        guard hypot(point.x - lastPoint.x, point.y - lastPoint.y) >= minimumDistance else { return }
+        points.append(point)
+    }
+
+    func contains(_ point: CGPoint) -> Bool {
+        guard points.count >= 3 else { return false }
+
+        var containsPoint = false
+        var previousPoint = points[points.count - 1]
+
+        for currentPoint in points {
+            let denominator = previousPoint.y - currentPoint.y
+            let intersects = ((currentPoint.y > point.y) != (previousPoint.y > point.y))
+                && (point.x < (previousPoint.x - currentPoint.x) * (point.y - currentPoint.y)
+                    / (denominator == 0 ? CGFloat.leastNonzeroMagnitude : denominator)
+                    + currentPoint.x)
+            if intersects {
+                containsPoint.toggle()
+            }
+            previousPoint = currentPoint
+        }
+
+        return containsPoint
+    }
+
+    func canvasPath(offset: CGPoint) -> Path {
+        guard let firstPoint = points.first else { return Path() }
+
+        var path = Path()
+        path.move(to: CGPoint(x: firstPoint.x - offset.x, y: firstPoint.y - offset.y))
+
+        for point in points.dropFirst() {
+            path.addLine(to: CGPoint(x: point.x - offset.x, y: point.y - offset.y))
+        }
+
+        if points.count >= 3 {
+            path.closeSubpath()
+        }
+
+        return path
+    }
+}
+
 struct FloorCanvasView: View {
     let athletes: [RenderedAthlete]
     var selectedAthleteIDs: Set<UUID> = []
@@ -19,7 +98,7 @@ struct FloorCanvasView: View {
     var cellSize: CGFloat = 12
     var offset: CGPoint = .zero
     var swapSourceID: UUID? = nil
-    var selectionRect: CGRect? = nil
+    var selectionLasso: FloorSelectionLasso? = nil
     var focusedEndpoint: PreviewEditableEndpoint? = nil
     var hasTransition: Bool = false
     var startFormationColor: Color = .clear
@@ -55,20 +134,13 @@ struct FloorCanvasView: View {
             drawEndpointMarkers(in: &context)
             drawAthletes(in: &context)
 
-            if let selectionRect {
-                let adjustedRect = CGRect(
-                    x: selectionRect.origin.x - offset.x,
-                    y: selectionRect.origin.y - offset.y,
-                    width: selectionRect.width,
-                    height: selectionRect.height
-                )
-                var path = Path()
-                path.addRect(adjustedRect)
+            if let selectionLasso {
+                let path = selectionLasso.canvasPath(offset: offset)
                 context.fill(path, with: .color(.orange.opacity(0.1)))
                 context.stroke(
                     path,
                     with: .color(.orange.opacity(0.45)),
-                    style: StrokeStyle(lineWidth: 1.5, dash: [6, 3])
+                    style: StrokeStyle(lineWidth: 1.5, lineJoin: .round, dash: [6, 3])
                 )
             }
         }
