@@ -2109,20 +2109,25 @@ final class TransitionPlayer: ObservableObject {
     @Published var currentAthletes: [RenderedAthlete]
     @Published var speed: CGFloat = 2.0
     @Published var startAthletes: [RenderedAthlete] {
-        didSet { updateTimingCache() }
+        didSet { if !isRefreshing { updateTimingCache() } }
     }
     @Published var endAthletes: [RenderedAthlete] {
         didSet {
-            updateEndLookup()
-            updateTimingCache()
+            if !isRefreshing {
+                updateEndLookup()
+                updateTimingCache()
+            }
         }
     }
     @Published var transitionSpec: TransitionSpec {
         didSet {
-            updateTransitionLookup()
-            updateTimingCache()
+            if !isRefreshing {
+                updateTransitionLookup()
+                updateTimingCache()
+            }
         }
     }
+    private var isRefreshing = false
 
     var onComplete: (() -> Void)?
 
@@ -2238,11 +2243,16 @@ final class TransitionPlayer: ObservableObject {
         endAthletes: [RenderedAthlete],
         transitionSpec: TransitionSpec
     ) {
+        isRefreshing = true
         self.startAthletes = startAthletes
         self.endAthletes = endAthletes
         self.transitionSpec = transitionSpec
         duration = transitionSpec.duration
-        // updateTimingCache is called via property observers
+        isRefreshing = false
+
+        updateEndLookup()
+        updateTransitionLookup()
+        updateTimingCache()
         updateAthletesForProgress()
     }
 
@@ -2500,13 +2510,15 @@ final class RoutinePlayer: ObservableObject {
         let segIndex = segmentIndex(for: clamped)
         let localProgress = localProgress(for: clamped, inSegment: segIndex)
 
-        currentSegmentIndex = segIndex
-        if segIndex < segments.count {
-            currentFormationName = segments[segIndex].formationName
+        if currentSegmentIndex != segIndex || player == nil {
+            currentSegmentIndex = segIndex
+            if segIndex < segments.count {
+                currentFormationName = segments[segIndex].formationName
+            }
+            trailPositions = [:]
+            loadSegment(at: segIndex)
         }
 
-        trailPositions = [:]
-        loadSegment(at: segIndex)
         player?.seek(to: localProgress)
     }
 
@@ -2541,12 +2553,14 @@ final class RoutinePlayer: ObservableObject {
         currentFormationName = seg.formationName
 
         if let player {
-            player.refresh(
-                startAthletes: seg.startAthletes,
-                endAthletes: seg.endAthletes,
-                transitionSpec: seg.spec
-            )
-            player.seek(to: 0)
+            if player.transitionSpec.id != seg.spec.id {
+                player.refresh(
+                    startAthletes: seg.startAthletes,
+                    endAthletes: seg.endAthletes,
+                    transitionSpec: seg.spec
+                )
+                player.seek(to: 0)
+            }
             player.speed = speed
         } else {
             let newPlayer = TransitionPlayer(
