@@ -160,6 +160,18 @@ struct TransitionTransportSidebarView: View {
 
             TransportControls.progressSlider(player: player)
             TransportControls.progressText(player: player)
+
+            Picker("Speed", selection: Binding(
+                get: { player.speed },
+                set: { player.setSpeed($0) }
+            )) {
+                Text("0.5x").tag(CGFloat(1.0))
+                Text("1x").tag(CGFloat(2.0))
+                Text("2x").tag(CGFloat(4.0))
+                Text("4x").tag(CGFloat(8.0))
+            }
+            .pickerStyle(.segmented)
+            .accessibilityLabel("Playback Speed")
         }
     }
 
@@ -334,6 +346,18 @@ struct SidebarTransportView: View {
             }
 
             TransportControls.progressSlider(player: player)
+
+            Picker("Speed", selection: Binding(
+                get: { player.speed },
+                set: { player.setSpeed($0) }
+            )) {
+                Text("0.5x").tag(CGFloat(1.0))
+                Text("1x").tag(CGFloat(2.0))
+                Text("2x").tag(CGFloat(4.0))
+                Text("4x").tag(CGFloat(8.0))
+            }
+            .pickerStyle(.segmented)
+            .accessibilityLabel("Playback Speed")
 
             HStack(spacing: 12) {
                 TransportControls.swapButton(isActive: isSwapMode, action: onSwap)

@@ -2335,6 +2335,10 @@ final class TransitionPlayer: ObservableObject {
         updateAthletesForProgress()
     }
 
+    func setSpeed(_ newSpeed: CGFloat) {
+        speed = newSpeed
+    }
+
     private func update() {
         guard isPlaying else { return }
         let delta = CGFloat(1.0 / 60.0) * speed / max(CGFloat(duration), 0.5)
