@@ -1,3 +1,28 @@
+## ⚠️ FROZEN FILES — Read Before Starting Any Task
+
+The following files are FROZEN. Do not include them as targets for any optimization, refactor, caching, or performance task:
+
+- **`FormationFlow/Models.swift`** — O(N²)→O(N) optimizations applied 6+ times. Violations after explicit hard-stop in CLAUDE.md: PR #34 ("Cache transition path calculations"), PR #38 ("O(1) RoutineStore Formation Lookups"), PR #44 ("Optimize waypoint path rendering allocations"), PR #47 ("Remove O(N) allocations in rendering loop"). 4 post-rule violations total.
+
+**If your task contains:** "cache", "O(1)", "O(N)", "optimize", "allocations", "rendering loop", "waypoint", "lookup", or "reduce" AND your target includes `Models.swift` or `FloorCanvasView.swift` — **stop immediately**.
+
+Output: `"Task rejected: target file frozen per .jules/bolt.md § Frozen Files. Choose a different target."`
+
+This duplicates CLAUDE.md Known Fragile Areas intentionally. Bolt violated CLAUDE.md 4 times post-rule — this file is Bolt's primary instruction source.
+
+## Commit Hygiene — Required Before Every `git add`
+
+Before staging any commit, delete ALL intermediate patch files:
+- `*.orig` files
+- `patch.diff`, `patch2.diff`, `patch3.diff`, `*.diff` (any name)
+- `test_auth.swift` (not in the Xcode project)
+
+Run: `find . \( -name "*.orig" -o -name "*.diff" -o -name "test_auth.swift" \) -delete 2>/dev/null`
+
+formation-flow PR #48 (2026-03-28) committed `test_auth.swift` after this rule existed in CLAUDE.md. This file explicitly adds it because Bolt must enforce it from its primary source.
+
+---
+
 ## 2024-05-24 - [O(N^2) Array Lookups in Transition Logic]
 
 **Learning:** `Array.first(where:)` inside a loop or `map` creates an O(N^2) complexity pattern. In `FormationFlow`, this was happening during routine synchronization and transition rendering logic (`TransitionSpec.synchronize` and `transitionPaths` calculations), potentially causing stuttering or high CPU usage with larger rosters.
