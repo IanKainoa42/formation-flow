@@ -1117,10 +1117,12 @@ final class RoutineStore: ObservableObject {
     private var pendingSave: DispatchWorkItem?
     private var rosterLookup: [UUID: RosterAthlete] = [:]
     private var formationIndexLookup: [UUID: Int] = [:]
+    private var transitionSpecIndexLookup: [TransitionEdge: Int] = [:]
 
     init() {
         self.workspace = RoutineWorkspace.initial()
         load()
+        rebuildTransitionSpecLookup()
     }
 
     private var fileURL: URL {
@@ -1142,6 +1144,7 @@ final class RoutineStore: ObservableObject {
            let decoded = try? JSONDecoder().decode(RoutineWorkspace.self, from: data) {
             workspace = decoded
             reconcileRoutineShape()
+            rebuildTransitionSpecLookup()
             return
         }
 
@@ -1150,6 +1153,7 @@ final class RoutineStore: ObservableObject {
            let decoded = try? JSONDecoder().decode(Routine.self, from: data) {
             workspace = RoutineWorkspace(routines: [decoded], activeRoutineID: decoded.id)
             reconcileRoutineShape()
+            rebuildTransitionSpecLookup()
             if save() {
                 try? FileManager.default.removeItem(at: fileURL) // Clean up
             }
@@ -1161,6 +1165,7 @@ final class RoutineStore: ObservableObject {
            let decoded = try? JSONDecoder().decode(Routine.self, from: data) {
             workspace = RoutineWorkspace(routines: [decoded], activeRoutineID: decoded.id)
             reconcileRoutineShape()
+            rebuildTransitionSpecLookup()
             if save() { // Save to new workspaceFileURL
                 UserDefaults.standard.removeObject(forKey: storageKey) // Clean up
             }
@@ -1169,6 +1174,7 @@ final class RoutineStore: ObservableObject {
 
         workspace = RoutineWorkspace.initial()
         reconcileRoutineShape()
+        rebuildTransitionSpecLookup()
         save()
     }
 
@@ -1304,7 +1310,15 @@ final class RoutineStore: ObservableObject {
     }
 
     func transitionSpecIndex(from fromID: UUID, to toID: UUID) -> Int? {
-        routine.transitionSpecs.firstIndex {
+        let edge = TransitionEdge(fromID: fromID, toID: toID)
+        if let index = transitionSpecIndexLookup[edge],
+           index < routine.transitionSpecs.count,
+           routine.transitionSpecs[index].fromFormationID == fromID,
+           routine.transitionSpecs[index].toFormationID == toID {
+            return index
+        }
+
+        return routine.transitionSpecs.firstIndex {
             $0.fromFormationID == fromID && $0.toFormationID == toID
         }
     }
@@ -1643,6 +1657,14 @@ final class RoutineStore: ObservableObject {
             spec.synchronize(athleteIDs: fromFormation.placements.map(\.athleteID))
             return spec
         }
+        rebuildTransitionSpecLookup()
+    }
+
+    private func rebuildTransitionSpecLookup() {
+        transitionSpecIndexLookup = Dictionary(
+            routine.transitionSpecs.enumerated().map { (TransitionEdge(fromID: $0.element.fromFormationID, toID: $0.element.toFormationID), $0.offset) },
+            uniquingKeysWith: { first, _ in first }
+        )
     }
 }
 
