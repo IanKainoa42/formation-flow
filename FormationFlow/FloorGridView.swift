@@ -1,5 +1,6 @@
 import LocalAuthentication
 import Combine
+import PencilKit
 import SwiftUI
 import UIKit
 
@@ -560,7 +561,7 @@ struct FloorGridView: View {
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .overlay(alignment: .topTrailing) {
-                                if formation?.notes.isEmpty == false {
+                                if formation?.hasCoachCardContent == true {
                                     Circle()
                                         .fill(.orange)
                                         .frame(width: 7, height: 7)
@@ -569,7 +570,7 @@ struct FloorGridView: View {
                             }
                     }
                     .accessibilityLabel("Editing tools")
-                    .accessibilityValue(formation?.notes.isEmpty == false ? "Has notes" : "")
+                    .accessibilityValue(formation?.hasCoachCardContent == true ? "Has notes" : "")
                 }
             }
         }
@@ -725,10 +726,10 @@ struct FloorGridView: View {
                         Label("Notes", systemImage: "note.text")
                     }
                     .buttonStyle(.bordered)
-                    .accessibilityValue(formation?.notes.isEmpty == false ? "Has notes" : "")
+                    .accessibilityValue(formation?.hasCoachCardContent == true ? "Has notes" : "")
                     .help("Add notes or reminders for this formation")
                     .overlay(alignment: .topTrailing) {
-                        if formation?.notes.isEmpty == false {
+                        if formation?.hasCoachCardContent == true {
                             Circle()
                                 .fill(.orange)
                                 .frame(width: 8, height: 8)
@@ -780,7 +781,7 @@ struct FloorGridView: View {
         }
         .buttonStyle(.bordered)
         .accessibilityLabel("More actions")
-        .accessibilityValue(formation?.notes.isEmpty == false ? "Has notes" : "")
+        .accessibilityValue(formation?.hasCoachCardContent == true ? "Has notes" : "")
     }
 
     private var compactOverflowMenuLabel: some View {
@@ -789,7 +790,7 @@ struct FloorGridView: View {
             Text("More")
         }
         .overlay(alignment: .topTrailing) {
-            if formation?.notes.isEmpty == false {
+            if formation?.hasCoachCardContent == true {
                 Circle()
                     .fill(.orange)
                     .frame(width: 8, height: 8)
@@ -1282,7 +1283,7 @@ struct FloorGridView: View {
             Image(systemName: "ellipsis.circle.fill")
                 .frame(width: 30, height: 30)
                 .overlay(alignment: .topTrailing) {
-                    if formation?.notes.isEmpty == false {
+                    if formation?.hasCoachCardContent == true {
                         Circle()
                             .fill(.orange)
                             .frame(width: 7, height: 7)
@@ -1292,7 +1293,7 @@ struct FloorGridView: View {
         }
         .buttonStyle(.bordered)
         .accessibilityLabel("More actions")
-        .accessibilityValue(formation?.notes.isEmpty == false ? "Has notes" : "")
+        .accessibilityValue(formation?.hasCoachCardContent == true ? "Has notes" : "")
         .controlSize(.small)
     }
 
@@ -1800,25 +1801,17 @@ struct FloorGridView: View {
     }
 
     private var notesSheet: some View {
-        NavigationStack {
-            TextEditor(
-                text: Binding(
-                    get: { formation?.notes ?? "" },
-                    set: { newValue in
-                        store.mutateFormation(id: formationID) { formation in
-                            formation.notes = newValue
-                        }
-                    }
-                )
-            )
-            .padding()
-            .navigationTitle("Formation Notes")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") { showingNotesSheet = false }
+        CoachCardEditorSheet(
+            formation: formation,
+            onSave: { plainText, richTextRTF, drawingData in
+                store.mutateFormation(id: formationID) { formation in
+                    formation.notes = plainText
+                    formation.formattedNotesRTF = richTextRTF
+                    formation.notesDrawingData = drawingData
                 }
-            }
-        }
+            },
+            onDone: { showingNotesSheet = false }
+        )
     }
 
     private func banner(text: String, color: Color) -> some View {
@@ -3026,6 +3019,361 @@ struct FloorGridView: View {
 private struct SnapResult {
     let translation: CGPoint
     let guides: [AlignmentGuideRenderItem]
+}
+
+private struct CoachCardEditorSheet: View {
+    let formation: Formation?
+    var onSave: (_ plainText: String, _ richTextRTF: Data?, _ drawingData: Data?) -> Void
+    var onDone: () -> Void
+
+    @State private var attributedText = NSAttributedString(string: "")
+    @State private var selectedRange = NSRange(location: 0, length: 0)
+    @State private var strokeColor: UIColor = .systemBlue
+    @State private var strokeWidth: CGFloat = 8
+    @State private var useEraser = false
+    @State private var canvasView = PKCanvasView()
+    @State private var loadedInitialState = false
+
+    private let fontSizes: [CGFloat] = [14, 16, 18, 22, 28]
+    private let markerPalette: [UIColor] = [.systemBlue, .systemRed, .systemGreen, .systemOrange, .systemPurple, .black]
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                formattingBar
+                divider
+                drawingBar
+                divider
+
+                ZStack {
+                    RichTextEditorView(
+                        attributedText: $attributedText,
+                        selectedRange: $selectedRange
+                    )
+                    .padding(12)
+
+                    CoachCardDrawingCanvas(
+                        canvasView: $canvasView,
+                        isEraserEnabled: $useEraser,
+                        strokeColor: $strokeColor,
+                        strokeWidth: $strokeWidth
+                    )
+                    .allowsHitTesting(true)
+                }
+            }
+            .navigationTitle("Coach Card")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        persistChanges()
+                        onDone()
+                    }
+                }
+            }
+            .onAppear {
+                guard loadedInitialState == false else { return }
+                loadInitialState()
+                loadedInitialState = true
+            }
+        }
+    }
+
+    private var divider: some View {
+        Rectangle()
+            .fill(Color.secondary.opacity(0.15))
+            .frame(height: 1)
+    }
+
+    private var formattingBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                formatButton {
+                    Text("B").font(.system(size: 14, weight: .bold))
+                } action: {
+                    applyFontTrait(.traitBold)
+                }
+                formatButton {
+                    Text("I").font(.system(size: 14, weight: .regular)).italic()
+                } action: {
+                    applyFontTrait(.traitItalic)
+                }
+                formatButton {
+                    Text("U").font(.system(size: 14, weight: .medium)).underline()
+                } action: {
+                    toggleUnderline()
+                }
+
+                Picker("Text size", selection: Binding(
+                    get: { activeFontSize() },
+                    set: { applyFontSize($0) }
+                )) {
+                    ForEach(fontSizes, id: \.self) { size in
+                        Text("\(Int(size))").tag(size)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 220)
+
+                ForEach(markerPalette, id: \.self) { color in
+                    Button {
+                        applyTextColor(color)
+                    } label: {
+                        Circle()
+                            .fill(Color(color))
+                            .frame(width: 24, height: 24)
+                            .overlay(Circle().stroke(Color.white.opacity(0.5), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Set text color")
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+        }
+        .background(Color(.secondarySystemBackground))
+    }
+
+    private var drawingBar: some View {
+        HStack(spacing: 10) {
+            Toggle(isOn: $useEraser) {
+                Text(useEraser ? "Eraser" : "Marker")
+                    .font(.caption.weight(.semibold))
+            }
+            .toggleStyle(.button)
+
+            Slider(value: $strokeWidth, in: 2...20, step: 1) {
+                Text("Stroke Width")
+            } minimumValueLabel: {
+                Text("2")
+                    .font(.caption2)
+            } maximumValueLabel: {
+                Text("20")
+                    .font(.caption2)
+            }
+
+            ForEach(markerPalette, id: \.self) { color in
+                Button {
+                    strokeColor = color
+                } label: {
+                    Circle()
+                        .fill(Color(color))
+                        .frame(width: 20, height: 20)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(strokeColor == color ? 1 : 0.4), lineWidth: strokeColor == color ? 2 : 1)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+
+            Button("Clear Drawing", role: .destructive) {
+                canvasView.drawing = PKDrawing()
+            }
+            .font(.caption.weight(.semibold))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color(.secondarySystemBackground))
+    }
+
+    private func formatButton<Label: View>(@ViewBuilder label: () -> Label, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            label()
+                .frame(width: 32, height: 32)
+                .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func loadInitialState() {
+        if let rtfData = formation?.formattedNotesRTF,
+           let text = try? NSAttributedString(
+               data: rtfData,
+               options: [.documentType: NSAttributedString.DocumentType.rtf],
+               documentAttributes: nil
+           ) {
+            attributedText = text
+        } else {
+            attributedText = NSAttributedString(
+                string: formation?.notes ?? "",
+                attributes: [
+                    .font: UIFont.systemFont(ofSize: 16),
+                    .foregroundColor: UIColor.label
+                ]
+            )
+        }
+
+        if let drawingData = formation?.notesDrawingData,
+           let drawing = try? PKDrawing(data: drawingData) {
+            canvasView.drawing = drawing
+        }
+    }
+
+    private func persistChanges() {
+        let wholeRange = NSRange(location: 0, length: attributedText.length)
+        let mutable = NSMutableAttributedString(attributedString: attributedText)
+        mutable.enumerateAttribute(.font, in: wholeRange) { value, range, _ in
+            if value == nil {
+                mutable.addAttribute(.font, value: UIFont.systemFont(ofSize: 16), range: range)
+            }
+        }
+
+        let rtfData = try? mutable.data(
+            from: NSRange(location: 0, length: mutable.length),
+            documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
+        )
+
+        let drawingData = canvasView.drawing.bounds.isEmpty ? nil : canvasView.drawing.dataRepresentation()
+        onSave(mutable.string, rtfData, drawingData)
+    }
+
+    private func selectedRangeOrAllText() -> NSRange {
+        if selectedRange.length > 0 {
+            return selectedRange
+        }
+        return NSRange(location: 0, length: attributedText.length)
+    }
+
+    private func applyFontTrait(_ trait: UIFontDescriptor.SymbolicTraits) {
+        guard attributedText.length > 0 else { return }
+        let range = selectedRangeOrAllText()
+        let mutable = NSMutableAttributedString(attributedString: attributedText)
+        mutable.enumerateAttribute(.font, in: range) { value, subrange, _ in
+            let baseFont = (value as? UIFont) ?? UIFont.systemFont(ofSize: 16)
+            var traits = baseFont.fontDescriptor.symbolicTraits
+            if traits.contains(trait) {
+                traits.remove(trait)
+            } else {
+                traits.insert(trait)
+            }
+            let descriptor = baseFont.fontDescriptor.withSymbolicTraits(traits) ?? baseFont.fontDescriptor
+            let updated = UIFont(descriptor: descriptor, size: baseFont.pointSize)
+            mutable.addAttribute(.font, value: updated, range: subrange)
+        }
+        attributedText = mutable
+    }
+
+    private func toggleUnderline() {
+        guard attributedText.length > 0 else { return }
+        let range = selectedRangeOrAllText()
+        let mutable = NSMutableAttributedString(attributedString: attributedText)
+        mutable.enumerateAttribute(.underlineStyle, in: range) { value, subrange, _ in
+            let current = (value as? NSNumber)?.intValue ?? 0
+            let updated = current == 0 ? NSUnderlineStyle.single.rawValue : 0
+            mutable.addAttribute(.underlineStyle, value: updated, range: subrange)
+        }
+        attributedText = mutable
+    }
+
+    private func applyFontSize(_ size: CGFloat) {
+        guard attributedText.length > 0 else { return }
+        let range = selectedRangeOrAllText()
+        let mutable = NSMutableAttributedString(attributedString: attributedText)
+        mutable.enumerateAttribute(.font, in: range) { value, subrange, _ in
+            let font = (value as? UIFont) ?? UIFont.systemFont(ofSize: 16)
+            let descriptor = font.fontDescriptor
+            let updated = UIFont(descriptor: descriptor, size: size)
+            mutable.addAttribute(.font, value: updated, range: subrange)
+        }
+        attributedText = mutable
+    }
+
+    private func activeFontSize() -> CGFloat {
+        guard attributedText.length > 0, selectedRange.location < attributedText.length else {
+            return fontSizes[1]
+        }
+        let attrs = attributedText.attributes(at: selectedRange.location, effectiveRange: nil)
+        if let font = attrs[.font] as? UIFont {
+            let nearest = fontSizes.min(by: { abs($0 - font.pointSize) < abs($1 - font.pointSize) })
+            return nearest ?? fontSizes[1]
+        }
+        return fontSizes[1]
+    }
+
+    private func applyTextColor(_ color: UIColor) {
+        guard attributedText.length > 0 else { return }
+        let mutable = NSMutableAttributedString(attributedString: attributedText)
+        mutable.addAttribute(.foregroundColor, value: color, range: selectedRangeOrAllText())
+        attributedText = mutable
+    }
+}
+
+private struct RichTextEditorView: UIViewRepresentable {
+    @Binding var attributedText: NSAttributedString
+    @Binding var selectedRange: NSRange
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeUIView(context: Context) -> UITextView {
+        let textView = UITextView()
+        textView.delegate = context.coordinator
+        textView.backgroundColor = .clear
+        textView.isScrollEnabled = true
+        textView.allowsEditingTextAttributes = true
+        textView.autocorrectionType = .yes
+        textView.font = .systemFont(ofSize: 16)
+        textView.textContainerInset = UIEdgeInsets(top: 12, left: 8, bottom: 80, right: 8)
+        textView.attributedText = attributedText
+        return textView
+    }
+
+    func updateUIView(_ uiView: UITextView, context: Context) {
+        if uiView.attributedText.isEqual(to: attributedText) == false {
+            uiView.attributedText = attributedText
+        }
+        if uiView.selectedRange != selectedRange, selectedRange.location <= uiView.attributedText.length {
+            uiView.selectedRange = selectedRange
+        }
+    }
+
+    final class Coordinator: NSObject, UITextViewDelegate {
+        var parent: RichTextEditorView
+
+        init(_ parent: RichTextEditorView) {
+            self.parent = parent
+        }
+
+        func textViewDidChange(_ textView: UITextView) {
+            parent.attributedText = textView.attributedText
+        }
+
+        func textViewDidChangeSelection(_ textView: UITextView) {
+            parent.selectedRange = textView.selectedRange
+        }
+    }
+}
+
+private struct CoachCardDrawingCanvas: UIViewRepresentable {
+    @Binding var canvasView: PKCanvasView
+    @Binding var isEraserEnabled: Bool
+    @Binding var strokeColor: UIColor
+    @Binding var strokeWidth: CGFloat
+
+    func makeUIView(context: Context) -> PKCanvasView {
+        canvasView.backgroundColor = .clear
+        canvasView.isOpaque = false
+        canvasView.drawingPolicy = .anyInput
+        canvasView.alwaysBounceVertical = true
+        canvasView.minimumZoomScale = 1
+        canvasView.maximumZoomScale = 1
+        applyTool()
+        return canvasView
+    }
+
+    func updateUIView(_ uiView: PKCanvasView, context: Context) {
+        applyTool()
+    }
+
+    private func applyTool() {
+        if isEraserEnabled {
+            canvasView.tool = PKEraserTool(.vector)
+        } else {
+            canvasView.tool = PKInkingTool(.marker, color: strokeColor, width: strokeWidth)
+        }
+    }
 }
 
 // MARK: - Previews

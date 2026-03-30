@@ -332,18 +332,59 @@ struct Formation: Codable, Identifiable, Equatable, Hashable {
     var id: UUID
     var name: String
     var notes: String
+    var formattedNotesRTF: Data?
+    var notesDrawingData: Data?
     var placements: [FormationPlacement]
 
     init(
         id: UUID = UUID(),
         name: String = "Untitled Formation",
         notes: String = "",
+        formattedNotesRTF: Data? = nil,
+        notesDrawingData: Data? = nil,
         placements: [FormationPlacement] = []
     ) {
         self.id = id
         self.name = name
         self.notes = notes
+        self.formattedNotesRTF = formattedNotesRTF
+        self.notesDrawingData = notesDrawingData
         self.placements = placements
+    }
+
+    var hasCoachCardContent: Bool {
+        !notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            formattedNotesRTF != nil ||
+            notesDrawingData != nil
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case notes
+        case formattedNotesRTF
+        case notesDrawingData
+        case placements
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Untitled Formation"
+        notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
+        formattedNotesRTF = try container.decodeIfPresent(Data.self, forKey: .formattedNotesRTF)
+        notesDrawingData = try container.decodeIfPresent(Data.self, forKey: .notesDrawingData)
+        placements = try container.decodeIfPresent([FormationPlacement].self, forKey: .placements) ?? []
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(notes, forKey: .notes)
+        try container.encodeIfPresent(formattedNotesRTF, forKey: .formattedNotesRTF)
+        try container.encodeIfPresent(notesDrawingData, forKey: .notesDrawingData)
+        try container.encode(placements, forKey: .placements)
     }
 
     func placementIndex(for athleteID: UUID) -> Int? {
