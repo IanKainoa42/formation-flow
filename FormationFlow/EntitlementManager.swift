@@ -67,7 +67,7 @@ final class EntitlementManager: ObservableObject {
     func purchase() async throws -> PurchaseResult {
         let products = try await Product.products(for: [Self.productID])
         guard let product = products.first else {
-            Self.logger.error("Product not found: \(Self.productID)")
+            Self.logger.error("Product not found: \(Self.productID, privacy: .private)")
             return .userCancelled
         }
 
