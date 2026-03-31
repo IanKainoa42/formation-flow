@@ -64,3 +64,9 @@ formation-flow PR #48 (2026-03-28) committed `test_auth.swift` after this rule e
 **Learning:** Allocating dictionaries and performing maps within high-frequency rendering functions, like `drawTrails` and `drawTransitionPaths` in `FloorCanvasView.swift`, leads to unnecessary CPU and memory overhead during animation loops. This issue manifests in redundant `Dictionary(uniqueKeysWithValues:)` operations inside iterative updates and `map` functions applied on geometric path arrays over every frame.
 
 **Action:** Eliminate the need to construct a dictionary by iterating directly over the list that contains the full details or caching geometric nodes (like path waypoints) in models. Utilize properties cached in corresponding structs (e.g. adding `nodes` to `TransitionPathRenderItem`) to sidestep calculating path allocations on each frame.
+
+## 2026-03-30 - Prevent O(N) Array Allocations for Overlays in Render Loop
+
+**Learning:** Computed properties in SwiftUI views (like UI overlays) are re-evaluated frequently, especially during animation loops when reactive state changes 60 times a second. Performing `filter` or `map` operations in these properties creates O(N) array allocations per frame, leading to memory pressure, GC overhead, and reduced battery life even if the values aren't strictly necessary during active animation.
+
+**Action:** Identify computed properties responsible for static contextual UI (like collision alerts, ghost athletes, or endpoint markers) and add early returns during active animation states (e.g., `if let player, player.progress > 0 && player.progress < 1 { return [] }`) to short-circuit the O(N) allocations when the visual fidelity isn't critical or is handled by a different mechanism during playback.
