@@ -12,8 +12,24 @@ final class EntitlementManager: ObservableObject {
 
     private var updateTask: Task<Void, Never>?
 
+    /// True for debug builds and TestFlight (sandbox receipt), false for App Store.
+    private static var isTestBuild: Bool {
+        #if DEBUG
+        return true
+        #else
+        if let receiptURL = Bundle.main.appStoreReceiptURL {
+            return receiptURL.lastPathComponent == "sandboxReceipt"
+        }
+        return false
+        #endif
+    }
+
     init() {
-        self.isPro = Self.readIsProFromKeychain()
+        if Self.isTestBuild {
+            self.isPro = true
+        } else {
+            self.isPro = Self.readIsProFromKeychain()
+        }
         updateTask = Task { [weak self] in
             await self?.checkEntitlement()
             await self?.listenForTransactions()
@@ -94,6 +110,10 @@ final class EntitlementManager: ObservableObject {
     }
 
     private func checkEntitlement() async {
+        if Self.isTestBuild {
+            setIsPro(true)
+            return
+        }
         var foundPro = false
         for await result in Transaction.currentEntitlements {
             if case .verified(let transaction) = result,
