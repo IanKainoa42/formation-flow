@@ -123,10 +123,6 @@ struct FloorGridView: View {
         return PathCalculations.collisionSummary(in: renderedAthletes)
     }
 
-    private var collidingAthletes: [RenderedAthlete] {
-        renderedAthletes.filter { collisionSummary.ids.contains($0.id) }
-    }
-
     private var selectedAthleteID: UUID? {
         selectedAthleteIDs.count == 1 ? selectedAthleteIDs.first : nil
     }
@@ -161,6 +157,8 @@ struct FloorGridView: View {
     }
 
     private var previousFormationAthletes: [RenderedAthlete] {
+        // ⚡ Bolt: Avoid O(N) lookup and map allocations per frame during playback.
+        if let player, player.progress > 0 && player.progress < 1 { return [] }
         guard let formationIndex, formationIndex > 0 else { return [] }
         let prevFormation = store.routine.formations[formationIndex - 1]
         return store.renderedAthletes(for: prevFormation)
@@ -189,6 +187,8 @@ struct FloorGridView: View {
 
     private var endpointMarkers: [TransitionEndpointMarkerRenderItem] {
         guard let player else { return [] }
+        // ⚡ Bolt: Avoid O(N) map allocations per frame during playback.
+        if player.progress > 0 && player.progress < 1 { return [] }
 
         let startStyle: TransitionEndpointMarkerRenderItem.Style =
             focusedEndpoint == nil || focusedEndpoint == .start ? .editable : .readOnly
@@ -293,8 +293,16 @@ struct FloorGridView: View {
         return "Inspect"
     }
 
+    private var collidingAthletes: [RenderedAthlete] {
+        // ⚡ Bolt: Avoid O(N) filter allocations per frame during playback.
+        if let player, player.progress > 0 && player.progress < 1 { return [] }
+        return renderedAthletes.filter { collisionSummary.ids.contains($0.id) }
+    }
+
     private var pathCollidingAthletes: [RenderedAthlete] {
-        renderedAthletes.filter { cachedPathCollisionIDs.contains($0.id) }
+        // ⚡ Bolt: Avoid O(N) filter allocations per frame during playback.
+        if let player, player.progress > 0 && player.progress < 1 { return [] }
+        return renderedAthletes.filter { cachedPathCollisionIDs.contains($0.id) }
     }
 
     private var canShareTransition: Bool {
@@ -1159,7 +1167,9 @@ struct FloorGridView: View {
                     .foregroundColor(.secondary)
                 }
 
-                if !previousFormationAthletes.isEmpty, let previousFormationName {
+                // Use previousFormationName directly to avoid layout jumps during playback
+                // when previousFormationAthletes returns [] to save allocations.
+                if let previousFormationName {
                     HStack(spacing: 4) {
                         Circle()
                             .stroke(.white.opacity(0.3), lineWidth: 1)
