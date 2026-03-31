@@ -28,3 +28,8 @@
 **Learning:** Important transport buttons like play/pause and swap were missing specific accessibility states (values and hints) to communicate their dynamic function effectively.
 
 **Action:** Added `.accessibilityValue` to communicate the active playing state and `.accessibilityHint` to clarify the toggle action of the swap button.
+## 2026-03-XX - [Reset View Micro-UX Interaction]
+
+**Learning:** When users zoom or pan an interactive canvas view like `FloorGridView`, gesture resets (like double-taps) are completely undiscoverable, causing friction.
+
+**Action:** Whenever implementing a scrollable/zoomable interactive canvas, always provide a contextual, floating 'Reset View' action that appears conditionally when the view state deviates from the baseline (e.g., `zoomScale != 1.0` or `canvasPanOffset != .zero`). Use a simple floating UI overlay with an `.ultraThinMaterial` and Capsule to keep it minimally intrusive while remaining accessible.

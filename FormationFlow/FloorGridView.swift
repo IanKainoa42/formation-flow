@@ -1129,6 +1129,27 @@ struct FloorGridView: View {
                             .padding(.init(top: 0, leading: 12, bottom: 12, trailing: 0))
                     }
                 }
+                .overlay(alignment: .bottom) {
+                    if zoomScale != 1.0 || canvasPanOffset != .zero {
+                        Button(action: resetView) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.counterclockwise")
+                                Text("Reset View")
+                            }
+                            .font(.subheadline.weight(.medium))
+                            .foregroundColor(.primary)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .overlay {
+                                Capsule().strokeBorder(.white.opacity(0.1))
+                            }
+                        }
+                        .padding(.bottom, isPhoneLayout && !isPhoneLandscape ? 80 : 20)
+                        .transition(.scale.combined(with: .opacity))
+                        .accessibilityLabel("Reset canvas view")
+                    }
+                }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
