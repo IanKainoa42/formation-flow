@@ -7,6 +7,7 @@ import UIKit
 // MARK: - Routine Workspace View
 
 struct RoutineWorkspaceView: View {
+    @Environment(\.editMode) private var editMode
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.scenePhase) private var scenePhase
@@ -91,6 +92,31 @@ struct RoutineWorkspaceView: View {
 
     private var canAddFormation: Bool {
         entitlementManager.isPro || store.routine.formations.count < FreeTierLimits.maxFormations
+    }
+
+    private var isReorderMode: Bool {
+        editMode?.wrappedValue.isEditing == true
+    }
+
+    private func isSelectedFormation(_ formation: Formation) -> Bool {
+        formation.id == selectedFormationID
+    }
+
+    private func canReorderFormation(_ formation: Formation) -> Bool {
+        isSelectedFormation(formation)
+    }
+
+    private func moveSelectedFormationOnly(fromOffsets: IndexSet, toOffset: Int) {
+        guard
+            let selectedFormationID,
+            let selectedIndex = store.formationIndex(id: selectedFormationID),
+            fromOffsets.count == 1,
+            fromOffsets.contains(selectedIndex)
+        else {
+            return
+        }
+
+        store.moveFormations(fromOffsets: fromOffsets, toOffset: toOffset)
     }
 
     @ViewBuilder
@@ -400,6 +426,7 @@ struct RoutineWorkspaceView: View {
                         ForEach(store.routine.formations) { formation in
                             formationRow(for: formation)
                             .tag(formation.id)
+                            .moveDisabled(!canReorderFormation(formation))
                             .contextMenu {
                                 formationContextMenu(for: formation)
                             }
@@ -407,9 +434,7 @@ struct RoutineWorkspaceView: View {
                         .onDelete { offsets in
                             requestFormationDeletion(offsets.map { store.routine.formations[$0].id })
                         }
-                        .onMove { from, to in
-                            store.moveFormations(fromOffsets: from, toOffset: to)
-                        }
+                        .onMove(perform: moveSelectedFormationOnly)
                     } header: {
                         routinePickerMenu
                     }
@@ -489,6 +514,7 @@ struct RoutineWorkspaceView: View {
                                 formationRow(for: formation, showsDisclosure: true)
                             }
                             .buttonStyle(.plain)
+                            .moveDisabled(!canReorderFormation(formation))
                             .contextMenu {
                                 formationContextMenu(for: formation)
                             }
@@ -496,9 +522,7 @@ struct RoutineWorkspaceView: View {
                         .onDelete { offsets in
                             requestFormationDeletion(offsets.map { store.routine.formations[$0].id })
                         }
-                        .onMove { from, to in
-                            store.moveFormations(fromOffsets: from, toOffset: to)
-                        }
+                        .onMove(perform: moveSelectedFormationOnly)
                     } header: {
                         routinePickerMenu
                     }
@@ -733,6 +757,7 @@ struct RoutineWorkspaceView: View {
                             }
                         }
                         .buttonStyle(.plain)
+                        .moveDisabled(!canReorderFormation(formation))
                         .contextMenu {
                             formationContextMenu(for: formation)
                         }
@@ -740,9 +765,7 @@ struct RoutineWorkspaceView: View {
                     .onDelete { offsets in
                         requestFormationDeletion(offsets.map { store.routine.formations[$0].id })
                     }
-                    .onMove { from, to in
-                        store.moveFormations(fromOffsets: from, toOffset: to)
-                    }
+                    .onMove(perform: moveSelectedFormationOnly)
                 } header: {
                     routinePickerMenu
                 }
@@ -805,6 +828,7 @@ struct RoutineWorkspaceView: View {
                     .foregroundStyle(.tertiary)
             }
         }
+        .opacity(isReorderMode && !canReorderFormation(formation) ? 0.58 : 1)
     }
 
     @ViewBuilder
@@ -827,20 +851,21 @@ struct RoutineWorkspaceView: View {
         Divider()
         
         let index = store.formationIndex(id: formation.id) ?? 0
-        
+        let canMoveFormation = canReorderFormation(formation)
+
         Button {
             store.moveFormationEarlier(id: formation.id)
         } label: {
             Label("Move Earlier", systemImage: "arrow.up")
         }
-        .disabled(index == 0)
-        
+        .disabled(index == 0 || !canMoveFormation)
+
         Button {
             store.moveFormationLater(id: formation.id)
         } label: {
             Label("Move Later", systemImage: "arrow.down")
         }
-        .disabled(index >= store.routine.formations.count - 1)
+        .disabled(index >= store.routine.formations.count - 1 || !canMoveFormation)
 
         Divider()
 
@@ -863,20 +888,21 @@ struct RoutineWorkspaceView: View {
         Divider()
         
         let index = store.formationIndex(id: formation.id) ?? 0
+        let canMoveFormation = canReorderFormation(formation)
 
         Button {
             store.moveFormationEarlier(id: formation.id)
         } label: {
             Label("Move Earlier", systemImage: "arrow.up")
         }
-        .disabled(index == 0)
-        
+        .disabled(index == 0 || !canMoveFormation)
+
         Button {
             store.moveFormationLater(id: formation.id)
         } label: {
             Label("Move Later", systemImage: "arrow.down")
         }
-        .disabled(index >= store.routine.formations.count - 1)
+        .disabled(index >= store.routine.formations.count - 1 || !canMoveFormation)
 
         Divider()
 
