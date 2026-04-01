@@ -600,10 +600,17 @@ struct FloorGridView: View {
     private var editorBody: some View {
         Group {
             if isPhoneLayout {
-                if renderedAthletes.isEmpty {
-                    emptyState
-                } else {
-                    canvasArea
+                VStack(spacing: 0) {
+                    if hideControlStrip {
+                        portraitActionBar
+                        Divider()
+                    }
+
+                    if renderedAthletes.isEmpty {
+                        emptyState
+                    } else {
+                        canvasArea
+                    }
                 }
             } else {
                 VStack(spacing: 0) {

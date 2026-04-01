@@ -589,6 +589,7 @@ struct RoutineWorkspaceView: View {
             onNextFormation: goToNextFormation,
             isFirstFormation: isFirstFormation,
             isLastFormation: isLastFormation,
+            hideControlStrip: isPortrait,
             player: previewSession.player,
             startFormationID: previewTransitionPair?.start.id,
             endFormationID: previewTransitionPair?.end.id
