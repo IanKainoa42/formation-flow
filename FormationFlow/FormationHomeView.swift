@@ -234,7 +234,11 @@ struct RoutineWorkspaceView: View {
                     onSwap: { isSwapMode.toggle() },
                     isSwapMode: isSwapMode,
                     canSwap: selectedAthleteIDs.count == 1,
-                    canEditPath: selectedAthleteIDs.count == 1
+                    canEditPath: selectedAthleteIDs.count == 1,
+                    onPreviousFormation: goToPreviousFormation,
+                    onNextFormation: goToNextFormation,
+                    isFirstFormation: isFirstFormation,
+                    isLastFormation: isLastFormation
                 )
                 .padding(.horizontal, 20)
                 .padding(.bottom, 20)
@@ -527,7 +531,11 @@ struct RoutineWorkspaceView: View {
                             onSwap: { isSwapMode.toggle() },
                             isSwapMode: isSwapMode,
                             canSwap: selectedAthleteIDs.count == 1,
-                            canEditPath: selectedAthleteIDs.count == 1
+                            canEditPath: selectedAthleteIDs.count == 1,
+                            onPreviousFormation: goToPreviousFormation,
+                            onNextFormation: goToNextFormation,
+                            isFirstFormation: isFirstFormation,
+                            isLastFormation: isLastFormation
                         )
                         .padding(.horizontal, 16)
                         .padding(.bottom, 16)

@@ -1098,7 +1098,11 @@ struct FloorGridView: View {
                                 onPath: { showingInspectorSheet = true },
                                 isSwapMode: isSwapMode,
                                 canSwap: selectedAthleteID != nil,
-                                canEditPath: selectedAthleteID != nil
+                                canEditPath: selectedAthleteID != nil,
+                                onPreviousFormation: { onPreviousFormation?() },
+                                onNextFormation: { onNextFormation?() },
+                                isFirstFormation: isFirstFormation,
+                                isLastFormation: isLastFormation
                             )
                         }
                     }
