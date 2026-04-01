@@ -28,6 +28,7 @@ struct FloorGridView: View {
     var onNextFormation: (() -> Void)?
     var isFirstFormation: Bool = true
     var isLastFormation: Bool = true
+    var hideControlStrip: Bool = false
 
     // Transition parameters (nil when no adjacent formation)
     var player: TransitionPlayer?
@@ -606,8 +607,10 @@ struct FloorGridView: View {
                 }
             } else {
                 VStack(spacing: 0) {
-                    controlStrip
-                    Divider()
+                    if !hideControlStrip {
+                        controlStrip
+                        Divider()
+                    }
 
                     if renderedAthletes.isEmpty {
                         emptyState
