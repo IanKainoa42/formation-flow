@@ -164,6 +164,14 @@ struct FloorGridView: View {
         return store.renderedAthletes(for: prevFormation)
     }
 
+    private var previousTransitionPaths: [TransitionPathRenderItem] {
+        // Same optimization as previousFormationAthletes — skip during playback
+        if let player, player.progress > 0 && player.progress < 1 { return [] }
+        guard let formationIndex, formationIndex > 0 else { return [] }
+        let prevFormation = store.routine.formations[formationIndex - 1]
+        return store.transitionPaths(from: prevFormation.id, to: formationID)
+    }
+
     // MARK: - Transition Computed Properties
 
     private var hasTransition: Bool {
@@ -939,6 +947,7 @@ struct FloorGridView: View {
                 transitionProgress: player?.progress ?? 0,
                 formationColor: currentFormationColor,
                 ghostAthletes: previousFormationAthletes,
+                ghostTransitionPaths: showTransitionPaths ? previousTransitionPaths : [],
                 hoveredHandlePosition: hoveredHandlePosition,
                 hoveredAthleteID: hoveredAthleteID,
                 focusedPathHandle: focusedPathHandle
