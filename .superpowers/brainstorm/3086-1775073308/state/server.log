@@ -3,3 +3,4 @@
 {"source":"user-event","type":"click","text":"B\n    \n      Close, but not quite\n      The general direction is right but some parts are off","choice":"close","id":null,"timestamp":1775073485142}
 {"type":"screen-added","file":"/Users/ianrichardson/Projects/formation-flow/.superpowers/brainstorm/3086-1775073308/content/portrait-v2.html"}
 {"type":"screen-added","file":"/Users/ianrichardson/Projects/formation-flow/.superpowers/brainstorm/3086-1775073308/content/waiting.html"}
+{"type":"server-stopped","reason":"idle timeout"}
