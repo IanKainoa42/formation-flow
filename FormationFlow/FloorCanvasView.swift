@@ -138,10 +138,10 @@ struct FloorCanvasView: View {
 
             if let selectionLasso {
                 let path = selectionLasso.canvasPath(offset: offset)
-                context.fill(path, with: .color(.orange.opacity(0.1)))
+                context.fill(path, with: .color(formationColor.opacity(0.1)))
                 context.stroke(
                     path,
-                    with: .color(.orange.opacity(0.45)),
+                    with: .color(formationColor.opacity(0.45)),
                     style: StrokeStyle(lineWidth: 1.5, lineJoin: .round, dash: [6, 3])
                 )
             }
@@ -216,7 +216,7 @@ struct FloorCanvasView: View {
             let end = CGPoint(x: item.endPosition.x * cellSize, y: item.endPosition.y * cellSize)
             let isSelected = selectedAthleteIDs.contains(item.athleteID)
             let isColliding = pathCollisionIDs.contains(item.athleteID)
-            let pathColor: Color = isColliding ? .red : (isSelected ? .orange : .green)
+            let pathColor: Color = isColliding ? .red : (isSelected ? formationColor : .green)
             let lineWidth: CGFloat = isSelected ? 3 : 1.5
 
             if !item.waypoints.isEmpty {
@@ -321,7 +321,7 @@ struct FloorCanvasView: View {
                                     height: ringSize
                                 )
                             )
-                            context.stroke(ring, with: .color(.orange), lineWidth: 2)
+                            context.stroke(ring, with: .color(formationColor), lineWidth: 2)
                         }
                     }
                 }
@@ -596,7 +596,7 @@ struct FloorCanvasView: View {
                 context.fill(marker, with: .color(fillColor.opacity(fillOpacity)))
 
                 if isSelected || isHovered {
-                    let strokeColor: Color = isSelected ? .orange : .white
+                    let strokeColor: Color = isSelected ? formationColor : .white
                     context.stroke(marker, with: .color(strokeColor.opacity(0.7)), lineWidth: isHovered ? 2.5 : 2)
                 }
 
@@ -614,7 +614,7 @@ struct FloorCanvasView: View {
                 context.fill(marker, with: .color(fillColor.opacity(isSelected ? 0.92 : (isHovered ? 0.92 : 0.86))))
 
                 if isSelected || isHovered {
-                    let strokeColor: Color = isSelected ? .orange : .white
+                    let strokeColor: Color = isSelected ? formationColor : .white
                     context.stroke(marker, with: .color(strokeColor.opacity(0.7)), lineWidth: isHovered ? 3.5 : 3)
                 }
 
@@ -627,7 +627,7 @@ struct FloorCanvasView: View {
                     let ring = athlete.role.markerPath(center: point, radius: radius + 6)
                     context.stroke(
                         ring,
-                        with: .color(.orange),
+                        with: .color(formationColor),
                         style: StrokeStyle(lineWidth: 3, dash: [6, 3])
                     )
                 }
