@@ -230,23 +230,26 @@ struct CompactTransitionPlaybackOverlayView: View {
     var isLastFormation: Bool = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("\(startFormationName) \u{2192} \(endFormationName)")
-                .font(.caption.weight(.semibold))
-                .foregroundColor(.secondary)
-                .lineLimit(1)
+        VStack(spacing: 8) {
+            HStack(spacing: 6) {
+                Text("\(startFormationName) \u{2192} \(endFormationName)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                Spacer()
+                TransportControls.loopButton(player: player, size: 24)
+                TransportControls.swapButton(isActive: isSwapMode, size: 24, action: onSwap)
+                    .disabled(!canSwap)
+                TransportControls.pathButton(size: 24, action: onPath)
+                    .disabled(!canEditPath)
+            }
 
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 TransportControls.previousFormationButton(size: 28, disabled: isFirstFormation, action: onPreviousFormation)
-                TransportControls.nextFormationButton(size: 28, disabled: isLastFormation, action: onNextFormation)
                 TransportControls.resetButton(player: player, size: 28)
                 TransportControls.playPauseButton(player: player, size: 32)
                 TransportControls.progressSlider(player: player)
-                TransportControls.loopButton(player: player, size: 28)
-                TransportControls.swapButton(isActive: isSwapMode, size: 28, action: onSwap)
-                    .disabled(!canSwap)
-                TransportControls.pathButton(size: 28, action: onPath)
-                    .disabled(!canEditPath)
+                TransportControls.nextFormationButton(size: 28, disabled: isLastFormation, action: onNextFormation)
             }
         }
         .padding(12)
