@@ -114,6 +114,30 @@ enum TransportControls {
         .buttonStyle(.bordered)
         .accessibilityLabel("Edit Path")
     }
+
+    @ViewBuilder
+    static func previousFormationButton(size: CGFloat = 34, disabled: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "chevron.up")
+                .frame(width: size, height: size)
+        }
+        .buttonStyle(.bordered)
+        .disabled(disabled)
+        .accessibilityLabel("Previous formation")
+        .help("Go to the previous formation")
+    }
+
+    @ViewBuilder
+    static func nextFormationButton(size: CGFloat = 34, disabled: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "chevron.down")
+                .frame(width: size, height: size)
+        }
+        .buttonStyle(.bordered)
+        .disabled(disabled)
+        .accessibilityLabel("Next formation")
+        .help("Go to the next formation")
+    }
 }
 
 // MARK: - Transport Sidebar
@@ -127,6 +151,10 @@ struct TransitionTransportSidebarView: View {
     var isSwapMode: Bool = false
     var canSwap: Bool = false
     var canEditPath: Bool = false
+    var onPreviousFormation: () -> Void = {}
+    var onNextFormation: () -> Void = {}
+    var isFirstFormation: Bool = false
+    var isLastFormation: Bool = false
 
     var body: some View {
         ScrollView {
@@ -153,6 +181,8 @@ struct TransitionTransportSidebarView: View {
     private var transportControls: some View {
         VStack(spacing: 12) {
             HStack(spacing: 16) {
+                TransportControls.previousFormationButton(disabled: isFirstFormation, action: onPreviousFormation)
+                TransportControls.nextFormationButton(disabled: isLastFormation, action: onNextFormation)
                 TransportControls.resetButton(player: player)
                 TransportControls.playPauseButton(player: player)
                 TransportControls.loopButton(player: player)
@@ -194,6 +224,10 @@ struct CompactTransitionPlaybackOverlayView: View {
     var isSwapMode: Bool = false
     var canSwap: Bool = false
     var canEditPath: Bool = false
+    var onPreviousFormation: () -> Void = {}
+    var onNextFormation: () -> Void = {}
+    var isFirstFormation: Bool = false
+    var isLastFormation: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -203,6 +237,8 @@ struct CompactTransitionPlaybackOverlayView: View {
                 .lineLimit(1)
 
             HStack(spacing: 10) {
+                TransportControls.previousFormationButton(size: 28, disabled: isFirstFormation, action: onPreviousFormation)
+                TransportControls.nextFormationButton(size: 28, disabled: isLastFormation, action: onNextFormation)
                 TransportControls.resetButton(player: player, size: 28)
                 TransportControls.playPauseButton(player: player, size: 32)
                 TransportControls.progressSlider(player: player)
@@ -237,6 +273,10 @@ struct CompactTransitionPlaybackRailView: View {
     var onAdd: (() -> Void)? = nil
     var formationLabel: String? = nil
     var formationColor: Color = .accentColor
+    var onPreviousFormation: () -> Void = {}
+    var onNextFormation: () -> Void = {}
+    var isFirstFormation: Bool = false
+    var isLastFormation: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -270,6 +310,8 @@ struct CompactTransitionPlaybackRailView: View {
             Divider()
 
             HStack(spacing: 8) {
+                TransportControls.previousFormationButton(size: 28, disabled: isFirstFormation, action: onPreviousFormation)
+                TransportControls.nextFormationButton(size: 28, disabled: isLastFormation, action: onNextFormation)
                 TransportControls.resetButton(player: player, size: 30)
                 TransportControls.playPauseButton(player: player, size: 36)
                 TransportControls.loopButton(player: player, size: 30)
@@ -332,6 +374,10 @@ struct SidebarTransportView: View {
     var isSwapMode: Bool = false
     var canSwap: Bool = false
     var canEditPath: Bool = false
+    var onPreviousFormation: () -> Void = {}
+    var onNextFormation: () -> Void = {}
+    var isFirstFormation: Bool = false
+    var isLastFormation: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -340,6 +386,8 @@ struct SidebarTransportView: View {
                 .foregroundColor(.secondary)
 
             HStack(spacing: 16) {
+                TransportControls.previousFormationButton(disabled: isFirstFormation, action: onPreviousFormation)
+                TransportControls.nextFormationButton(disabled: isLastFormation, action: onNextFormation)
                 TransportControls.resetButton(player: player)
                 TransportControls.playPauseButton(player: player)
                 TransportControls.loopButton(player: player)
