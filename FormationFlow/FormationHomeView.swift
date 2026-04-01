@@ -57,6 +57,10 @@ struct RoutineWorkspaceView: View {
         return store.routine.formations[selectedFormationIndex]
     }
 
+    private var selectedFormationColor: Color {
+        TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: selectedFormationIndex ?? 0)
+    }
+
     private func smartPickReferenceMode() -> PreviewReferenceMode {
         .outOfSelected
     }
@@ -101,6 +105,7 @@ struct RoutineWorkspaceView: View {
 
     var body: some View {
         workspaceContent
+        .tint(selectedFormationColor)
         .onAppear {
             if selectedFormationID == nil {
                 selectedFormationID = store.routine.formations.first?.id

@@ -7,7 +7,6 @@ struct FormationFlowApp: App {
     var body: some Scene {
         WindowGroup {
             RoutineWorkspaceView()
-                .tint(.orange)
                 .environmentObject(entitlementManager)
         }
     }
