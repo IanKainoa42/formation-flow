@@ -499,6 +499,25 @@ struct RoutineWorkspaceView: View {
                     }
                     .padding(12)
                 }
+                .overlay(alignment: .bottom) {
+                    if splitViewVisibility == .detailOnly,
+                       let previewTransitionPair,
+                       let player = previewSession.player
+                    {
+                        CompactTransitionPlaybackOverlayView(
+                            player: player,
+                            startFormationName: previewTransitionPair.start.name,
+                            endFormationName: previewTransitionPair.end.name,
+                            onSwap: { isSwapMode.toggle() },
+                            isSwapMode: isSwapMode,
+                            canSwap: selectedAthleteIDs.count == 1,
+                            canEditPath: selectedAthleteIDs.count == 1
+                        )
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 16)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                }
                 .toolbar {
                     ToolbarItemGroup(placement: .navigationBarTrailing) {
                         Button(action: duplicateSelectedFormation) {
