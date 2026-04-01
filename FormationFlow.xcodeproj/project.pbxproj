@@ -18,6 +18,9 @@
 		CC220003CC220003CC220003 /* ProUpgradeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB110003BB110003BB110003 /* ProUpgradeSheet.swift */; };
 		DCC44D02B9685B8277F4D198 /* FloorCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 303A4352BC4FD6FB758B338C /* FloorCanvasView.swift */; };
 		DD330001DD330001DD330001 /* RoutinePlaybackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC440001CC440001CC440001 /* RoutinePlaybackView.swift */; };
+		EE110001EE110001EE110001 /* FormationThumbnailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF220001FF220001FF220001 /* FormationThumbnailView.swift */; };
+		EE110002EE110002EE110002 /* FormationThumbnailStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF220002FF220002FF220002 /* FormationThumbnailStrip.swift */; };
+		EE110003EE110003EE110003 /* PortraitActionBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF220003FF220003FF220003 /* PortraitActionBar.swift */; };
 		F2404D8798687C821CBF4F7C /* TransitionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22EB4E82B510B78E55C92084 /* TransitionViews.swift */; };
 		F4094C4FBEC63EB6C48960EB /* AthleteDetailPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FD34039AE5F73A96066C39B /* AthleteDetailPanel.swift */; };
 /* End PBXBuildFile section */
@@ -39,6 +42,9 @@
 		BB110004BB110004BB110004 /* FormationFlow.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = FormationFlow.storekit; sourceTree = SOURCE_ROOT; };
 		CC440001CC440001CC440001 /* RoutinePlaybackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RoutinePlaybackView.swift; path = FormationFlow/RoutinePlaybackView.swift; sourceTree = SOURCE_ROOT; };
 		EFC34761911C80E5631C8341 /* FloorGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FloorGridView.swift; path = FormationFlow/FloorGridView.swift; sourceTree = SOURCE_ROOT; };
+		FF220001FF220001FF220001 /* FormationThumbnailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FormationThumbnailView.swift; path = FormationFlow/FormationThumbnailView.swift; sourceTree = SOURCE_ROOT; };
+		FF220002FF220002FF220002 /* FormationThumbnailStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FormationThumbnailStrip.swift; path = FormationFlow/FormationThumbnailStrip.swift; sourceTree = SOURCE_ROOT; };
+		FF220003FF220003FF220003 /* PortraitActionBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PortraitActionBar.swift; path = FormationFlow/PortraitActionBar.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -76,6 +82,9 @@
 				BB110002BB110002BB110002 /* FreeTierLimits.swift */,
 				BB110003BB110003BB110003 /* ProUpgradeSheet.swift */,
 				CC440001CC440001CC440001 /* RoutinePlaybackView.swift */,
+				FF220001FF220001FF220001 /* FormationThumbnailView.swift */,
+				FF220002FF220002FF220002 /* FormationThumbnailStrip.swift */,
+				FF220003FF220003FF220003 /* PortraitActionBar.swift */,
 			);
 			path = FormationFlow;
 			sourceTree = "<group>";
@@ -154,6 +163,9 @@
 				CC220002CC220002CC220002 /* FreeTierLimits.swift in Sources */,
 				CC220003CC220003CC220003 /* ProUpgradeSheet.swift in Sources */,
 				DD330001DD330001DD330001 /* RoutinePlaybackView.swift in Sources */,
+				EE110001EE110001EE110001 /* FormationThumbnailView.swift in Sources */,
+				EE110002EE110002EE110002 /* FormationThumbnailStrip.swift in Sources */,
+				EE110003EE110003EE110003 /* PortraitActionBar.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
