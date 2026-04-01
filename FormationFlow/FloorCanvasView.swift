@@ -108,6 +108,7 @@ struct FloorCanvasView: View {
     var useRoleColors: Bool = false
     var ghostAthletes: [RenderedAthlete] = []
     var trailPositions: [UUID: [CGPoint]] = [:]
+    var ghostTransitionPaths: [TransitionPathRenderItem] = []
     var hoveredHandlePosition: CGPoint? = nil
     var hoveredAthleteID: UUID? = nil
     var focusedPathHandle: CGPoint? = nil
@@ -128,6 +129,7 @@ struct FloorCanvasView: View {
             context.translateBy(x: offset.x, y: offset.y)
             drawGrid(in: &context)
             drawGhostAthletes(in: &context)
+            drawGhostTransitionPaths(in: &context)
             drawTrails(in: &context)
             drawAlignmentGuides(in: &context)
             drawTransitionPaths(in: &context)
@@ -453,6 +455,66 @@ struct FloorCanvasView: View {
             let radius = athlete.role.markerRadius - 3
             let marker = athlete.role.markerPath(center: point, radius: radius)
             context.fill(marker, with: .color(.white.opacity(0.07)))
+        }
+    }
+
+    private func drawGhostTransitionPaths(in context: inout GraphicsContext) {
+        guard !ghostTransitionPaths.isEmpty else { return }
+
+        let dashStyle = StrokeStyle(lineWidth: 1, dash: [4, 4])
+
+        for item in ghostTransitionPaths {
+            let start = CGPoint(x: item.startPosition.x * cellSize, y: item.startPosition.y * cellSize)
+            let end = CGPoint(x: item.endPosition.x * cellSize, y: item.endPosition.y * cellSize)
+
+            // Draw ghost start position — hollow circle showing where athlete was
+            var startMarker = Path()
+            startMarker.addEllipse(in: CGRect(x: start.x - 6, y: start.y - 6, width: 12, height: 12))
+            context.stroke(startMarker, with: .color(.white.opacity(0.08)), style: dashStyle)
+
+            // Build the full path (same logic as drawTransitionPaths but simplified — no handles)
+            if !item.waypoints.isEmpty {
+                let nodes = item.nodes
+                let segmentCount = nodes.count - 1
+                guard segmentCount > 0 else { continue }
+
+                for segmentIndex in 0..<segmentCount {
+                    let p0 = CGPoint(x: nodes[segmentIndex].x * cellSize, y: nodes[segmentIndex].y * cellSize)
+                    let p1 = CGPoint(x: nodes[segmentIndex + 1].x * cellSize, y: nodes[segmentIndex + 1].y * cellSize)
+                    let waypointAtEnd = segmentIndex < item.waypoints.count ? item.waypoints[segmentIndex] : nil
+
+                    var segment = Path()
+                    segment.move(to: p0)
+                    if waypointAtEnd?.isSmooth == true {
+                        let prevNode = segmentIndex > 0 ? nodes[segmentIndex - 1] : nodes[segmentIndex]
+                        let nextNode = segmentIndex + 2 < nodes.count ? nodes[segmentIndex + 2] : nodes[segmentIndex + 1]
+                        let prev = CGPoint(x: prevNode.x * cellSize, y: prevNode.y * cellSize)
+                        let next = CGPoint(x: nextNode.x * cellSize, y: nextNode.y * cellSize)
+                        let (c1, c2) = PathCalculations.catmullRomControlPoints(prev: prev, p0: p0, p1: p1, next: next)
+                        segment.addCurve(to: p1, control1: c1, control2: c2)
+                    } else {
+                        segment.addLine(to: p1)
+                    }
+
+                    // Gradient opacity: stronger near end (where athlete arrived)
+                    let segmentProgress = CGFloat(segmentIndex + 1) / CGFloat(segmentCount)
+                    let opacity = 0.03 + 0.07 * segmentProgress  // 3% at start → 10% at end
+
+                    context.stroke(segment, with: .color(.white.opacity(opacity)), style: dashStyle)
+                }
+            } else {
+                // Simple path (straight or quadratic Bezier)
+                var path = Path()
+                path.move(to: start)
+                if let control = item.controlPoint {
+                    let controlPoint = CGPoint(x: control.x * cellSize, y: control.y * cellSize)
+                    path.addQuadCurve(to: end, control: controlPoint)
+                } else {
+                    path.addLine(to: end)
+                }
+                // For simple paths, use a middle opacity since we can't easily gradient a single stroke
+                context.stroke(path, with: .color(.white.opacity(0.07)), style: dashStyle)
+            }
         }
     }
 
