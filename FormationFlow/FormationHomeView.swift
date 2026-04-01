@@ -187,6 +187,10 @@ struct RoutineWorkspaceView: View {
             formationID: formationID,
             onCycleFormation: cycleToNextFormation,
             onDuplicateAsNext: duplicateSelectedFormation,
+            onPreviousFormation: goToPreviousFormation,
+            onNextFormation: goToNextFormation,
+            isFirstFormation: isFirstFormation,
+            isLastFormation: isLastFormation,
             player: previewSession.player,
             startFormationID: previewTransitionPair?.start.id,
             endFormationID: previewTransitionPair?.end.id
@@ -298,7 +302,11 @@ struct RoutineWorkspaceView: View {
                     onSwap: { isSwapMode.toggle() },
                     isSwapMode: isSwapMode,
                     canSwap: selectedAthleteIDs.count == 1,
-                    canEditPath: selectedAthleteIDs.count == 1
+                    canEditPath: selectedAthleteIDs.count == 1,
+                    onPreviousFormation: goToPreviousFormation,
+                    onNextFormation: goToNextFormation,
+                    isFirstFormation: isFirstFormation,
+                    isLastFormation: isLastFormation
                 )
                 .padding(16)
                 .background(.thinMaterial)
@@ -383,7 +391,11 @@ struct RoutineWorkspaceView: View {
                     onSwap: { isSwapMode.toggle() },
                     isSwapMode: isSwapMode,
                     canSwap: selectedAthleteIDs.count == 1,
-                    canEditPath: selectedAthleteIDs.count == 1
+                    canEditPath: selectedAthleteIDs.count == 1,
+                    onPreviousFormation: goToPreviousFormation,
+                    onNextFormation: goToNextFormation,
+                    isFirstFormation: isFirstFormation,
+                    isLastFormation: isLastFormation
                 )
                 .padding(16)
                 .background(.thinMaterial)
@@ -450,6 +462,10 @@ struct RoutineWorkspaceView: View {
             onRenameFormation: { beginRenaming(formation) },
             onDeleteFormation: { requestFormationDeletion([formationID]) },
             onResetRoutine: { showingResetConfirmation = true },
+            onPreviousFormation: goToPreviousFormation,
+            onNextFormation: goToNextFormation,
+            isFirstFormation: isFirstFormation,
+            isLastFormation: isLastFormation,
             player: previewSession.player,
             startFormationID: previewTransitionPair?.start.id,
             endFormationID: previewTransitionPair?.end.id
@@ -932,6 +948,32 @@ struct RoutineWorkspaceView: View {
         let currentIndex = formations.firstIndex(where: { $0.id == selectedFormationID }) ?? 0
         let nextIndex = (currentIndex + 1) % formations.count
         selectedFormationID = formations[nextIndex].id
+    }
+
+    private func goToPreviousFormation() {
+        let formations = store.routine.formations
+        guard formations.count > 1 else { return }
+        let currentIndex = formations.firstIndex(where: { $0.id == selectedFormationID }) ?? 0
+        guard currentIndex > 0 else { return }
+        selectedFormationID = formations[currentIndex - 1].id
+    }
+
+    private func goToNextFormation() {
+        let formations = store.routine.formations
+        guard formations.count > 1 else { return }
+        let currentIndex = formations.firstIndex(where: { $0.id == selectedFormationID }) ?? 0
+        guard currentIndex < formations.count - 1 else { return }
+        selectedFormationID = formations[currentIndex + 1].id
+    }
+
+    private var isFirstFormation: Bool {
+        guard let selectedFormationID else { return true }
+        return store.routine.formations.first?.id == selectedFormationID
+    }
+
+    private var isLastFormation: Bool {
+        guard let selectedFormationID else { return true }
+        return store.routine.formations.last?.id == selectedFormationID
     }
 
     private func requestFormationDeletion(_ formationIDs: [UUID]) {

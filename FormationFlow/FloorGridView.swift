@@ -24,6 +24,10 @@ struct FloorGridView: View {
     var onRenameFormation: (() -> Void)?
     var onDeleteFormation: (() -> Void)?
     var onResetRoutine: (() -> Void)?
+    var onPreviousFormation: (() -> Void)?
+    var onNextFormation: (() -> Void)?
+    var isFirstFormation: Bool = true
+    var isLastFormation: Bool = true
 
     // Transition parameters (nil when no adjacent formation)
     var player: TransitionPlayer?
@@ -1123,7 +1127,11 @@ struct FloorGridView: View {
                         canEditPath: selectedAthleteID != nil,
                         onAdd: addAthlete,
                         formationLabel: formationContextLabel,
-                        formationColor: currentFormationColor
+                        formationColor: currentFormationColor,
+                        onPreviousFormation: { onPreviousFormation?() },
+                        onNextFormation: { onNextFormation?() },
+                        isFirstFormation: isFirstFormation,
+                        isLastFormation: isLastFormation
                     )
                     .padding(.leading, 8)
                     .padding(.top, 12)
@@ -1255,7 +1263,11 @@ struct FloorGridView: View {
                     onPath: { showingInspectorSheet = true },
                     isSwapMode: isSwapMode,
                     canSwap: selectedAthleteID != nil,
-                    canEditPath: selectedAthleteID != nil
+                    canEditPath: selectedAthleteID != nil,
+                    onPreviousFormation: { onPreviousFormation?() },
+                    onNextFormation: { onNextFormation?() },
+                    isFirstFormation: isFirstFormation,
+                    isLastFormation: isLastFormation
                 )
                 .toolbar {
                     ToolbarItem(placement: .navigationBarTrailing) {
