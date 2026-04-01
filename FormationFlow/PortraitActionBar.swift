@@ -115,8 +115,8 @@ struct PortraitActionBar: View {
                 .accessibilityLabel("Share preview")
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
         .background(.bar)
     }
 }

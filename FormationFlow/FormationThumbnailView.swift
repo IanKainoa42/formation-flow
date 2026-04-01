@@ -5,8 +5,8 @@ struct FormationThumbnailView: View {
     let isSelected: Bool
     let accentColor: Color
 
-    private let thumbnailWidth: CGFloat = 52
-    private let thumbnailHeight: CGFloat = 40
+    private let thumbnailWidth: CGFloat = 64
+    private let thumbnailHeight: CGFloat = 50
 
     var body: some View {
         Canvas { context, size in
@@ -22,7 +22,7 @@ struct FormationThumbnailView: View {
                 )
                 context.fill(
                     Path(ellipseIn: rect),
-                    with: .color(athlete.role.color)
+                    with: .color(accentColor)
                 )
             }
         }
