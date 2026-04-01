@@ -28,6 +28,7 @@ struct FloorGridView: View {
     var onNextFormation: (() -> Void)?
     var isFirstFormation: Bool = true
     var isLastFormation: Bool = true
+    var hideControlStrip: Bool = false
 
     // Transition parameters (nil when no adjacent formation)
     var player: TransitionPlayer?
@@ -599,15 +600,27 @@ struct FloorGridView: View {
     private var editorBody: some View {
         Group {
             if isPhoneLayout {
-                if renderedAthletes.isEmpty {
-                    emptyState
-                } else {
-                    canvasArea
+                VStack(spacing: 0) {
+                    if hideControlStrip {
+                        portraitActionBar
+                        Divider()
+                    }
+
+                    if renderedAthletes.isEmpty {
+                        emptyState
+                    } else {
+                        canvasArea
+                    }
                 }
             } else {
                 VStack(spacing: 0) {
-                    controlStrip
-                    Divider()
+                    if hideControlStrip {
+                        portraitActionBar
+                        Divider()
+                    } else {
+                        controlStrip
+                        Divider()
+                    }
 
                     if renderedAthletes.isEmpty {
                         emptyState
@@ -770,6 +783,31 @@ struct FloorGridView: View {
             .padding(.vertical, isHeightConstrained ? 6 : (isCompactLayout ? 8 : 8))
         }
         .background(.bar)
+    }
+
+    private var portraitActionBar: some View {
+        PortraitActionBar(
+            onAddAthlete: addAthlete,
+            onShowRoster: { showingRosterSheet = true },
+            onShowNotes: { showingNotesSheet = true },
+            onUndo: undoLastMove,
+            onTogglePaths: { showTransitionPaths.toggle() },
+            onSharePreview: shareTransitionPreview,
+            showTransitionPaths: showTransitionPaths,
+            hasTransition: hasTransition,
+            undoDisabled: undoStack.isEmpty,
+            hasNotes: formation?.hasCoachCardContent == true,
+            collidingCount: collidingAthletes.count,
+            onCycleCollision: {
+                collisionCycleIndex = (collisionCycleIndex + 1) % max(collidingAthletes.count, 1)
+                selectCollision(at: collisionCycleIndex)
+            },
+            pathCollidingCount: pathCollidingAthletes.count,
+            onCyclePathCollision: {
+                pathCollisionCycleIndex = (pathCollisionCycleIndex + 1) % max(pathCollidingAthletes.count, 1)
+                selectPathCollision(at: pathCollisionCycleIndex)
+            }
+        )
     }
 
     private var compactOverflowMenu: some View {

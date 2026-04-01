@@ -8,6 +8,7 @@ import UIKit
 
 struct RoutineWorkspaceView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var store = RoutineStore()
     @StateObject private var previewSession = TransitionPreviewSession()
@@ -46,6 +47,10 @@ struct RoutineWorkspaceView: View {
         #else
         return false
         #endif
+    }
+
+    private var isPortrait: Bool {
+        verticalSizeClass == .regular
     }
 
     private var selectedFormationIndex: Int? {
@@ -96,6 +101,8 @@ struct RoutineWorkspaceView: View {
             } else {
                 regularWorkspace
             }
+        } else if isPortrait {
+            portraitWorkspace
         } else if isCompactLayout {
             compactWorkspace
         } else {
@@ -271,6 +278,113 @@ struct RoutineWorkspaceView: View {
                 .navigationDestination(for: UUID.self) { formationID in
                     compactDetailView(for: formationID)
                 }
+        }
+    }
+
+    // MARK: - Portrait Workspace
+
+    private var portraitWorkspace: some View {
+        NavigationStack {
+            portraitContent
+                .navigationTitle(store.routine.name)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItemGroup(placement: .navigationBarTrailing) {
+                        Button {
+                            showingRoutinePlayback = true
+                        } label: {
+                            Image(systemName: "play.circle")
+                        }
+                        .disabled(store.routine.formations.count < 2)
+                        .accessibilityLabel("Play routine")
+
+                        Button(action: addFormation) {
+                            Image(systemName: canAddFormation ? "plus" : "lock.fill")
+                        }
+                        .accessibilityLabel(canAddFormation ? "Add formation" : "Upgrade to Pro to add formation")
+                    }
+                }
+                .confirmationDialog(
+                    "Reset routine?",
+                    isPresented: $showingResetConfirmation,
+                    titleVisibility: .visible
+                ) {
+                    Button("Reset Routine", role: .destructive) {
+                        authenticateAndResetRoutine()
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("This clears the roster, formations, notes, and transition data, then starts over with one empty formation.")
+                }
+        }
+    }
+
+    @ViewBuilder
+    private var portraitContent: some View {
+        if let selectedFormationID {
+            portraitFloor(formationID: selectedFormationID)
+        } else {
+            ContentUnavailableView("No formation selected", systemImage: "rectangle.grid.1x2")
+                .onAppear {
+                    selectedFormationID = store.routine.formations.first?.id
+                }
+        }
+    }
+
+    private func portraitFloor(formationID: UUID) -> some View {
+        VStack(spacing: 0) {
+            FormationThumbnailStrip(
+                store: store,
+                selectedFormationID: $selectedFormationID,
+                canAddFormation: canAddFormation,
+                onAddFormation: addFormation,
+                onRenameFormation: { formation in beginRenaming(formation) },
+                onDeleteFormation: { id in requestFormationDeletion([id]) },
+                onDuplicateFormation: duplicateSelectedFormation
+            )
+            Divider()
+
+            FloorGridView(
+                store: store,
+                selectedAthleteIDs: $selectedAthleteIDs,
+                isSwapMode: $isSwapMode,
+                triggerDeleteAthlete: $triggerDeleteAthlete,
+                formationID: formationID,
+                onCycleFormation: cycleToNextFormation,
+                onDuplicateAsNext: duplicateSelectedFormation,
+                onRenameFormation: {
+                    if let f = selectedFormation { beginRenaming(f) }
+                },
+                onDeleteFormation: { requestFormationDeletion([formationID]) },
+                onResetRoutine: { showingResetConfirmation = true },
+                onPreviousFormation: goToPreviousFormation,
+                onNextFormation: goToNextFormation,
+                isFirstFormation: isFirstFormation,
+                isLastFormation: isLastFormation,
+                hideControlStrip: true,
+                player: previewSession.player,
+                startFormationID: previewTransitionPair?.start.id,
+                endFormationID: previewTransitionPair?.end.id
+            )
+        }
+        .overlay(alignment: .bottom) {
+            if let previewTransitionPair, let player = previewSession.player {
+                CompactTransitionPlaybackOverlayView(
+                    player: player,
+                    startFormationName: previewTransitionPair.start.name,
+                    endFormationName: previewTransitionPair.end.name,
+                    onSwap: { isSwapMode.toggle() },
+                    isSwapMode: isSwapMode,
+                    canSwap: selectedAthleteIDs.count == 1,
+                    canEditPath: selectedAthleteIDs.count == 1,
+                    onPreviousFormation: goToPreviousFormation,
+                    onNextFormation: goToNextFormation,
+                    isFirstFormation: isFirstFormation,
+                    isLastFormation: isLastFormation
+                )
+                .padding(.horizontal, 12)
+                .padding(.bottom, 12)
+            }
         }
     }
 
@@ -475,6 +589,7 @@ struct RoutineWorkspaceView: View {
             onNextFormation: goToNextFormation,
             isFirstFormation: isFirstFormation,
             isLastFormation: isLastFormation,
+            hideControlStrip: isPortrait,
             player: previewSession.player,
             startFormationID: previewTransitionPair?.start.id,
             endFormationID: previewTransitionPair?.end.id
@@ -662,7 +777,11 @@ struct RoutineWorkspaceView: View {
         let index = store.routine.formations.firstIndex(where: { $0.id == formation.id }) ?? 0
         let color = TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: index)
         HStack(spacing: 12) {
-            FormationThumbnailView(athletes: store.renderedAthletes(for: formation), color: color)
+            FormationThumbnailView(
+                athletes: store.renderedAthletes(for: formation),
+                isSelected: formation.id == selectedFormationID,
+                accentColor: color
+            )
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(formation.name)
@@ -1113,40 +1232,6 @@ struct RoutineWorkspaceView: View {
         withAnimation(.easeInOut(duration: 0.2)) {
             splitViewVisibility = splitViewVisibility == .detailOnly ? .all : .detailOnly
         }
-    }
-}
-
-// MARK: - Formation Thumbnail
-
-private struct FormationThumbnailView: View {
-    let athletes: [RenderedAthlete]
-    var color: Color = .white
-
-    var body: some View {
-        Canvas { context, size in
-            let scaleX = size.width / CourtConstants.width
-            let scaleY = size.height / CourtConstants.height
-            let radius: CGFloat = 2
-
-            for athlete in athletes {
-                let center = CGPoint(
-                    x: athlete.position.x * scaleX,
-                    y: athlete.position.y * scaleY
-                )
-                let rect = CGRect(
-                    x: center.x - radius,
-                    y: center.y - radius,
-                    width: radius * 2,
-                    height: radius * 2
-                )
-                context.fill(Path(ellipseIn: rect), with: .color(color))
-            }
-        }
-        .frame(width: 34, height: 34)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.accentColor.opacity(0.12))
-        )
     }
 }
 
