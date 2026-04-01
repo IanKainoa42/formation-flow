@@ -135,6 +135,7 @@ struct FloorCanvasView: View {
             drawTrails(in: &context)
             drawAlignmentGuides(in: &context)
             drawTransitionPaths(in: &context)
+            drawPathCollisionMarkers(in: &context)
             drawEndpointMarkers(in: &context)
             drawAthletes(in: &context)
 
@@ -165,6 +166,116 @@ struct FloorCanvasView: View {
                 )
             }
         }
+    }
+
+
+    private struct PathCollisionMarker: Hashable {
+        let position: CGPoint
+    }
+
+    private var pathCollisionMarkers: [PathCollisionMarker] {
+        guard transitionPaths.count > 1, !pathCollisionIDs.isEmpty else { return [] }
+
+        let candidatePaths = transitionPaths.filter { pathCollisionIDs.contains($0.athleteID) }
+        guard candidatePaths.count > 1 else { return [] }
+
+        var markers: [PathCollisionMarker] = []
+        let minDistanceSquared = CourtConstants.collisionDistance * CourtConstants.collisionDistance
+
+        for firstIndex in 0..<(candidatePaths.count - 1) {
+            let firstSamples = sampledPathPoints(for: candidatePaths[firstIndex])
+            for secondIndex in (firstIndex + 1)..<candidatePaths.count {
+                let secondSamples = sampledPathPoints(for: candidatePaths[secondIndex])
+                let limit = min(firstSamples.count, secondSamples.count)
+                guard limit > 0 else { continue }
+
+                for sampleIndex in 0..<limit {
+                    let firstPoint = firstSamples[sampleIndex]
+                    let secondPoint = secondSamples[sampleIndex]
+                    let dx = firstPoint.x - secondPoint.x
+                    let dy = firstPoint.y - secondPoint.y
+                    let squaredDistance = dx * dx + dy * dy
+                    guard squaredDistance <= minDistanceSquared else { continue }
+
+                    let midpoint = CGPoint(
+                        x: (firstPoint.x + secondPoint.x) / 2,
+                        y: (firstPoint.y + secondPoint.y) / 2
+                    )
+                    let marker = PathCollisionMarker(position: midpoint)
+                    if markers.contains(where: { PathCalculations.squaredDistance(from: $0.position, to: midpoint) < 1 }) {
+                        continue
+                    }
+                    markers.append(marker)
+                    break
+                }
+            }
+        }
+
+        return markers
+    }
+
+    private func sampledPathPoints(for item: TransitionPathRenderItem, sampleCount: Int = 40) -> [CGPoint] {
+        let samples: [CGPoint]
+        if item.waypoints.isEmpty {
+            samples = PathCalculations.athletePath(
+                from: item.startPosition,
+                to: item.endPosition,
+                control: item.controlPoint,
+                steps: sampleCount
+            )
+        } else {
+            samples = PathCalculations.waypointPath(
+                from: item.startPosition,
+                to: item.endPosition,
+                waypoints: item.waypoints,
+                steps: sampleCount
+            )
+        }
+
+        let moveDelay = min(max(item.moveDelay, 0), 0.95)
+        let delaySamples = Int(CGFloat(sampleCount) * moveDelay)
+        guard delaySamples > 0, let start = samples.first else { return samples }
+
+        return Array(repeating: start, count: delaySamples) + samples
+    }
+
+    private func drawPathCollisionMarkers(in context: inout GraphicsContext) {
+        guard !pathCollisionMarkers.isEmpty else { return }
+
+        for marker in pathCollisionMarkers {
+            let center = CGPoint(x: marker.position.x * cellSize, y: marker.position.y * cellSize)
+
+            var glow = Path()
+            glow.addEllipse(in: CGRect(x: center.x - 10, y: center.y - 10, width: 20, height: 20))
+            context.fill(glow, with: .color(.red.opacity(0.18)))
+
+            let star = eightPointStarPath(center: center, outerRadius: 8, innerRadius: 4.2)
+            context.fill(star, with: .color(.white.opacity(0.95)))
+            context.stroke(star, with: .color(.red), lineWidth: 2)
+        }
+    }
+
+    private func eightPointStarPath(center: CGPoint, outerRadius: CGFloat, innerRadius: CGFloat) -> Path {
+        var path = Path()
+        let points = 16
+
+        for index in 0..<points {
+            let angle = (CGFloat(index) * .pi / 8) - (.pi / 2)
+            let radius = index.isMultiple(of: 2) ? outerRadius : innerRadius
+            let point = CGPoint(
+                x: center.x + cos(angle) * radius,
+                y: center.y + sin(angle) * radius
+            )
+
+            if index == 0 {
+                path.move(to: point)
+            } else {
+                path.addLine(to: point)
+            }
+        }
+
+        path.closeSubpath()
+        return path
     }
 
     private func drawAlignmentGuides(in context: inout GraphicsContext) {
