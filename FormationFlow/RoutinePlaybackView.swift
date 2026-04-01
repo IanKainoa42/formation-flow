@@ -135,6 +135,8 @@ struct RoutinePlaybackView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
+                .accessibilityValue(player.isPlaying ? "Playing" : "Paused")
+                .accessibilityHint(player.isPlaying ? "Pause the routine playback" : "Play the routine animation")
 
                 // Reset
                 Button(action: player.reset) {
@@ -143,6 +145,7 @@ struct RoutinePlaybackView: View {
                 }
                 .buttonStyle(.bordered)
                 .accessibilityLabel("Reset playback")
+                .accessibilityHint("Jump back to the start of the routine")
 
                 Spacer()
 
@@ -171,6 +174,7 @@ struct RoutinePlaybackView: View {
                 .tint(player.showTrail ? .orange : .secondary)
                 .accessibilityLabel("Toggle trails")
                 .accessibilityValue(player.showTrail ? "On" : "Off")
+                .accessibilityHint(player.showTrail ? "Hide movement trails" : "Show movement trails for the athletes")
             }
         }
         .padding(12)
