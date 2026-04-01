@@ -333,17 +333,6 @@ struct RoutineWorkspaceView: View {
 
     private func portraitFloor(formationID: UUID) -> some View {
         VStack(spacing: 0) {
-            FormationThumbnailStrip(
-                store: store,
-                selectedFormationID: $selectedFormationID,
-                canAddFormation: canAddFormation,
-                onAddFormation: addFormation,
-                onRenameFormation: { formation in beginRenaming(formation) },
-                onDeleteFormation: { id in requestFormationDeletion([id]) },
-                onDuplicateFormation: duplicateSelectedFormation
-            )
-            Divider()
-
             FloorGridView(
                 store: store,
                 selectedAthleteIDs: $selectedAthleteIDs,
@@ -362,6 +351,17 @@ struct RoutineWorkspaceView: View {
                 isFirstFormation: isFirstFormation,
                 isLastFormation: isLastFormation,
                 hideControlStrip: true,
+                portraitStripContent: AnyView(
+                    FormationThumbnailStrip(
+                        store: store,
+                        selectedFormationID: $selectedFormationID,
+                        canAddFormation: canAddFormation,
+                        onAddFormation: addFormation,
+                        onRenameFormation: { formation in beginRenaming(formation) },
+                        onDeleteFormation: { id in requestFormationDeletion([id]) },
+                        onDuplicateFormation: duplicateSelectedFormation
+                    )
+                ),
                 player: previewSession.player,
                 startFormationID: previewTransitionPair?.start.id,
                 endFormationID: previewTransitionPair?.end.id

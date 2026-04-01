@@ -29,6 +29,7 @@ struct FloorGridView: View {
     var isFirstFormation: Bool = true
     var isLastFormation: Bool = true
     var hideControlStrip: Bool = false
+    var portraitStripContent: AnyView? = nil
 
     // Transition parameters (nil when no adjacent formation)
     var player: TransitionPlayer?
@@ -600,23 +601,20 @@ struct FloorGridView: View {
     private var editorBody: some View {
         Group {
             if isPhoneLayout {
-                VStack(spacing: 0) {
-                    if hideControlStrip {
-                        portraitActionBar
-                        Divider()
-                    }
-
-                    if renderedAthletes.isEmpty {
-                        emptyState
-                    } else {
-                        canvasArea
-                    }
+                if renderedAthletes.isEmpty {
+                    emptyState
+                } else {
+                    canvasArea
                 }
             } else {
                 VStack(spacing: 0) {
                     if hideControlStrip {
                         portraitActionBar
                         Divider()
+                        if let portraitStripContent {
+                            portraitStripContent
+                            Divider()
+                        }
                     } else {
                         controlStrip
                         Divider()
