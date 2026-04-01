@@ -95,6 +95,8 @@ struct FloorCanvasView: View {
     var alignmentGuides: [AlignmentGuideRenderItem] = []
     var collisionIDs: Set<UUID> = []
     var pathCollisionIDs: Set<UUID> = []
+    var blinkingResolvedIDs: Set<UUID> = []
+    var blinkPhase: Int = 0
     var cellSize: CGFloat = 12
     var offset: CGPoint = .zero
     var swapSourceID: UUID? = nil
@@ -216,7 +218,9 @@ struct FloorCanvasView: View {
             let end = CGPoint(x: item.endPosition.x * cellSize, y: item.endPosition.y * cellSize)
             let isSelected = selectedAthleteIDs.contains(item.athleteID)
             let isColliding = pathCollisionIDs.contains(item.athleteID)
-            let pathColor: Color = isColliding ? .red : (isSelected ? formationColor : .green)
+            let isBlinking = blinkingResolvedIDs.contains(item.athleteID)
+            let resolvedColor: Color = isBlinking && blinkPhase % 2 == 0 ? .white : .green
+            let pathColor: Color = isColliding ? .red : (isBlinking ? resolvedColor : (isSelected ? formationColor : .green))
             let lineWidth: CGFloat = isSelected ? 3 : 1.5
 
             if !item.waypoints.isEmpty {

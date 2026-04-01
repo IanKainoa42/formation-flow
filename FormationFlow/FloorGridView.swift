@@ -83,6 +83,9 @@ struct FloorGridView: View {
     @State private var shareResultMessage = ""
     @State private var showingShareResult = false
     @State private var cachedPathCollisionIDs: Set<UUID> = []
+    @State private var blinkingResolvedIDs: Set<UUID> = []
+    @State private var blinkPhase: Int = 0
+    @State private var blinkTimer: Timer?
 
     private var formationIndex: Int? {
         store.formationIndex(id: formationID)
@@ -243,9 +246,34 @@ struct FloorGridView: View {
     private func recomputePathCollisionIDs() {
         guard let player else {
             cachedPathCollisionIDs = []
+            blinkingResolvedIDs = []
             return
         }
-        cachedPathCollisionIDs = PathCalculations.findPathCollisionIDs(paths: transitionPaths, counts: CGFloat(player.counts))
+        let oldIDs = cachedPathCollisionIDs
+        let newIDs = player.cachedPathCollisionIDs
+        cachedPathCollisionIDs = newIDs
+
+        let justResolved = oldIDs.subtracting(newIDs)
+        if !justResolved.isEmpty {
+            blinkingResolvedIDs.formUnion(justResolved)
+            startResolvedBlink()
+        }
+    }
+
+    private func startResolvedBlink() {
+        blinkTimer?.invalidate()
+        blinkPhase = 0
+        blinkTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { _ in
+            Task { @MainActor in
+                blinkPhase += 1
+                if blinkPhase >= 6 {
+                    blinkTimer?.invalidate()
+                    blinkTimer = nil
+                    blinkingResolvedIDs = []
+                    blinkPhase = 0
+                }
+            }
+        }
     }
 
     private var currentFormationEndpoint: PreviewEditableEndpoint? {
@@ -976,6 +1004,8 @@ struct FloorGridView: View {
                 alignmentGuides: activeAlignmentGuides,
                 collisionIDs: collisionSummary.ids,
                 pathCollisionIDs: cachedPathCollisionIDs,
+                blinkingResolvedIDs: blinkingResolvedIDs,
+                blinkPhase: blinkPhase,
                 cellSize: cellSize,
                 offset: offset,
                 swapSourceID: swapSourceAthleteID,
@@ -2704,6 +2734,9 @@ struct FloorGridView: View {
                 )
                 formation.placements[placementIndex].position = nextPosition
             }
+        }
+        if player != nil {
+            refreshTransitionFromStore()
         }
     }
 

@@ -1882,7 +1882,7 @@ struct PathCalculations {
         waypoints: [PathWaypoint],
         progress: CGFloat
     ) -> CGPoint {
-        guard totalLength > 0, let start = nodes.first, let end = nodes.last else {
+        guard totalLength > 0, let _ = nodes.first, let end = nodes.last else {
             return nodes.first ?? CGPoint(x: 0, y: 0)
         }
 
@@ -2172,16 +2172,18 @@ final class TransitionPlayer: ObservableObject {
     @Published var currentAthletes: [RenderedAthlete]
     @Published var speed: CGFloat = 2.0
     @Published var startAthletes: [RenderedAthlete] {
-        didSet { updateTimingCache() }
+        didSet { guard !isBatchRefreshing else { return }; updateTimingCache() }
     }
     @Published var endAthletes: [RenderedAthlete] {
         didSet {
+            guard !isBatchRefreshing else { return }
             updateEndLookup()
             updateTimingCache()
         }
     }
     @Published var transitionSpec: TransitionSpec {
         didSet {
+            guard !isBatchRefreshing else { return }
             updateTransitionLookup()
             updateTimingCache()
         }
@@ -2190,7 +2192,7 @@ final class TransitionPlayer: ObservableObject {
     var onComplete: (() -> Void)?
 
     var duration: TimeInterval {
-        didSet { transitionSpec.duration = duration }
+        didSet { guard !isBatchRefreshing else { return }; transitionSpec.duration = duration }
     }
 
     var counts: TimeInterval {
@@ -2296,16 +2298,24 @@ final class TransitionPlayer: ObservableObject {
         animationTimer?.invalidate()
     }
 
+    private var isBatchRefreshing = false
+
     func refresh(
         startAthletes: [RenderedAthlete],
         endAthletes: [RenderedAthlete],
         transitionSpec: TransitionSpec
     ) {
+        // Batch property updates to avoid cascading didSet → updateTimingCache()
+        // which previously ran findPathCollisionIDs 3-4 times per refresh.
+        isBatchRefreshing = true
         self.startAthletes = startAthletes
         self.endAthletes = endAthletes
         self.transitionSpec = transitionSpec
         duration = transitionSpec.duration
-        // updateTimingCache is called via property observers
+        isBatchRefreshing = false
+        updateEndLookup()
+        updateTransitionLookup()
+        updateTimingCache()
         updateAthletesForProgress()
     }
 
