@@ -54,6 +54,30 @@ final class RoutineStoreTests: XCTestCase {
         XCTAssertEqual(store.routine.transitionSpecs[0].athleteTransitions[0].athleteID, athleteID)
     }
 
+    func testAddFormationDuplicatesPreviousFormation() {
+        let athleteID = store.addAthlete()
+        let initialFormationID = store.routine.formations[0].id
+
+        store.mutateFormation(id: initialFormationID) { formation in
+            formation.notes = "8-count intro"
+            formation.placements[0].position = CGPoint(x: 24, y: 18)
+        }
+
+        let newFormationID = store.addFormation(after: initialFormationID)
+
+        XCTAssertEqual(store.routine.formations.count, 2)
+
+        guard let duplicated = store.formation(id: newFormationID) else {
+            XCTFail("Expected new formation")
+            return
+        }
+
+        XCTAssertEqual(duplicated.notes, "8-count intro")
+        XCTAssertEqual(duplicated.placements.count, 1)
+        XCTAssertEqual(duplicated.placements[0].athleteID, athleteID)
+        XCTAssertEqual(duplicated.placements[0].position, CGPoint(x: 24, y: 18))
+    }
+
     func testDeleteFormation() {
         let initialFormationID = store.routine.formations[0].id
         let newFormationID = store.addFormation(after: initialFormationID)

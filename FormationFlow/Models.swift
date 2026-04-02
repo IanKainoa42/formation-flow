@@ -1425,18 +1425,27 @@ final class RoutineStore: ObservableObject {
     }
 
     func addFormation(after formationID: UUID?) -> UUID {
+        let insertionIndex: Int
+        let sourceFormation: Formation?
+
+        if let formationID, let currentIndex = formationIndex(id: formationID) {
+            insertionIndex = currentIndex + 1
+            sourceFormation = routine.formations[currentIndex]
+        } else {
+            insertionIndex = routine.formations.count
+            sourceFormation = routine.formations.last
+        }
+
         let newFormation = Formation(
             name: nextFormationName(),
-            placements: routine.roster.enumerated().map { index, athlete in
-                FormationPlacement(athleteID: athlete.id, position: FormationTemplates.defaultSpawnPosition(for: index))
-            }
+            notes: sourceFormation?.notes ?? "",
+            placements: sourceFormation?.placements
+                ?? routine.roster.enumerated().map { index, athlete in
+                    FormationPlacement(athleteID: athlete.id, position: FormationTemplates.defaultSpawnPosition(for: index))
+                }
         )
 
-        if let currentIndex = formationIndex(id: formationID) {
-            routine.formations.insert(newFormation, at: currentIndex + 1)
-        } else {
-            routine.formations.append(newFormation)
-        }
+        routine.formations.insert(newFormation, at: insertionIndex)
         reconcileTransitionSpecs()
         return newFormation.id
     }
