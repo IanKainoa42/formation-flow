@@ -2,7 +2,7 @@
 
 The following files are FROZEN. Do not include them as targets for any optimization, refactor, caching, or performance task:
 
-- **`FormationFlow/Models.swift`** — O(N²)→O(N) optimizations applied 6+ times. Violations after explicit hard-stop in CLAUDE.md: PR #34 ("Cache transition path calculations"), PR #38 ("O(1) RoutineStore Formation Lookups"), PR #44 ("Optimize waypoint path rendering allocations"), PR #47 ("Remove O(N) allocations in rendering loop"). 4 post-rule violations total.
+- **`FormationFlow/Models.swift`** — O(N²)→O(N) optimizations applied 6+ times. Violations after explicit hard-stop in CLAUDE.md: PR #34, PR #38, PR #44, PR #47, PR #55 (2026-03-31 — "Optimize transitionSpecIndex lookup", 1 day after this file was updated with the FROZEN rule). **5 post-rule violations total. The freeze is absolute.**
 
 **If your task contains:** "cache", "O(1)", "O(N)", "optimize", "allocations", "rendering loop", "waypoint", "lookup", or "reduce" AND your target includes `Models.swift` or `FloorCanvasView.swift` — **stop immediately**.
 

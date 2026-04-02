@@ -30,3 +30,9 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
+
+# Agent artifact cleanup — mechanical enforcement (Jules committed test_auth.swift in PR #48)
+*.orig
+patch*.diff
+*.diff
+test_auth.swift
