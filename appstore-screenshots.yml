@@ -1,0 +1,50 @@
+# FormationFlow screenshot config
+# Source of truth for screenshot capture, packaging, and validation.
+
+project_root: /Users/ianrichardson/Projects/formation-flow
+app_name: FormationFlow
+scheme: FormationFlow
+bundle_id: com.ianrichardson.formationflow
+output_root: /Users/ianrichardson/Projects/formation-flow/AppStoreScreenshots
+orientation: landscape
+mode: simctl-manual
+
+launch_args:
+  - -ui-testing
+  - -reset-state
+launch_env:
+  APPSTORE_SCREENSHOT_MODE: "1"
+  UI_TESTING: "1"
+
+device_sets:
+  - name: iphone_6_9
+    simulator: iPhone 16 Pro Max
+    required_pixels: [1320, 2868]
+    app_store_slot: 6.9-inch iPhone
+  - name: ipad_13
+    simulator: iPad Pro (13-inch) (M4)
+    required_pixels: [2752, 2064]
+    app_store_slot: 13-inch iPad
+  - name: ipad_12_9
+    simulator: iPad Pro (12.9-inch) (6th generation)
+    required_pixels: [2732, 2048]
+    app_store_slot: 12.9-inch iPad
+
+scenes:
+  - name: formation-editor
+    title: Formation Editor
+    wait_seconds: 4
+    capture_filename: 01-formation-editor.png
+  - name: transition-preview
+    title: Transition Preview
+    wait_seconds: 3
+    capture_filename: 02-transition-preview.png
+  - name: routine-overview
+    title: Routine Overview
+    wait_seconds: 3
+    capture_filename: 03-routine-overview.png
+
+notes:
+  - Existing AppStoreScreenshots assets already exist; reuse them when they match the required pixels.
+  - Keep raw and framed assets separate.
+  - This config is generic enough to copy into future apps.
