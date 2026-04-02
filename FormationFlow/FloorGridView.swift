@@ -2953,8 +2953,7 @@ struct FloorGridView: View {
             translation: translation,
             startingPositions: Array(dragStartPositions.values),
             otherAthletePositions: renderedAthletes
-                .filter { !selectedAthleteIDs.contains($0.id) }
-                .map(\.position),
+                .compactMap { selectedAthleteIDs.contains($0.id) ? nil : $0.position },
             skipLinearGuides: renderedAthletes.count > 20
         )
         return SnapResult(translation: result.translation, guides: result.guides)
