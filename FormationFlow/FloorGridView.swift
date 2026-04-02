@@ -126,7 +126,7 @@ struct FloorGridView: View {
 
     private var collisionSummary: (count: Int, ids: Set<UUID>) {
         // ⚡ Bolt: Avoid O(N^2) spatial math per frame during playback.
-        if let player, player.progress > 0 && player.progress < 1 {
+        if let player, player.isPlaying || (player.progress > 0 && player.progress < 1) {
             return (0, [])
         }
         return PathCalculations.collisionSummary(in: renderedAthletes)
@@ -167,7 +167,7 @@ struct FloorGridView: View {
 
     private var previousFormationAthletes: [RenderedAthlete] {
         // ⚡ Bolt: Avoid O(N) lookup and map allocations per frame during playback.
-        if let player, player.progress > 0 && player.progress < 1 { return [] }
+        if let player, player.isPlaying || (player.progress > 0 && player.progress < 1) { return [] }
         guard let formationIndex, formationIndex > 0 else { return [] }
         let prevFormation = store.routine.formations[formationIndex - 1]
         return store.renderedAthletes(for: prevFormation)
@@ -175,7 +175,7 @@ struct FloorGridView: View {
 
     private var previousTransitionPaths: [TransitionPathRenderItem] {
         // Same optimization as previousFormationAthletes — skip during playback
-        if let player, player.progress > 0 && player.progress < 1 { return [] }
+        if let player, player.isPlaying || (player.progress > 0 && player.progress < 1) { return [] }
         guard let formationIndex, formationIndex > 0 else { return [] }
         let prevFormation = store.routine.formations[formationIndex - 1]
         return store.transitionPaths(from: prevFormation.id, to: formationID)
@@ -205,7 +205,7 @@ struct FloorGridView: View {
     private var endpointMarkers: [TransitionEndpointMarkerRenderItem] {
         guard let player else { return [] }
         // ⚡ Bolt: Avoid O(N) map allocations per frame during playback.
-        if player.progress > 0 && player.progress < 1 { return [] }
+        if player.isPlaying || (player.progress > 0 && player.progress < 1) { return [] }
 
         let startStyle: TransitionEndpointMarkerRenderItem.Style =
             focusedEndpoint == nil || focusedEndpoint == .start ? .editable : .readOnly
@@ -337,13 +337,13 @@ struct FloorGridView: View {
 
     private var collidingAthletes: [RenderedAthlete] {
         // ⚡ Bolt: Avoid O(N) filter allocations per frame during playback.
-        if let player, player.progress > 0 && player.progress < 1 { return [] }
+        if let player, player.isPlaying || (player.progress > 0 && player.progress < 1) { return [] }
         return renderedAthletes.filter { collisionSummary.ids.contains($0.id) }
     }
 
     private var pathCollidingAthletes: [RenderedAthlete] {
         // ⚡ Bolt: Avoid O(N) filter allocations per frame during playback.
-        if let player, player.progress > 0 && player.progress < 1 { return [] }
+        if let player, player.isPlaying || (player.progress > 0 && player.progress < 1) { return [] }
         return renderedAthletes.filter { cachedPathCollisionIDs.contains($0.id) }
     }
 
