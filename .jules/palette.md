@@ -33,3 +33,7 @@
 **Learning:** When users zoom or pan an interactive canvas view like `FloorGridView`, gesture resets (like double-taps) are completely undiscoverable, causing friction.
 
 **Action:** Whenever implementing a scrollable/zoomable interactive canvas, always provide a contextual, floating 'Reset View' action that appears conditionally when the view state deviates from the baseline (e.g., `zoomScale != 1.0` or `canvasPanOffset != .zero`). Use a simple floating UI overlay with an `.ultraThinMaterial` and Capsule to keep it minimally intrusive while remaining accessible.
+
+**Learning:** Inconsistent or confusing icons on core actions (like toggling transition paths) cause friction. Furthermore, icon-only buttons require explicit `.accessibilityHint` descriptions, especially when placed in toolbars where space is constrained and labels are omitted.
+
+**Action:** Ensure standard SF Symbols (like `eye`/`eye.slash`) are used instead of text characters for toggles, and always accompany icon-only buttons with `.accessibilityHint` to clarify their purpose for VoiceOver users.
