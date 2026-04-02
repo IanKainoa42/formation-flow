@@ -36,6 +36,7 @@ struct PortraitActionBar: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Athlete spacing alerts")
+                    .accessibilityHint("Tap to cycle through collisions")
                 }
 
                 if showTransitionPaths, pathCollidingCount > 0 {
@@ -52,6 +53,7 @@ struct PortraitActionBar: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Path crossing alerts")
+                    .accessibilityHint("Tap to cycle through path conflicts")
                 }
 
                 Button(action: onAddAthlete) {
@@ -93,13 +95,13 @@ struct PortraitActionBar: View {
 
                 if hasTransition {
                     Button(action: onTogglePaths) {
-                        Text("I")
-                            .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        Image(systemName: showTransitionPaths ? "eye.slash" : "eye")
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .background(showTransitionPaths ? Color.accentColor.opacity(0.2) : .clear, in: RoundedRectangle(cornerRadius: 6))
                     .accessibilityLabel(showTransitionPaths ? "Hide paths" : "Show paths")
+                    .accessibilityHint("Toggle visibility of transition paths")
                 }
             }
 
