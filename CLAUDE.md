@@ -176,7 +176,17 @@ All positions use **floor feet** (not pixels). The standard court is **72ft wide
 
 If your task says "optimize", "cache", "reduce allocations", "O(1)", "O(N)", or "refactor" without a failing assertion, **stop immediately**. Comment: "Task rejected: Models.swift is locked per Known Fragile Areas."
 
-**Bolt agent sessions are specifically included.** Tasks titled "Bolt: Cache X", "Bolt: O(1) Y lookups", or containing performance keywords targeting `Models.swift` must stop. Last violations after this rule was applied: PR #34 (2026-03-25, "Cache transition path calculations") and PR #38 (2026-03-25, "O(1) RoutineStore Formation Lookups"). Both were optimization passes on code that had already been optimized in prior PRs.
+**Bolt agent sessions are specifically included.** Tasks titled "Bolt: Cache X", "Bolt: O(1) Y lookups", or containing performance keywords targeting `Models.swift` must stop. Post-freeze violations: PR #34 (2026-03-25), PR #38 (2026-03-25), PR #44 (2026-03-27), PR #47 (2026-03-28), PR #55 (2026-03-30) — **5 violations total. The freeze is absolute.**
+
+- **`FormationFlow/FloorGridView.swift`** — The main canvas editor. Touched 14 times in 14 days (6 Bolt optimization passes, 3 feature additions, 3 Palette passes, 2 security/other). Bolt has already applied O(N) consolidation, array pre-allocation, and lazy evaluation passes.
+
+**Stability rule for FloorGridView.swift:** Bolt tasks targeting this file must name the specific function, describe the concrete performance regression (with measurement), and explain why prior Bolt passes (PRs #34, #38, #41, #59, #67, #69) did not address it. If you cannot answer all three, output: "Task rejected: FloorGridView.swift Bolt quota reached — prior 6 passes already applied. Provide profiler evidence to unlock."
+
+## Known Fixed Security Issues
+
+Do NOT re-file these as security problems — they have already been resolved:
+
+- **`fastlane/Fastfile` hardcoded API secrets** — Removed in PR #48 (2026-03-28). Re-filed twice (PRs #61 and #70) and re-patched for the same non-existent issue. The file currently uses `ENV[...]` for all App Store Connect credentials. **Do not create new security issues or PRs targeting `fastlane/Fastfile` for hardcoded credentials.** Verified clean as of PR #70 (2026-04-02).
 
 ## Commit Hygiene
 
