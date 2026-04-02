@@ -125,10 +125,6 @@ struct FloorGridView: View {
     }
 
     private var collisionSummary: (count: Int, ids: Set<UUID>) {
-        // ⚡ Bolt: Avoid O(N^2) spatial math per frame during playback.
-        if let player, player.isPlaying || (player.progress > 0 && player.progress < 1) {
-            return (0, [])
-        }
         return PathCalculations.collisionSummary(in: renderedAthletes)
     }
 
@@ -336,14 +332,10 @@ struct FloorGridView: View {
     }
 
     private var collidingAthletes: [RenderedAthlete] {
-        // ⚡ Bolt: Avoid O(N) filter allocations per frame during playback.
-        if let player, player.isPlaying || (player.progress > 0 && player.progress < 1) { return [] }
         return renderedAthletes.filter { collisionSummary.ids.contains($0.id) }
     }
 
     private var pathCollidingAthletes: [RenderedAthlete] {
-        // ⚡ Bolt: Avoid O(N) filter allocations per frame during playback.
-        if let player, player.isPlaying || (player.progress > 0 && player.progress < 1) { return [] }
         return renderedAthletes.filter { cachedPathCollisionIDs.contains($0.id) }
     }
 
