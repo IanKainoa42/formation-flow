@@ -2722,10 +2722,16 @@ struct FloorGridView: View {
         activeAlignmentGuides = snapResult.guides
 
         store.mutateFormation(id: formationID) { formation in
+            // ⚡ Bolt: Cache array index lookups in an O(1) dictionary outside the loop to avoid O(N^2) math during drags.
+            // Using `uniquingKeysWith` prevents fatal crashes if duplicate athlete IDs ever slip into malformed data.
+            let placementLookup = Dictionary(
+                formation.placements.enumerated().map { ($0.element.athleteID, $0.offset) },
+                uniquingKeysWith: { first, _ in first }
+            )
             for athleteID in selectedAthleteIDs {
                 guard
                     let startPosition = dragStartPositions[athleteID],
-                    let placementIndex = formation.placementIndex(for: athleteID)
+                    let placementIndex = placementLookup[athleteID]
                 else { continue }
 
                 let nextPosition = CGPoint(
@@ -2755,8 +2761,14 @@ struct FloorGridView: View {
         let sinA = sin(angle)
 
         store.mutateFormation(id: formationID) { formation in
+            // ⚡ Bolt: Cache array index lookups in an O(1) dictionary outside the loop to avoid O(N^2) math during rotations.
+            // Using `uniquingKeysWith` prevents fatal crashes if duplicate athlete IDs ever slip into malformed data.
+            let placementLookup = Dictionary(
+                formation.placements.enumerated().map { ($0.element.athleteID, $0.offset) },
+                uniquingKeysWith: { first, _ in first }
+            )
             for (athleteID, startPosition) in rotationStartPositions {
-                guard let placementIndex = formation.placementIndex(for: athleteID) else { continue }
+                guard let placementIndex = placementLookup[athleteID] else { continue }
 
                 // Rotate around center
                 let dx = startPosition.x - center.x
@@ -3039,8 +3051,14 @@ struct FloorGridView: View {
     private func undoLastMove() {
         guard let previousPositions = undoStack.popLast() else { return }
         store.mutateFormation(id: formationID) { formation in
+            // ⚡ Bolt: Cache array index lookups in an O(1) dictionary outside the loop to avoid O(N^2) math during undos.
+            // Using `uniquingKeysWith` prevents fatal crashes if duplicate athlete IDs ever slip into malformed data.
+            let placementLookup = Dictionary(
+                formation.placements.enumerated().map { ($0.element.athleteID, $0.offset) },
+                uniquingKeysWith: { first, _ in first }
+            )
             for entry in previousPositions {
-                if let placementIndex = formation.placementIndex(for: entry.id) {
+                if let placementIndex = placementLookup[entry.id] {
                     formation.placements[placementIndex].position = entry.position
                 }
             }
