@@ -132,6 +132,12 @@ struct FloorGridView: View {
         return PathCalculations.collisionSummary(in: renderedAthletes)
     }
 
+    /// Live path collision IDs read directly from the player, avoiding stale @State
+    /// when the player is created after onAppear fires.
+    private var effectivePathCollisionIDs: Set<UUID> {
+        player?.cachedPathCollisionIDs ?? cachedPathCollisionIDs
+    }
+
     private var selectedAthleteID: UUID? {
         selectedAthleteIDs.count == 1 ? selectedAthleteIDs.first : nil
     }
@@ -344,7 +350,7 @@ struct FloorGridView: View {
     private var pathCollidingAthletes: [RenderedAthlete] {
         // ⚡ Bolt: Avoid O(N) filter allocations per frame during playback.
         if let player, player.progress > 0 && player.progress < 1 { return [] }
-        return renderedAthletes.filter { cachedPathCollisionIDs.contains($0.id) }
+        return renderedAthletes.filter { effectivePathCollisionIDs.contains($0.id) }
     }
 
     private var canShareTransition: Bool {
@@ -1003,7 +1009,7 @@ struct FloorGridView: View {
                 endpointMarkers: endpointMarkers,
                 alignmentGuides: activeAlignmentGuides,
                 collisionIDs: collisionSummary.ids,
-                pathCollisionIDs: cachedPathCollisionIDs,
+                pathCollisionIDs: effectivePathCollisionIDs,
                 blinkingResolvedIDs: blinkingResolvedIDs,
                 blinkPhase: blinkPhase,
                 cellSize: cellSize,
@@ -3090,7 +3096,7 @@ struct FloorGridView: View {
             transitionPaths: transitionPaths,
             endpointMarkers: endpointMarkers,
             collisionIDs: collisionSummary.ids,
-            pathCollisionIDs: cachedPathCollisionIDs,
+            pathCollisionIDs: effectivePathCollisionIDs,
             startFormationColor: transitionStartColor,
             endFormationColor: transitionEndColor,
             transitionProgress: player?.progress ?? 0
