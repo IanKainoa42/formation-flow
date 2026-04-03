@@ -113,7 +113,8 @@ struct RoutinePlaybackView: View {
 
                 // Segment marker ticks
                 GeometryReader { geo in
-                    ForEach(Array(player.segmentMarkers.enumerated()), id: \.offset) { _, marker in
+                    ForEach(player.segmentMarkers.indices, id: \.self) { index in
+                        let marker = player.segmentMarkers[index]
                         Rectangle()
                             .fill(Color.white.opacity(0.5))
                             .frame(width: 2, height: 12)
