@@ -77,15 +77,15 @@ struct RoutinePlaybackView: View {
     // MARK: - Transport Bar
 
     private var routineTransportBar: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             // Formation name
             HStack {
                 Text(player.currentFormationName)
-                    .font(.caption.weight(.semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundColor(.white)
                     .lineLimit(1)
                     .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, 5)
                     .background(.white.opacity(0.12), in: Capsule())
                     .onTapGesture {
                         player.jumpToNextSegment()
@@ -123,7 +123,7 @@ struct RoutinePlaybackView: View {
                     }
                 }
             }
-            .frame(height: 28)
+            .frame(height: 36)
 
             // Controls row
             HStack(spacing: 12) {
@@ -132,7 +132,7 @@ struct RoutinePlaybackView: View {
                     player.isPlaying ? player.pause() : player.play()
                 } label: {
                     Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .frame(width: 32, height: 32)
+                        .frame(width: 40, height: 40)
                 }
                 .buttonStyle(.borderedProminent)
                 .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
@@ -142,7 +142,7 @@ struct RoutinePlaybackView: View {
                 // Reset
                 Button(action: player.reset) {
                     Image(systemName: "backward.end.fill")
-                        .frame(width: 28, height: 28)
+                        .frame(width: 34, height: 34)
                 }
                 .buttonStyle(.bordered)
                 .accessibilityLabel("Reset playback")
@@ -161,7 +161,7 @@ struct RoutinePlaybackView: View {
                     Text("4x").tag(CGFloat(8.0))
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 160)
+                .frame(width: 180)
                 .accessibilityLabel("Playback Speed")
 
                 // Trail toggle
@@ -169,7 +169,7 @@ struct RoutinePlaybackView: View {
                     player.showTrail.toggle()
                 } label: {
                     Image(systemName: "sparkles")
-                        .frame(width: 28, height: 28)
+                        .frame(width: 34, height: 34)
                 }
                 .buttonStyle(.bordered)
                 .tint(player.showTrail ? .orange : .secondary)
@@ -178,13 +178,13 @@ struct RoutinePlaybackView: View {
                 .accessibilityHint(player.showTrail ? "Hide movement trails" : "Show movement trails for the athletes")
             }
         }
-        .padding(12)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .strokeBorder(.white.opacity(0.08))
         }
         .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
-        .controlSize(.small)
     }
 }

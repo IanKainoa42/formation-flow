@@ -230,36 +230,36 @@ struct CompactTransitionPlaybackOverlayView: View {
     var isLastFormation: Bool = false
 
     var body: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 6) {
+        VStack(spacing: 10) {
+            HStack(spacing: 8) {
                 Text("\(startFormationName) \u{2192} \(endFormationName)")
-                    .font(.caption.weight(.semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
                 Spacer()
-                TransportControls.loopButton(player: player, size: 24)
-                TransportControls.swapButton(isActive: isSwapMode, size: 24, action: onSwap)
+                TransportControls.loopButton(player: player, size: 30)
+                TransportControls.swapButton(isActive: isSwapMode, size: 30, action: onSwap)
                     .disabled(!canSwap)
-                TransportControls.pathButton(size: 24, action: onPath)
+                TransportControls.pathButton(size: 30, action: onPath)
                     .disabled(!canEditPath)
             }
 
-            HStack(spacing: 8) {
-                TransportControls.previousFormationButton(size: 28, disabled: isFirstFormation, action: onPreviousFormation)
-                TransportControls.resetButton(player: player, size: 28)
-                TransportControls.playPauseButton(player: player, size: 32)
+            HStack(spacing: 10) {
+                TransportControls.previousFormationButton(size: 34, disabled: isFirstFormation, action: onPreviousFormation)
+                TransportControls.resetButton(player: player, size: 34)
+                TransportControls.playPauseButton(player: player, size: 40)
                 TransportControls.progressSlider(player: player)
-                TransportControls.nextFormationButton(size: 28, disabled: isLastFormation, action: onNextFormation)
+                TransportControls.nextFormationButton(size: 34, disabled: isLastFormation, action: onNextFormation)
             }
         }
-        .padding(12)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .strokeBorder(.white.opacity(0.08))
         }
         .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
-        .controlSize(.small)
     }
 }
 
