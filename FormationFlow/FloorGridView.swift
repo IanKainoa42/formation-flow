@@ -47,6 +47,7 @@ struct FloorGridView: View {
     @State private var rosterAthleteRenameID: UUID?
     @State private var showingAthleteDeleteConfirmation = false
     @State private var showingRosterDeleteConfirmation = false
+    @State private var showingAuthenticationError = false
     @State private var showTransitionPaths = true
     @State private var isDraggingAthletes = false
     @State private var isPanningCanvas = false
@@ -418,6 +419,11 @@ struct FloorGridView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Athlete labels are shared across every formation.")
+        }
+        .alert("Authentication Required", isPresented: $showingAuthenticationError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("A device passcode or biometric authentication is required to perform this action. Please enable it in Settings.")
         }
         .alert("Transition Shared", isPresented: $showingShareResult) {
             Button("OK", role: .cancel) {}
@@ -1878,11 +1884,9 @@ struct FloorGridView: View {
                             }
                         }
                     } else {
-                        for id in rosterDeleteIDs {
-                            store.deleteAthlete(id: id)
+                        DispatchQueue.main.async {
+                            self.showingAuthenticationError = true
                         }
-                        selectedAthleteIDs.subtract(rosterDeleteIDs)
-                        rosterDeleteIDs = []
                     }
                 }
                 Button("Cancel", role: .cancel) {
@@ -3033,7 +3037,9 @@ struct FloorGridView: View {
                 }
             }
         } else {
-            performDeleteSelectedAthlete()
+            DispatchQueue.main.async {
+                self.showingAuthenticationError = true
+            }
         }
     }
 

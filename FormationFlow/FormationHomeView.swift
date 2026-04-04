@@ -24,6 +24,7 @@ struct RoutineWorkspaceView: View {
     @State private var formationNameDraft = ""
     @State private var showingRoutineRenamePrompt = false
     @State private var routineNameDraft = ""
+    @State private var showingAuthenticationError = false
     @EnvironmentObject private var entitlementManager: EntitlementManager
     @State private var showingUpgradeSheet = false
     @State private var isFullScreen = false
@@ -198,6 +199,11 @@ struct RoutineWorkspaceView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Enter a new name for this routine.")
+        }
+        .alert("Authentication Required", isPresented: $showingAuthenticationError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("A device passcode or biometric authentication is required to perform this action. Please enable it in Settings.")
         }
         .sheet(isPresented: $showingUpgradeSheet) {
             ProUpgradeSheet()
@@ -1073,7 +1079,9 @@ struct RoutineWorkspaceView: View {
                 }
             }
         } else {
-            completion()
+            DispatchQueue.main.async {
+                self.showingAuthenticationError = true
+            }
         }
     }
 

@@ -24,6 +24,11 @@
 	<true/>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Authentication is required to perform sensitive destructive actions and securely reset the routine.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<false/>
+	</dict>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>	<key>UIApplicationSceneManifest</key>
 	<dict>
