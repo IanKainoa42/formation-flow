@@ -1850,6 +1850,7 @@ struct FloorGridView: View {
                                 showingAthleteRenamePrompt = true
                             }
                             .accessibilityElement(children: .combine)
+                            .accessibilityAddTraits(.isButton)
                             .accessibilityLabel("\(athlete.label), \(athlete.role.displayName)")
                             .accessibilityHint("Double tap to edit name")
                         }
