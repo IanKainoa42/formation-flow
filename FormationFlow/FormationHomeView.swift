@@ -25,6 +25,7 @@ struct RoutineWorkspaceView: View {
     @State private var showingRoutineRenamePrompt = false
     @State private var routineNameDraft = ""
     @State private var showingAuthenticationError = false
+    @State private var showingAuthenticationFailedError = false
     @EnvironmentObject private var entitlementManager: EntitlementManager
     @State private var showingUpgradeSheet = false
     @State private var isFullScreen = false
@@ -204,6 +205,11 @@ struct RoutineWorkspaceView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("A device passcode or biometric authentication is required to perform this action. Please enable it in Settings.")
+        }
+        .alert("Authentication Failed", isPresented: $showingAuthenticationFailedError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Authentication could not be verified. Please try again.")
         }
         .sheet(isPresented: $showingUpgradeSheet) {
             ProUpgradeSheet()
@@ -1071,10 +1077,12 @@ struct RoutineWorkspaceView: View {
         var error: NSError?
 
         if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
-            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Authentication is required to perform this destructive action.") { success, _ in
+            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Authentication is required to perform this destructive action.") { success, evaluateError in
                 DispatchQueue.main.async {
                     if success {
                         completion()
+                    } else if let laError = evaluateError as? LAError, laError.code != .userCancel {
+                        self.showingAuthenticationFailedError = true
                     }
                 }
             }

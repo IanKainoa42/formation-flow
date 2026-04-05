@@ -48,6 +48,7 @@ struct FloorGridView: View {
     @State private var showingAthleteDeleteConfirmation = false
     @State private var showingRosterDeleteConfirmation = false
     @State private var showingAuthenticationError = false
+    @State private var showingAuthenticationFailedError = false
     @State private var showTransitionPaths = true
     @State private var isDraggingAthletes = false
     @State private var isPanningCanvas = false
@@ -424,6 +425,11 @@ struct FloorGridView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("A device passcode or biometric authentication is required to perform this action. Please enable it in Settings.")
+        }
+        .alert("Authentication Failed", isPresented: $showingAuthenticationFailedError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Authentication could not be verified. Please try again.")
         }
         .alert("Transition Shared", isPresented: $showingShareResult) {
             Button("OK", role: .cancel) {}
@@ -1873,7 +1879,7 @@ struct FloorGridView: View {
                     let context = LAContext()
                     var error: NSError?
                     if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
-                        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Authentication is required to perform this destructive action.") { success, _ in
+                        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Authentication is required to perform this destructive action.") { success, evaluateError in
                             DispatchQueue.main.async {
                                 if success {
                                     for id in self.rosterDeleteIDs {
@@ -1881,6 +1887,8 @@ struct FloorGridView: View {
                                     }
                                     self.selectedAthleteIDs.subtract(self.rosterDeleteIDs)
                                     self.rosterDeleteIDs = []
+                                } else if let laError = evaluateError as? LAError, laError.code != .userCancel {
+                                    self.showingAuthenticationFailedError = true
                                 }
                             }
                         }
@@ -3030,10 +3038,12 @@ struct FloorGridView: View {
         let context = LAContext()
         var error: NSError?
         if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
-            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Authentication is required to perform this destructive action.") { success, _ in
+            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Authentication is required to perform this destructive action.") { success, evaluateError in
                 DispatchQueue.main.async {
                     if success {
                         self.performDeleteSelectedAthlete()
+                    } else if let laError = evaluateError as? LAError, laError.code != .userCancel {
+                        self.showingAuthenticationFailedError = true
                     }
                 }
             }
