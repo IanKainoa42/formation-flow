@@ -1641,7 +1641,7 @@ struct FloorGridView: View {
                 VStack(alignment: .leading, spacing: isCompactLayout ? 8 : 10) {
                     Text("Waypoints")
                         .font(.subheadline.weight(.semibold))
-                    ForEach(Array(transition.pathWaypoints.enumerated()), id: \.element.id) { waypointIndex, waypoint in
+                    ForEach(Array(zip(transition.pathWaypoints.indices, transition.pathWaypoints)), id: \.1.id) { waypointIndex, waypoint in
                         waypointCard(
                             waypointIndex: waypointIndex,
                             waypoint: waypoint,
