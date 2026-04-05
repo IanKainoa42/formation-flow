@@ -1627,10 +1627,25 @@ final class RoutineStore: ObservableObject {
     private func nextRosterLabel() -> String {
         let existing = Set(routine.roster.map(\.label))
         var index = routine.roster.count + 1
-        var candidate = String(format: "%02d", index)
+        let alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+        func generateLabel(for idx: Int) -> String {
+            let zeroBasedIdx = idx - 1
+            let groupIndex = zeroBasedIdx / 5
+            let positionIndex = (zeroBasedIdx % 5) + 1
+
+            if groupIndex < alphabet.count {
+                let letterIndex = alphabet.index(alphabet.startIndex, offsetBy: groupIndex)
+                return "\(alphabet[letterIndex])\(positionIndex)"
+            } else {
+                return String(format: "%02d", idx)
+            }
+        }
+
+        var candidate = generateLabel(for: index)
         while existing.contains(candidate) {
             index += 1
-            candidate = String(format: "%02d", index)
+            candidate = generateLabel(for: index)
         }
         return candidate
     }
