@@ -13,7 +13,7 @@ struct FormationThumbnailStrip: View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
-                    ForEach(Array(store.routine.formations.enumerated()), id: \.element.id) { index, formation in
+                    ForEach(Array(zip(store.routine.formations.indices, store.routine.formations)), id: \.1.id) { index, formation in
                         if index > 0 {
                             Image(systemName: "chevron.right")
                                 .font(.caption2)
