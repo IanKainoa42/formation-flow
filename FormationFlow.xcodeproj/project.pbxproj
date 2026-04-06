@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		334C42A5B839654CCBC14ACF /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F4F48ABA5AD5A9438964E6B /* Models.swift */; };
-		36514899A24799F98ADE913C /* TimingControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D0844CFBD4E1BACC19E81AC /* TimingControlsView.swift */; };
 		5A25437D9A0BBC0AC8856EE5 /* FormationFlowApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21E94990B494F1D3D617A4E7 /* FormationFlowApp.swift */; };
 		93064509B038206204B9459D /* FloorGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFC34761911C80E5631C8341 /* FloorGridView.swift */; };
 		A1B2C3D4E5F6A7B8C9D0E1F2 /* FormationHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F6A7B8C9D0E1F2A3 /* FormationHomeView.swift */; };
@@ -32,7 +31,6 @@
 		21E94990B494F1D3D617A4E7 /* FormationFlowApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FormationFlowApp.swift; path = FormationFlow/FormationFlowApp.swift; sourceTree = SOURCE_ROOT; };
 		22EB4E82B510B78E55C92084 /* TransitionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TransitionViews.swift; path = FormationFlow/TransitionViews.swift; sourceTree = SOURCE_ROOT; };
 		303A4352BC4FD6FB758B338C /* FloorCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FloorCanvasView.swift; path = FormationFlow/FloorCanvasView.swift; sourceTree = SOURCE_ROOT; };
-		4D0844CFBD4E1BACC19E81AC /* TimingControlsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TimingControlsView.swift; path = FormationFlow/TimingControlsView.swift; sourceTree = SOURCE_ROOT; };
 		4F4F48ABA5AD5A9438964E6B /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Models.swift; path = FormationFlow/Models.swift; sourceTree = SOURCE_ROOT; };
 		4FD34039AE5F73A96066C39B /* AthleteDetailPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AthleteDetailPanel.swift; path = FormationFlow/AthleteDetailPanel.swift; sourceTree = SOURCE_ROOT; };
 		B2C3D4E5F6A7B8C9D0E1F2A3 /* FormationHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FormationHomeView.swift; path = FormationFlow/FormationHomeView.swift; sourceTree = SOURCE_ROOT; };
@@ -74,7 +72,6 @@
 				303A4352BC4FD6FB758B338C /* FloorCanvasView.swift */,
 				EFC34761911C80E5631C8341 /* FloorGridView.swift */,
 				22EB4E82B510B78E55C92084 /* TransitionViews.swift */,
-				4D0844CFBD4E1BACC19E81AC /* TimingControlsView.swift */,
 				4FD34039AE5F73A96066C39B /* AthleteDetailPanel.swift */,
 				4F4F48ABA5AD5A9438964E6B /* Models.swift */,
 				21E94990B494F1D3D617A4E7 /* FormationFlowApp.swift */,
@@ -155,7 +152,6 @@
 				93064509B038206204B9459D /* FloorGridView.swift in Sources */,
 				A1B2C3D4E5F6A7B8C9D0E1F2 /* FormationHomeView.swift in Sources */,
 				F2404D8798687C821CBF4F7C /* TransitionViews.swift in Sources */,
-				36514899A24799F98ADE913C /* TimingControlsView.swift in Sources */,
 				F4094C4FBEC63EB6C48960EB /* AthleteDetailPanel.swift in Sources */,
 				334C42A5B839654CCBC14ACF /* Models.swift in Sources */,
 				5A25437D9A0BBC0AC8856EE5 /* FormationFlowApp.swift in Sources */,

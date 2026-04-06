@@ -1,5 +1,4 @@
 import SwiftUI
-import LocalAuthentication
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -30,6 +29,7 @@ struct RoutineWorkspaceView: View {
     @State private var selectedAthleteIDs: Set<UUID> = []
     @State private var isSwapMode = false
     @State private var triggerDeleteAthlete = false
+    @State private var isIPadPortrait = false
 
     private var isCompactLayout: Bool {
         let isPhone: Bool
@@ -106,6 +106,16 @@ struct RoutineWorkspaceView: View {
 
     var body: some View {
         workspaceContent
+        .background {
+            GeometryReader { geo in
+                Color.clear.onChange(of: geo.size) { _, size in
+                    isIPadPortrait = !isPhoneLayout && size.height > size.width
+                }
+                .onAppear {
+                    isIPadPortrait = !isPhoneLayout && geo.size.height > geo.size.width
+                }
+            }
+        }
         .onAppear {
             if selectedFormationID == nil {
                 selectedFormationID = store.routine.formations.first?.id
@@ -294,7 +304,7 @@ struct RoutineWorkspaceView: View {
                 }
             }
 
-            if let previewTransitionPair, let player = previewSession.player {
+            if !isIPadPortrait, let previewTransitionPair, let player = previewSession.player {
                 Divider()
                 SidebarTransportView(
                     player: player,
@@ -307,7 +317,7 @@ struct RoutineWorkspaceView: View {
                 )
                 .padding(16)
                 .background(.thinMaterial)
-            } else if store.routine.formations.count == 1 {
+            } else if !isIPadPortrait, store.routine.formations.count == 1 {
                 Divider()
                 singleFormationTransitionHint
                     .padding(16)
@@ -322,7 +332,13 @@ struct RoutineWorkspaceView: View {
                     selectedAthleteIDs: $selectedAthleteIDs,
                     onDeleteAthlete: {
                         triggerDeleteAthlete = true
-                    }
+                    },
+                    player: previewSession.player,
+                    startFormationID: previewTransitionPair?.start.id,
+                    endFormationID: previewTransitionPair?.end.id,
+                    isPro: entitlementManager.isPro,
+                    onUpgrade: { showingUpgradeSheet = true },
+                    onRefreshTransition: { refreshPreviewSession() }
                 )
                 .frame(minHeight: 200, maxHeight: 400)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -509,6 +525,24 @@ struct RoutineWorkspaceView: View {
                         .accessibilityLabel("Enter full screen")
                     }
                     .padding(12)
+                }
+                .overlay(alignment: .bottom) {
+                    if isIPadPortrait, let previewTransitionPair, let player = previewSession.player {
+                        SidebarTransportView(
+                            player: player,
+                            startFormationName: previewTransitionPair.start.name,
+                            endFormationName: previewTransitionPair.end.name,
+                            onSwap: { isSwapMode.toggle() },
+                            isSwapMode: isSwapMode,
+                            canSwap: selectedAthleteIDs.count == 1,
+                            canEditPath: selectedAthleteIDs.count == 1
+                        )
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 16)
+                    }
                 }
                 .toolbar {
                     ToolbarItemGroup(placement: .navigationBarTrailing) {
@@ -870,30 +904,11 @@ struct RoutineWorkspaceView: View {
     }
 
     private func deleteCurrentRoutine() {
-        authenticateForDestructiveAction {
-            self.store.deleteRoutine(id: self.store.workspace.activeRoutineID)
-            self.selectedFormationID = self.store.routine.formations.first?.id
-        }
+        store.deleteRoutine(id: store.workspace.activeRoutineID)
+        selectedFormationID = store.routine.formations.first?.id
     }
 
     // MARK: - Actions
-
-    private func authenticateForDestructiveAction(completion: @escaping () -> Void) {
-        let context = LAContext()
-        var error: NSError?
-
-        if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
-            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Authentication is required to perform this destructive action.") { success, _ in
-                DispatchQueue.main.async {
-                    if success {
-                        completion()
-                    }
-                }
-            }
-        } else {
-            completion()
-        }
-    }
 
     private func addFormation() {
         guard canAddFormation else {
@@ -927,9 +942,7 @@ struct RoutineWorkspaceView: View {
     }
 
     private func requestFormationDeletion(_ formationIDs: [UUID]) {
-        authenticateForDestructiveAction {
-            self.deleteFormations(ids: formationIDs)
-        }
+        deleteFormations(ids: formationIDs)
     }
 
     private func deleteSelectedFormation() {
@@ -948,26 +961,28 @@ struct RoutineWorkspaceView: View {
         let shouldStayInEditor = isCompactLayout && !compactNavigationPath.isEmpty
         let currentSelection = selectedFormationID
 
-        for formationID in validFormationIDs {
-            store.deleteFormation(id: formationID)
-        }
+        // Defer to next run loop so any in-flight UICollectionView batch update
+        // (e.g. from .onDelete swipe) completes before the data source changes.
+        DispatchQueue.main.async {
+            for formationID in validFormationIDs {
+                store.deleteFormation(id: formationID)
+            }
 
-        if let currentSelection, store.formationIndex(id: currentSelection) != nil {
-            return
-        }
+            if let currentSelection, store.formationIndex(id: currentSelection) != nil {
+                return
+            }
 
-        if let nextFormationID = store.routine.formations.first?.id {
-            showFormation(nextFormationID, pushOnCompact: shouldStayInEditor)
-        } else {
-            selectedFormationID = nil
-            compactNavigationPath.removeAll()
+            if let nextFormationID = store.routine.formations.first?.id {
+                showFormation(nextFormationID, pushOnCompact: shouldStayInEditor)
+            } else {
+                selectedFormationID = nil
+                compactNavigationPath.removeAll()
+            }
         }
     }
 
     private func authenticateAndResetRoutine() {
-        authenticateForDestructiveAction {
-            self.resetRoutine()
-        }
+        resetRoutine()
     }
 
     private func resetRoutine() {

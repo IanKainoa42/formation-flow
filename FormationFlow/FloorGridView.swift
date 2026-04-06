@@ -1,4 +1,3 @@
-import LocalAuthentication
 import Combine
 import SwiftUI
 import UIKit
@@ -330,12 +329,6 @@ struct FloorGridView: View {
         return player.transitionSpec.athleteTransition(for: selectedAthleteID)
     }
 
-    private var hasCustomPaths: Bool {
-        guard let player else { return false }
-        return player.transitionSpec.athleteTransitions.contains {
-            $0.pathControlPoint != nil || !$0.pathWaypoints.isEmpty
-        }
-    }
 
     private var startFormationName: String? {
         guard let startFormationID else { return nil }
@@ -1198,7 +1191,13 @@ struct FloorGridView: View {
                 formationID: formationID,
                 selectedAthleteIDs: $selectedAthleteIDs,
                 isCompactLayout: true,
-                onDeleteAthlete: { deleteSelectedAthlete() }
+                onDeleteAthlete: { deleteSelectedAthlete() },
+                player: player,
+                startFormationID: startFormationID,
+                endFormationID: endFormationID,
+                isPro: entitlementManager.isPro,
+                onUpgrade: { showingUpgradeSheet = true },
+                onRefreshTransition: { refreshTransitionFromStore() }
             )
             .navigationTitle(compactInspectorTitle)
             .navigationBarTitleDisplayMode(.inline)
@@ -1538,276 +1537,6 @@ struct FloorGridView: View {
         }
     }
 
-    // MARK: - Transition Inspector
-
-    private func transitionInspectorSection(
-        transition: AthleteTransition,
-        player: TransitionPlayer,
-        startFormationID: UUID,
-        endFormationID: UUID
-    ) -> some View {
-        VStack(alignment: .leading, spacing: isCompactLayout ? 14 : 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("Transition")
-                        .font(.headline)
-                    Spacer()
-                    Button(role: .destructive) {
-                        showingResetAllPathsConfirmation = true
-                    } label: {
-                        Label("Reset All", systemImage: "arrow.uturn.backward.circle")
-                            .font(.caption)
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(!hasCustomPaths)
-                }
-                if let startFormationName, let endFormationName {
-                    Text("\(startFormationName) \u{2192} \(endFormationName)")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                }
-            }
-
-            // Move delay
-            VStack(alignment: .leading, spacing: isCompactLayout ? 6 : 8) {
-                Text("Start Delay")
-                    .font(.subheadline.weight(.semibold))
-                if entitlementManager.isPro {
-                    Slider(
-                        value: Binding(
-                            get: { transition.moveDelayCounts },
-                            set: { newValue in
-                                guard let selectedAthleteID else { return }
-                                store.mutateAthleteTransition(
-                                    from: startFormationID,
-                                    to: endFormationID,
-                                    athleteID: selectedAthleteID
-                                ) { t in
-                                    t.moveDelayCounts = min(CGFloat(player.counts), max(0, newValue))
-                                }
-                                refreshTransitionFromStore()
-                            }
-                        ),
-                        in: 0...CGFloat(player.counts),
-                        step: 0.5
-                    )
-                    .accessibilityLabel("Start Delay")
-                } else {
-                    HStack {
-                        Slider(value: .constant(0), in: 0...CGFloat(player.counts))
-                            .disabled(true)
-                        Button {
-                            showingUpgradeSheet = true
-                        } label: {
-                            Image(systemName: "lock.fill")
-                                .foregroundColor(.secondary)
-                        }
-                        .accessibilityLabel("Upgrade to Pro to adjust start delay")
-                    }
-                }
-                Text(TransitionCountFormatting.label(transition.moveDelayCounts))
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundColor(.secondary)
-            }
-
-            // Path controls
-            VStack(alignment: .leading, spacing: isCompactLayout ? 8 : 10) {
-                Text("Path")
-                    .font(.subheadline.weight(.semibold))
-                Group {
-                    if isCompactLayout {
-                        VStack(spacing: 8) {
-                            transitionPathButtons
-                        }
-                    } else {
-                        HStack(spacing: 10) {
-                            transitionPathButtons
-                        }
-                    }
-                }
-
-                Text("Double-tap the selected athlete to add a waypoint, then drag the handles.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-
-            // Waypoint list
-            if !transition.pathWaypoints.isEmpty {
-                VStack(alignment: .leading, spacing: isCompactLayout ? 8 : 10) {
-                    Text("Waypoints")
-                        .font(.subheadline.weight(.semibold))
-                    ForEach(Array(transition.pathWaypoints.enumerated()), id: \.element.id) { waypointIndex, waypoint in
-                        waypointCard(
-                            waypointIndex: waypointIndex,
-                            waypoint: waypoint,
-                            player: player,
-                            startFormationID: startFormationID,
-                            endFormationID: endFormationID
-                        )
-                    }
-                }
-            }
-        }
-        .padding(isCompactLayout ? 16 : 20)
-    }
-
-    @ViewBuilder
-    private var transitionPathButtons: some View {
-        Button(action: clearPath) {
-            Label("Straight", systemImage: "line.diagonal")
-                .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.bordered)
-
-        Button(action: ensureCurve) {
-            Label("Curve", systemImage: "scribble")
-                .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.bordered)
-    }
-
-    private func waypointCard(
-        waypointIndex: Int,
-        waypoint: PathWaypoint,
-        player: TransitionPlayer,
-        startFormationID: UUID,
-        endFormationID: UUID
-    ) -> some View {
-        VStack(alignment: .leading, spacing: isCompactLayout ? 6 : 8) {
-            HStack {
-                Text("Waypoint \(waypointIndex + 1)")
-                    .font(.body.weight(.medium))
-                Spacer()
-                Button(role: .destructive) {
-                    pendingWaypointDeletionID = waypoint.id
-                } label: {
-                    Image(systemName: "trash")
-                        .foregroundColor(.red)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Delete waypoint")
-            }
-
-            HStack {
-                Text(waypoint.isSmooth ? "Smooth" : "Sharp")
-                Spacer()
-                Button(waypoint.isSmooth ? "Make Sharp" : "Make Smooth") {
-                    guard entitlementManager.isPro else {
-                        showingUpgradeSheet = true
-                        return
-                    }
-                    guard let selectedAthleteID else { return }
-                    store.mutateAthleteTransition(
-                        from: startFormationID,
-                        to: endFormationID,
-                        athleteID: selectedAthleteID
-                    ) { t in
-                        t.pathWaypoints[waypointIndex].isSmooth.toggle()
-                    }
-                    refreshTransitionFromStore()
-                }
-                .buttonStyle(.bordered)
-            }
-
-            if isCompactLayout {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Hold")
-                        Spacer()
-                        Text(TransitionCountFormatting.label(waypoint.holdCounts))
-                            .font(.system(.body, design: .monospaced))
-                            .foregroundColor(.secondary)
-                    }
-
-                    HStack(spacing: 8) {
-                        Button("- 0.5") {
-                            adjustWaypointHold(
-                                by: -0.5,
-                                waypointIndex: waypointIndex,
-                                player: player,
-                                startFormationID: startFormationID,
-                                endFormationID: endFormationID
-                            )
-                        }
-                        .buttonStyle(.bordered)
-                        .frame(maxWidth: .infinity)
-
-                        Button("+ 0.5") {
-                            adjustWaypointHold(
-                                by: 0.5,
-                                waypointIndex: waypointIndex,
-                                player: player,
-                                startFormationID: startFormationID,
-                                endFormationID: endFormationID
-                            )
-                        }
-                        .buttonStyle(.bordered)
-                        .frame(maxWidth: .infinity)
-                    }
-                }
-            } else {
-                HStack {
-                    Text("Hold")
-                    Spacer()
-                    Button("- 0.5") {
-                        adjustWaypointHold(
-                            by: -0.5,
-                            waypointIndex: waypointIndex,
-                            player: player,
-                            startFormationID: startFormationID,
-                            endFormationID: endFormationID
-                        )
-                    }
-                    .buttonStyle(.bordered)
-
-                    Text(TransitionCountFormatting.label(waypoint.holdCounts))
-                        .font(.system(.body, design: .monospaced))
-                        .frame(width: 84)
-
-                    Button("+ 0.5") {
-                        adjustWaypointHold(
-                            by: 0.5,
-                            waypointIndex: waypointIndex,
-                            player: player,
-                            startFormationID: startFormationID,
-                            endFormationID: endFormationID
-                        )
-                    }
-                    .buttonStyle(.bordered)
-                }
-            }
-        }
-        .padding(isCompactLayout ? 12 : 14)
-        .background(Color.secondary.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-    }
-
-    private func adjustWaypointHold(
-        by delta: CGFloat,
-        waypointIndex: Int,
-        player: TransitionPlayer,
-        startFormationID: UUID,
-        endFormationID: UUID
-    ) {
-        guard entitlementManager.isPro else {
-            showingUpgradeSheet = true
-            return
-        }
-        guard let selectedAthleteID else { return }
-        store.mutateAthleteTransition(
-            from: startFormationID,
-            to: endFormationID,
-            athleteID: selectedAthleteID
-        ) { t in
-            let updatedValue = t.pathWaypoints[waypointIndex].holdCounts + delta
-            t.pathWaypoints[waypointIndex].holdCounts = min(
-                CGFloat(player.counts),
-                max(0, updatedValue)
-            )
-        }
-        refreshTransitionFromStore()
-    }
-
     private var rosterSheet: some View {
         NavigationStack {
             Group {
@@ -1863,27 +1592,11 @@ struct FloorGridView: View {
                 titleVisibility: .visible
             ) {
                 Button("Delete", role: .destructive) {
-                    let context = LAContext()
-                    var error: NSError?
-                    if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
-                        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Authentication is required to perform this destructive action.") { success, _ in
-                            DispatchQueue.main.async {
-                                if success {
-                                    for id in self.rosterDeleteIDs {
-                                        self.store.deleteAthlete(id: id)
-                                    }
-                                    self.selectedAthleteIDs.subtract(self.rosterDeleteIDs)
-                                    self.rosterDeleteIDs = []
-                                }
-                            }
-                        }
-                    } else {
-                        for id in rosterDeleteIDs {
-                            store.deleteAthlete(id: id)
-                        }
-                        selectedAthleteIDs.subtract(rosterDeleteIDs)
-                        rosterDeleteIDs = []
+                    for id in rosterDeleteIDs {
+                        store.deleteAthlete(id: id)
                     }
+                    selectedAthleteIDs.subtract(rosterDeleteIDs)
+                    rosterDeleteIDs = []
                 }
                 Button("Cancel", role: .cancel) {
                     rosterDeleteIDs = []
@@ -3000,22 +2713,6 @@ struct FloorGridView: View {
     }
 
     private func deleteSelectedAthlete() {
-        let context = LAContext()
-        var error: NSError?
-        if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
-            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Authentication is required to perform this destructive action.") { success, _ in
-                DispatchQueue.main.async {
-                    if success {
-                        self.performDeleteSelectedAthlete()
-                    }
-                }
-            }
-        } else {
-            performDeleteSelectedAthlete()
-        }
-    }
-
-    private func performDeleteSelectedAthlete() {
         guard let selectedAthleteID else { return }
         store.deleteAthlete(id: selectedAthleteID)
         selectedAthleteIDs = []

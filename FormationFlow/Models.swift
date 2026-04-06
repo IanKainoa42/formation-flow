@@ -587,7 +587,7 @@ struct TransitionEndpointMarkerRenderItem: Identifiable, Equatable, Hashable {
     }
 
     static let rainbowColors: [Color] = [
-        .cyan, .orange, .yellow, .green, .mint, .blue, .indigo, .purple
+        .pink, .orange, .yellow, Color(red: 0.6, green: 0.9, blue: 0.2), .cyan, .blue, .purple
     ]
 
     static func rainbowColor(forIndex index: Int) -> Color {
@@ -2236,6 +2236,7 @@ final class TransitionPlayer: ObservableObject {
     private(set) var cachedPathCollisionIDs: Set<UUID> = []
 
     private var animationTimer: AnimationTimer?
+    private var idleResetTask: Task<Void, Never>?
 
     init(
         startAthletes: [RenderedAthlete],
@@ -2345,6 +2346,7 @@ final class TransitionPlayer: ObservableObject {
 
     func play() {
         guard !isPlaying else { return }
+        cancelIdleReset()
         if progress >= 1.0 { progress = 0 }
         isPlaying = true
         animationTimer = AnimationTimer { [weak self] in
@@ -2356,17 +2358,36 @@ final class TransitionPlayer: ObservableObject {
         isPlaying = false
         animationTimer?.invalidate()
         animationTimer = nil
+        scheduleIdleReset()
     }
 
     func reset() {
+        cancelIdleReset()
         pause()
         progress = 0
         updateAthletesForProgress()
     }
 
     func seek(to newProgress: CGFloat) {
+        cancelIdleReset()
         progress = max(0, min(1, newProgress))
         updateAthletesForProgress()
+        if !isPlaying { scheduleIdleReset() }
+    }
+
+    private func scheduleIdleReset() {
+        cancelIdleReset()
+        guard progress > 0 else { return }
+        idleResetTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+            self?.seek(to: 0)
+        }
+    }
+
+    private func cancelIdleReset() {
+        idleResetTask?.cancel()
+        idleResetTask = nil
     }
 
     func setSpeed(_ newSpeed: CGFloat) {
@@ -2470,11 +2491,15 @@ final class TransitionPreviewSession: ObservableObject {
                 transitionSpec: transitionSpec
             )
         } else {
-            self.player = TransitionPlayer(
+            let newPlayer = TransitionPlayer(
                 startAthletes: startAthletes,
                 endAthletes: endAthletes,
                 transitionSpec: transitionSpec
             )
+            newPlayer.onComplete = { [weak newPlayer] in
+                newPlayer?.seek(to: 0)
+            }
+            self.player = newPlayer
         }
 
         self.startFormationID = startFormationID
