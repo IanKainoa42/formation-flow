@@ -180,6 +180,66 @@ struct FloorGridView: View {
         return store.renderedAthletes(for: prevFormation)
     }
 
+    private var nextFormationAthletes: [RenderedAthlete] {
+        guard let formationIndex, formationIndex + 1 < store.routine.formations.count else { return [] }
+        let nextFormation = store.routine.formations[formationIndex + 1]
+        return store.renderedAthletes(for: nextFormation)
+    }
+
+    private var previousFormationColor: Color {
+        guard let formationIndex, formationIndex > 0 else { return .white }
+        return TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: formationIndex - 1)
+    }
+
+    private var nextFormationColor: Color {
+        guard let formationIndex, formationIndex + 1 < store.routine.formations.count else { return .white }
+        return TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: formationIndex + 1)
+    }
+
+    private var previousGhostPaths: [TransitionPathRenderItem] {
+        guard let formationIndex, formationIndex > 0 else { return [] }
+        let prevFormation = store.routine.formations[formationIndex - 1]
+        let curFormation = store.routine.formations[formationIndex]
+        let spec = store.transitionSpec(for: prevFormation.id, to: curFormation.id)
+        let prevAthletes = store.renderedAthletes(for: prevFormation)
+        let curAthletes = store.renderedAthletes(for: curFormation)
+        let curLookup = Dictionary(curAthletes.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        return prevAthletes.compactMap { athlete in
+            guard let end = curLookup[athlete.id] else { return nil }
+            let transition = spec.athleteTransitions.first { $0.athleteID == athlete.id }
+            return TransitionPathRenderItem(
+                athleteID: athlete.id,
+                startPosition: athlete.position,
+                endPosition: end.position,
+                controlPoint: transition?.pathControlPoint,
+                waypoints: transition?.pathWaypoints ?? [],
+                moveDelay: transition?.moveDelay ?? 0
+            )
+        }
+    }
+
+    private var nextGhostPaths: [TransitionPathRenderItem] {
+        guard let formationIndex, formationIndex + 1 < store.routine.formations.count else { return [] }
+        let curFormation = store.routine.formations[formationIndex]
+        let nextFormation = store.routine.formations[formationIndex + 1]
+        let spec = store.transitionSpec(for: curFormation.id, to: nextFormation.id)
+        let curAthletes = store.renderedAthletes(for: curFormation)
+        let nextAthletes = store.renderedAthletes(for: nextFormation)
+        let nextLookup = Dictionary(nextAthletes.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        return curAthletes.compactMap { athlete in
+            guard let end = nextLookup[athlete.id] else { return nil }
+            let transition = spec.athleteTransitions.first { $0.athleteID == athlete.id }
+            return TransitionPathRenderItem(
+                athleteID: athlete.id,
+                startPosition: athlete.position,
+                endPosition: end.position,
+                controlPoint: transition?.pathControlPoint,
+                waypoints: transition?.pathWaypoints ?? [],
+                moveDelay: transition?.moveDelay ?? 0
+            )
+        }
+    }
+
     // MARK: - Transition Computed Properties
 
     private var hasTransition: Bool {
@@ -876,6 +936,11 @@ struct FloorGridView: View {
                 transitionProgress: player?.progress ?? 0,
                 formationColor: currentFormationColor,
                 ghostAthletes: previousFormationAthletes,
+                ghostColor: previousFormationColor,
+                ghostNextAthletes: nextFormationAthletes,
+                ghostNextColor: nextFormationColor,
+                ghostPrevPaths: previousGhostPaths,
+                ghostNextPaths: nextGhostPaths,
                 hoveredHandlePosition: hoveredHandlePosition,
                 hoveredAthleteID: hoveredAthleteID,
                 focusedPathHandle: focusedPathHandle
