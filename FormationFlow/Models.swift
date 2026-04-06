@@ -8,7 +8,7 @@ import SwiftUI
 enum CourtConstants {
     static let width: CGFloat = 72
     static let height: CGFloat = 56
-    static let collisionDistance: CGFloat = 2.0
+    static let collisionDistance: CGFloat = 1.5
     static let hitRadiusSquared: CGFloat = 9.0
 }
 
@@ -2170,7 +2170,9 @@ struct PathCalculations {
 
         for firstIndex in 0..<paths.count {
             for secondIndex in (firstIndex + 1)..<paths.count {
-                for step in 0...steps {
+                // Skip first and last steps — static proximity is already
+                // handled by collisionSummary; only flag mid-transition crossings.
+                for step in 1..<steps {
                     if squaredDistance(from: sampledPositions[firstIndex][step], to: sampledPositions[secondIndex][step])
                         < minDistanceSquared
                     {
