@@ -1887,7 +1887,9 @@ struct FloorGridView: View {
                                     }
                                     self.selectedAthleteIDs.subtract(self.rosterDeleteIDs)
                                     self.rosterDeleteIDs = []
-                                } else if let laError = evaluateError as? LAError, laError.code != .userCancel {
+                                } else if let laError = evaluateError as? LAError, laError.code == .userCancel {
+                                    // Ignore user cancellation
+                                } else {
                                     self.showingAuthenticationFailedError = true
                                 }
                             }
@@ -3042,7 +3044,9 @@ struct FloorGridView: View {
                 DispatchQueue.main.async {
                     if success {
                         self.performDeleteSelectedAthlete()
-                    } else if let laError = evaluateError as? LAError, laError.code != .userCancel {
+                    } else if let laError = evaluateError as? LAError, laError.code == .userCancel {
+                        // Ignore user cancellation
+                    } else {
                         self.showingAuthenticationFailedError = true
                     }
                 }

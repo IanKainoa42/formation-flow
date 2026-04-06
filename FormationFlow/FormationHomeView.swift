@@ -1081,7 +1081,9 @@ struct RoutineWorkspaceView: View {
                 DispatchQueue.main.async {
                     if success {
                         completion()
-                    } else if let laError = evaluateError as? LAError, laError.code != .userCancel {
+                    } else if let laError = evaluateError as? LAError, laError.code == .userCancel {
+                        // Ignore user cancellation
+                    } else {
                         self.showingAuthenticationFailedError = true
                     }
                 }
