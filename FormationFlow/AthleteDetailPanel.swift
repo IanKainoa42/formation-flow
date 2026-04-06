@@ -516,10 +516,9 @@ struct SidebarInspectorView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                if let selectedRosterAthlete, let selectedPlacement {
-                    AthleteInspectorView(
+        VStack(alignment: .leading, spacing: 0) {
+            if let selectedRosterAthlete, let selectedPlacement {
+                AthleteInspectorView(
                         athlete: selectedRosterAthlete,
                         position: selectedPlacement.position,
                         formationCount: store.routine.formations.count,
@@ -571,7 +570,6 @@ struct SidebarInspectorView: View {
                     )
                 }
             }
-        }
         .background(.thinMaterial)
     }
 
@@ -685,5 +683,261 @@ struct SidebarInspectorView: View {
             },
             onUpgrade: onUpgrade
         )
+    }
+}
+
+// MARK: - Selected Athlete Sidebar (Composed)
+
+struct SelectedAthleteSidebarView: View {
+    @ObservedObject var store: RoutineStore
+    let formationID: UUID
+    @Binding var selectedAthleteIDs: Set<UUID>
+    var onDeleteAthlete: () -> Void = {}
+
+    @ObservedObject var player: TransitionPlayer
+    var startFormationID: UUID?
+    var endFormationID: UUID?
+    var isPro: Bool = true
+    var onUpgrade: () -> Void = {}
+    var onRefreshTransition: () -> Void = {}
+
+    var onSwap: () -> Void = {}
+    var isSwapMode: Bool = false
+
+    @State private var labelDraft: String = ""
+    @State private var showDeleteConfirmation = false
+
+    private var selectedAthleteID: UUID? {
+        selectedAthleteIDs.count == 1 ? selectedAthleteIDs.first : nil
+    }
+
+    private var athlete: RosterAthlete? {
+        guard let selectedAthleteID else { return nil }
+        return store.routine.roster.first { $0.id == selectedAthleteID }
+    }
+
+    private var formation: Formation? {
+        guard let idx = store.formationIndex(id: formationID) else { return nil }
+        return store.routine.formations[idx]
+    }
+
+    private var transition: AthleteTransition? {
+        guard let selectedAthleteID else { return nil }
+        return player.transitionSpec.athleteTransition(for: selectedAthleteID)
+    }
+
+    private var startFormationName: String {
+        guard let startFormationID, let idx = store.formationIndex(id: startFormationID) else { return "" }
+        return store.routine.formations[idx].name
+    }
+
+    private var endFormationName: String {
+        guard let endFormationID, let idx = store.formationIndex(id: endFormationID) else { return "" }
+        return store.routine.formations[idx].name
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let athlete {
+                // MARK: Name + Role
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        TextField("Label", text: $labelDraft)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.headline)
+                            .onChange(of: labelDraft) { _, newValue in
+                                let clamped = String(newValue.prefix(4))
+                                if clamped != newValue { labelDraft = clamped }
+                                let trimmed = clamped.trimmingCharacters(in: .whitespacesAndNewlines)
+                                if !trimmed.isEmpty {
+                                    store.mutateRosterAthlete(id: athlete.id) { a in
+                                        a.label = trimmed
+                                    }
+                                }
+                            }
+                            .onAppear { labelDraft = athlete.label }
+                            .onChange(of: athlete.id) { _, _ in labelDraft = athlete.label }
+
+                        Spacer()
+
+                        Button(action: { selectedAthleteIDs = [] }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.title3)
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Clear selection")
+                    }
+
+                    AthleteRolePicker(
+                        selectedRole: athlete.role,
+                        compactLayout: true,
+                        isPro: isPro,
+                        onUpgrade: onUpgrade,
+                        onSelect: { newRole in
+                            store.mutateRosterAthlete(id: athlete.id) { a in
+                                a.role = newRole
+                            }
+                        }
+                    )
+                }
+                .padding(16)
+
+                Divider()
+
+                // MARK: Transport
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("\(startFormationName) \u{2192} \(endFormationName)")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+
+                    HStack(spacing: 8) {
+                        TransportControls.resetButton(player: player, size: 28)
+                        TransportControls.playPauseButton(player: player, size: 28)
+                        TransportControls.loopButton(player: player, size: 28)
+                        Spacer()
+                        TransportControls.swapButton(isActive: isSwapMode, size: 28, action: onSwap)
+                    }
+
+                    TransportControls.progressSlider(player: player)
+
+                    Picker("Speed", selection: Binding(
+                        get: { player.speed },
+                        set: { player.setSpeed($0) }
+                    )) {
+                        Text("0.5x").tag(CGFloat(1.0))
+                        Text("1x").tag(CGFloat(2.0))
+                        Text("2x").tag(CGFloat(4.0))
+                        Text("4x").tag(CGFloat(8.0))
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityLabel("Playback Speed")
+                }
+                .padding(16)
+
+                // MARK: Timing + Path
+                if let transition {
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        // Start Delay
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("Start Delay")
+                                    .font(.subheadline.weight(.semibold))
+                                Spacer()
+                                Text(TransitionCountFormatting.label(transition.moveDelayCounts))
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
+                            if isPro {
+                                Slider(
+                                    value: Binding(
+                                        get: { transition.moveDelayCounts },
+                                        set: { newValue in
+                                            guard let selectedAthleteID, let startFormationID, let endFormationID else { return }
+                                            store.mutateAthleteTransition(
+                                                from: startFormationID, to: endFormationID,
+                                                athleteID: selectedAthleteID
+                                            ) { t in
+                                                t.moveDelayCounts = min(CGFloat(player.counts), max(0, newValue))
+                                            }
+                                            onRefreshTransition()
+                                        }
+                                    ),
+                                    in: 0...CGFloat(player.counts),
+                                    step: 0.5
+                                )
+                                .accessibilityLabel("Start Delay")
+                            } else {
+                                HStack {
+                                    Slider(value: .constant(0), in: 0...CGFloat(player.counts))
+                                        .disabled(true)
+                                    Button(action: onUpgrade) {
+                                        Image(systemName: "lock.fill")
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                            }
+                        }
+
+                        // Path
+                        HStack(spacing: 8) {
+                            Button {
+                                guard let selectedAthleteID, let startFormationID, let endFormationID else { return }
+                                store.mutateAthleteTransition(
+                                    from: startFormationID, to: endFormationID,
+                                    athleteID: selectedAthleteID
+                                ) { t in
+                                    t.pathControlPoint = nil
+                                    t.pathWaypoints = []
+                                }
+                                onRefreshTransition()
+                            } label: {
+                                Label("Straight", systemImage: "line.diagonal")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+
+                            Button {
+                                guard let selectedAthleteID, let startFormationID, let endFormationID else { return }
+                                let startAthlete = player.startAthletes.first { $0.id == selectedAthleteID }
+                                let endAthlete = player.endAthletes.first { $0.id == selectedAthleteID }
+                                guard let startAthlete, let endAthlete else { return }
+                                store.mutateAthleteTransition(
+                                    from: startFormationID, to: endFormationID,
+                                    athleteID: selectedAthleteID
+                                ) { t in
+                                    guard t.pathControlPoint == nil && t.pathWaypoints.isEmpty else { return }
+                                    let midpoint = CGPoint(
+                                        x: (startAthlete.position.x + endAthlete.position.x) / 2,
+                                        y: (startAthlete.position.y + endAthlete.position.y) / 2
+                                    )
+                                    t.pathControlPoint = CGPoint(x: midpoint.x, y: midpoint.y - 6)
+                                }
+                                onRefreshTransition()
+                            } label: {
+                                Label("Curve", systemImage: "scribble")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                    .padding(16)
+                }
+
+                Spacer()
+
+                // MARK: Delete (bottom)
+                Divider()
+                Button(role: .destructive) {
+                    showDeleteConfirmation = true
+                } label: {
+                    Label("Delete Athlete", systemImage: "trash")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .padding(16)
+            } else if selectedAthleteIDs.count > 1 {
+                MultiSelectionInspectorView(
+                    count: selectedAthleteIDs.count,
+                    compactLayout: true,
+                    onClearSelection: { selectedAthleteIDs = [] }
+                )
+            }
+        }
+        .background(.thinMaterial)
+        .confirmationDialog(
+            "Delete \(athlete?.label ?? "athlete")?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Athlete", role: .destructive, action: onDeleteAthlete)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will remove them from all \(store.routine.formations.count) formations and their transitions. This cannot be undone.")
+        }
     }
 }

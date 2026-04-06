@@ -280,87 +280,98 @@ struct RoutineWorkspaceView: View {
 
     private var regularSidebar: some View {
         VStack(spacing: 0) {
-            if store.routine.formations.isEmpty {
-                emptyFormationListView
-            } else {
-                List(selection: $selectedFormationID) {
-                    Section {
-                        ForEach(store.routine.formations) { formation in
-                            formationRow(for: formation)
-                            .tag(formation.id)
-                            .contextMenu {
-                                formationContextMenu(for: formation)
-                            }
-                        }
-                        .onDelete { offsets in
-                            requestFormationDeletion(offsets.map { store.routine.formations[$0].id })
-                        }
-                        .onMove { from, to in
-                            store.moveFormations(fromOffsets: from, toOffset: to)
-                        }
-                    } header: {
-                        routinePickerMenu
-                    }
-                }
-            }
-
-            if !isIPadPortrait, let previewTransitionPair, let player = previewSession.player {
-                Divider()
-                SidebarTransportView(
-                    player: player,
-                    startFormationName: previewTransitionPair.start.name,
-                    endFormationName: previewTransitionPair.end.name,
-                    onSwap: { isSwapMode.toggle() },
-                    isSwapMode: isSwapMode,
-                    canSwap: selectedAthleteIDs.count == 1,
-                    canEditPath: selectedAthleteIDs.count == 1
-                )
-                .padding(16)
-                .background(.thinMaterial)
-            } else if !isIPadPortrait, store.routine.formations.count == 1 {
-                Divider()
-                singleFormationTransitionHint
-                    .padding(16)
-                    .background(.thinMaterial)
-            }
-
-            if !selectedAthleteIDs.isEmpty, let selectedFormationID {
-                Divider()
-                SidebarInspectorView(
+            if !selectedAthleteIDs.isEmpty, let selectedFormationID,
+               let player = previewSession.player {
+                SelectedAthleteSidebarView(
                     store: store,
                     formationID: selectedFormationID,
                     selectedAthleteIDs: $selectedAthleteIDs,
-                    onDeleteAthlete: {
-                        triggerDeleteAthlete = true
-                    },
-                    player: previewSession.player,
+                    onDeleteAthlete: { triggerDeleteAthlete = true },
+                    player: player,
                     startFormationID: previewTransitionPair?.start.id,
                     endFormationID: previewTransitionPair?.end.id,
                     isPro: entitlementManager.isPro,
                     onUpgrade: { showingUpgradeSheet = true },
-                    onRefreshTransition: { refreshPreviewSession() }
+                    onRefreshTransition: { refreshPreviewSession() },
+                    onSwap: { isSwapMode.toggle() },
+                    isSwapMode: isSwapMode
                 )
-                .frame(minHeight: 200, maxHeight: 400)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else if !selectedAthleteIDs.isEmpty, let selectedFormationID {
+                // Single formation — no player, show basic inspector
+                SidebarInspectorView(
+                    store: store,
+                    formationID: selectedFormationID,
+                    selectedAthleteIDs: $selectedAthleteIDs,
+                    onDeleteAthlete: { triggerDeleteAthlete = true },
+                    isPro: entitlementManager.isPro,
+                    onUpgrade: { showingUpgradeSheet = true }
+                )
+                Spacer()
+            } else {
+                if store.routine.formations.isEmpty {
+                    emptyFormationListView
+                } else {
+                    List(selection: $selectedFormationID) {
+                        Section {
+                            ForEach(store.routine.formations) { formation in
+                                formationRow(for: formation)
+                                .tag(formation.id)
+                                .contextMenu {
+                                    formationContextMenu(for: formation)
+                                }
+                            }
+                            .onDelete { offsets in
+                                requestFormationDeletion(offsets.map { store.routine.formations[$0].id })
+                            }
+                            .onMove { from, to in
+                                store.moveFormations(fromOffsets: from, toOffset: to)
+                            }
+                        } header: {
+                            routinePickerMenu
+                        }
+                    }
+                }
+
+                if !isIPadPortrait, let previewTransitionPair, let player = previewSession.player {
+                    Divider()
+                    SidebarTransportView(
+                        player: player,
+                        startFormationName: previewTransitionPair.start.name,
+                        endFormationName: previewTransitionPair.end.name,
+                        onSwap: { isSwapMode.toggle() },
+                        isSwapMode: isSwapMode,
+                        canSwap: selectedAthleteIDs.count == 1,
+                        canEditPath: selectedAthleteIDs.count == 1
+                    )
+                    .padding(16)
+                    .background(.thinMaterial)
+                } else if !isIPadPortrait, store.routine.formations.count == 1 {
+                    Divider()
+                    singleFormationTransitionHint
+                        .padding(16)
+                        .background(.thinMaterial)
+                }
             }
         }
         .animation(.easeInOut(duration: 0.22), value: selectedAthleteIDs.isEmpty)
-        .navigationTitle("Routine")
+        .navigationTitle(selectedAthleteIDs.isEmpty ? "Routine" : "Athlete")
         .toolbar {
-            ToolbarItemGroup(placement: .navigationBarTrailing) {
-                Button {
-                    showingRoutinePlayback = true
-                } label: {
-                    Image(systemName: "play.circle")
-                }
-                .disabled(store.routine.formations.count < 2)
-                .accessibilityLabel("Play routine")
+            if selectedAthleteIDs.isEmpty {
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    Button {
+                        showingRoutinePlayback = true
+                    } label: {
+                        Image(systemName: "play.circle")
+                    }
+                    .disabled(store.routine.formations.count < 2)
+                    .accessibilityLabel("Play routine")
 
-                EditButton()
-                Button(action: addFormation) {
-                    Image(systemName: canAddFormation ? "plus" : "lock.fill")
+                    EditButton()
+                    Button(action: addFormation) {
+                        Image(systemName: canAddFormation ? "plus" : "lock.fill")
+                    }
+                    .accessibilityLabel(canAddFormation ? "Add formation" : "Upgrade to Pro to add formation")
                 }
-                .accessibilityLabel(canAddFormation ? "Add formation" : "Upgrade to Pro to add formation")
             }
         }
     }

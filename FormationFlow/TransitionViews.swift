@@ -383,17 +383,20 @@ struct SidebarTransportView: View {
     var isLastFormation: Bool = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             Text("\(startFormationName) \u{2192} \(endFormationName)")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
 
-            HStack(spacing: 16) {
-                TransportControls.previousFormationButton(disabled: isFirstFormation, action: onPreviousFormation)
-                TransportControls.nextFormationButton(disabled: isLastFormation, action: onNextFormation)
-                TransportControls.resetButton(player: player)
-                TransportControls.playPauseButton(player: player)
-                TransportControls.loopButton(player: player)
+            // Row 1: nav + play
+            HStack(spacing: 8) {
+                TransportControls.previousFormationButton(size: 28, disabled: isFirstFormation, action: onPreviousFormation)
+                TransportControls.nextFormationButton(size: 28, disabled: isLastFormation, action: onNextFormation)
+                TransportControls.resetButton(player: player, size: 28)
+                TransportControls.playPauseButton(player: player, size: 28)
+                TransportControls.loopButton(player: player, size: 28)
             }
 
             TransportControls.progressSlider(player: player)
@@ -410,10 +413,10 @@ struct SidebarTransportView: View {
             .pickerStyle(.segmented)
             .accessibilityLabel("Playback Speed")
 
-            HStack(spacing: 12) {
-                TransportControls.swapButton(isActive: isSwapMode, action: onSwap)
+            HStack(spacing: 8) {
+                TransportControls.swapButton(isActive: isSwapMode, size: 28, action: onSwap)
                     .disabled(!canSwap)
-                TransportControls.pathButton(action: onPath)
+                TransportControls.pathButton(size: 28, action: onPath)
                     .disabled(!canEditPath)
             }
         }
