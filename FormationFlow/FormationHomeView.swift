@@ -345,11 +345,13 @@ struct RoutineWorkspaceView: View {
                     )
                     .padding(16)
                     .background(.thinMaterial)
+                    .layoutPriority(1)
                 } else if !isIPadPortrait, store.routine.formations.count == 1 {
                     Divider()
                     singleFormationTransitionHint
                         .padding(16)
                         .background(.thinMaterial)
+                        .layoutPriority(1)
                 }
             }
         }
