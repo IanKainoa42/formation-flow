@@ -1,6 +1,5 @@
 import LocalAuthentication
 import Combine
-import PencilKit
 import SwiftUI
 import UIKit
 
@@ -24,12 +23,7 @@ struct FloorGridView: View {
     var onRenameFormation: (() -> Void)?
     var onDeleteFormation: (() -> Void)?
     var onResetRoutine: (() -> Void)?
-    var onPreviousFormation: (() -> Void)?
-    var onNextFormation: (() -> Void)?
-    var isFirstFormation: Bool = true
-    var isLastFormation: Bool = true
-    var hideControlStrip: Bool = false
-    var portraitStripContent: AnyView? = nil
+    var onBack: (() -> Void)?
 
     // Transition parameters (nil when no adjacent formation)
     var player: TransitionPlayer?
@@ -44,16 +38,13 @@ struct FloorGridView: View {
     @State private var showingTransportSheet = false
     @State private var showingAthleteRenamePrompt = false
     @State private var athleteLabelDraft = ""
-    @State private var rosterAthleteRenameID: UUID?
     @State private var showingAthleteDeleteConfirmation = false
-    @State private var showingRosterDeleteConfirmation = false
-    @State private var showingAuthenticationError = false
-    @State private var showingAuthenticationFailedError = false
     @State private var showTransitionPaths = true
     @State private var isDraggingAthletes = false
     @State private var isPanningCanvas = false
-    @State private var isDrawingSelectionLasso = false
-    @State private var selectionLasso: FloorSelectionLasso? = nil
+    @State private var isDrawingSelectionBox = false
+    @State private var selectionRect: CGRect? = nil
+    @State private var selectionStartPoint: CGPoint = .zero
     @State private var dragStartPositions: [UUID: CGPoint] = [:]
     @State private var undoStack: [[(id: UUID, position: CGPoint)]] = []
     @State private var rotationStartPositions: [UUID: CGPoint] = [:]
@@ -85,9 +76,6 @@ struct FloorGridView: View {
     @State private var shareResultMessage = ""
     @State private var showingShareResult = false
     @State private var cachedPathCollisionIDs: Set<UUID> = []
-    @State private var blinkingResolvedIDs: Set<UUID> = []
-    @State private var blinkPhase: Int = 0
-    @State private var blinkTimer: Timer?
 
     private var formationIndex: Int? {
         store.formationIndex(id: formationID)
@@ -114,6 +102,21 @@ struct FloorGridView: View {
         verticalSizeClass == .compact
     }
 
+    /// Controls go on the side opposite the notch/Dynamic Island.
+    private var landscapeControlsTrailing: Bool {
+        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return true }
+        switch scene.interfaceOrientation {
+        case .landscapeRight:
+            // Device rotated clockwise → notch on LEFT → controls on RIGHT
+            return true
+        case .landscapeLeft:
+            // Device rotated counter-clockwise → notch on RIGHT → controls on LEFT
+            return false
+        default:
+            return true
+        }
+    }
+
     private var canAddFormation: Bool {
         entitlementManager.isPro || store.routine.formations.count < FreeTierLimits.maxFormations
     }
@@ -127,13 +130,15 @@ struct FloorGridView: View {
     }
 
     private var collisionSummary: (count: Int, ids: Set<UUID>) {
+        // ⚡ Bolt: Avoid O(N^2) spatial math per frame during playback.
+        if let player, player.progress > 0 && player.progress < 1 {
+            return (0, [])
+        }
         return PathCalculations.collisionSummary(in: renderedAthletes)
     }
 
-    /// Live path collision IDs read directly from the player, avoiding stale @State
-    /// when the player is created after onAppear fires.
-    private var effectivePathCollisionIDs: Set<UUID> {
-        player?.cachedPathCollisionIDs ?? cachedPathCollisionIDs
+    private var collidingAthletes: [RenderedAthlete] {
+        renderedAthletes.filter { collisionSummary.ids.contains($0.id) }
     }
 
     private var selectedAthleteID: UUID? {
@@ -170,19 +175,9 @@ struct FloorGridView: View {
     }
 
     private var previousFormationAthletes: [RenderedAthlete] {
-        // ⚡ Bolt: Avoid O(N) lookup and map allocations per frame during playback.
-        if let player, player.isPlaying || (player.progress > 0 && player.progress < 1) { return [] }
         guard let formationIndex, formationIndex > 0 else { return [] }
         let prevFormation = store.routine.formations[formationIndex - 1]
         return store.renderedAthletes(for: prevFormation)
-    }
-
-    private var previousTransitionPaths: [TransitionPathRenderItem] {
-        // Same optimization as previousFormationAthletes — skip during playback
-        if let player, player.isPlaying || (player.progress > 0 && player.progress < 1) { return [] }
-        guard let formationIndex, formationIndex > 0 else { return [] }
-        let prevFormation = store.routine.formations[formationIndex - 1]
-        return store.transitionPaths(from: prevFormation.id, to: formationID)
     }
 
     // MARK: - Transition Computed Properties
@@ -208,8 +203,6 @@ struct FloorGridView: View {
 
     private var endpointMarkers: [TransitionEndpointMarkerRenderItem] {
         guard let player else { return [] }
-        // ⚡ Bolt: Avoid O(N) map allocations per frame during playback.
-        if player.isPlaying || (player.progress > 0 && player.progress < 1) { return [] }
 
         let startStyle: TransitionEndpointMarkerRenderItem.Style =
             focusedEndpoint == nil || focusedEndpoint == .start ? .editable : .readOnly
@@ -250,34 +243,9 @@ struct FloorGridView: View {
     private func recomputePathCollisionIDs() {
         guard let player else {
             cachedPathCollisionIDs = []
-            blinkingResolvedIDs = []
             return
         }
-        let oldIDs = cachedPathCollisionIDs
-        let newIDs = player.cachedPathCollisionIDs
-        cachedPathCollisionIDs = newIDs
-
-        let justResolved = oldIDs.subtracting(newIDs)
-        if !justResolved.isEmpty {
-            blinkingResolvedIDs.formUnion(justResolved)
-            startResolvedBlink()
-        }
-    }
-
-    private func startResolvedBlink() {
-        blinkTimer?.invalidate()
-        blinkPhase = 0
-        blinkTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { _ in
-            Task { @MainActor in
-                blinkPhase += 1
-                if blinkPhase >= 6 {
-                    blinkTimer?.invalidate()
-                    blinkTimer = nil
-                    blinkingResolvedIDs = []
-                    blinkPhase = 0
-                }
-            }
-        }
+        cachedPathCollisionIDs = PathCalculations.findPathCollisionIDs(paths: transitionPaths, counts: CGFloat(player.counts))
     }
 
     private var currentFormationEndpoint: PreviewEditableEndpoint? {
@@ -339,12 +307,8 @@ struct FloorGridView: View {
         return "Inspect"
     }
 
-    private var collidingAthletes: [RenderedAthlete] {
-        return renderedAthletes.filter { collisionSummary.ids.contains($0.id) }
-    }
-
     private var pathCollidingAthletes: [RenderedAthlete] {
-        return renderedAthletes.filter { effectivePathCollisionIDs.contains($0.id) }
+        renderedAthletes.filter { cachedPathCollisionIDs.contains($0.id) }
     }
 
     private var canShareTransition: Bool {
@@ -363,7 +327,7 @@ struct FloorGridView: View {
         }
 
         if !hasMadeFirstSelection {
-            return ("Tap an athlete to edit it. Drag on empty space to lasso-select.", .accentColor)
+            return ("Tap an athlete to edit it. Drag on empty space to box-select.", .accentColor)
         }
 
         return nil
@@ -420,16 +384,6 @@ struct FloorGridView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Athlete labels are shared across every formation.")
-        }
-        .alert("Authentication Required", isPresented: $showingAuthenticationError) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("A device passcode or biometric authentication is required to perform this action. Please enable it in Settings.")
-        }
-        .alert("Authentication Failed", isPresented: $showingAuthenticationFailedError) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Authentication could not be verified. Please try again.")
         }
         .alert("Transition Shared", isPresented: $showingShareResult) {
             Button("OK", role: .cancel) {}
@@ -530,11 +484,6 @@ struct FloorGridView: View {
                 deleteSelectedAthlete()
             }
         }
-        .onChange(of: showingAthleteRenamePrompt) { _, newValue in
-            if !newValue {
-                rosterAthleteRenameID = nil
-            }
-        }
         .confirmationDialog(
             "Reset all paths?",
             isPresented: $showingResetAllPathsConfirmation,
@@ -551,86 +500,23 @@ struct FloorGridView: View {
             playerTick &+= 1
         }
         .toolbar {
-            if isPhoneLayout {
+            if isPhoneLayout && !isPhoneLandscape {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Menu {
-                        if canShareTransition {
-                            Button(action: shareTransitionPreview) {
-                                Label("Share Preview", systemImage: "square.and.arrow.up")
-                            }
-                        }
-
-                        Button(action: { showingRosterSheet = true }) {
-                            Label("Roster", systemImage: "list.bullet.rectangle")
-                        }
-
-                        Button(action: { showingNotesSheet = true }) {
-                            Label("Notes", systemImage: "note.text")
-                        }
-
-                        Divider()
-
-                        Button(action: onDuplicateAsNext) {
-                            Label(
-                                canAddFormation ? "Duplicate as Next" : "Duplicate as Next (Pro)",
-                                systemImage: canAddFormation ? "plus.square.on.square" : "lock.fill"
-                            )
-                        }
-
-                        Button(action: { onRenameFormation?() }) {
-                            Label("Rename Formation", systemImage: "pencil")
-                        }
-
-                        let idx = formationIndex ?? 0
-                        Button(action: { store.moveFormationEarlier(id: formationID) }) {
-                            Label("Move Earlier", systemImage: "arrow.up")
-                        }
-                        .disabled(idx == 0)
-
-                        Button(action: { store.moveFormationLater(id: formationID) }) {
-                            Label("Move Later", systemImage: "arrow.down")
-                        }
-                        .disabled(idx >= store.routine.formations.count - 1)
-
-                        Divider()
-
-                        if hasTransition {
-                            Button(action: resetSelectedPaths) {
-                                Label(selectedAthleteIDs.count == 1 ? "Reset Path" : "Reset Paths", systemImage: "arrow.counterclockwise")
-                            }
-                        } else {
-                            Button(action: resetView) {
-                                Label("Reset View", systemImage: "arrow.counterclockwise")
-                            }
-                        }
-
-                        Button(action: undoLastMove) {
-                            Label("Undo Move", systemImage: "arrow.uturn.backward")
-                        }
-                        .disabled(undoStack.isEmpty)
-
-                        Divider()
-
-                        Button(role: .destructive, action: { onDeleteFormation?() }) {
-                            Label("Delete Formation", systemImage: "trash")
-                        }
-
-                        Button(role: .destructive, action: { onResetRoutine?() }) {
-                            Label("Reset Routine", systemImage: "arrow.counterclockwise")
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                            .overlay(alignment: .topTrailing) {
-                                if formation?.hasCoachCardContent == true {
-                                    Circle()
-                                        .fill(.orange)
-                                        .frame(width: 7, height: 7)
-                                        .offset(x: 3, y: -3)
-                                }
-                            }
+                    phoneToolbarMenu
+                }
+            }
+        }
+        .overlay {
+            if isPhoneLandscape {
+                VStack {
+                    Spacer()
+                    HStack {
+                        if landscapeControlsTrailing { Spacer() }
+                        landscapeControlStrip
+                        if !landscapeControlsTrailing { Spacer() }
                     }
-                    .accessibilityLabel("Editing tools")
-                    .accessibilityValue(formation?.hasCoachCardContent == true ? "Has notes" : "")
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 20)
                 }
             }
         }
@@ -646,17 +532,8 @@ struct FloorGridView: View {
                 }
             } else {
                 VStack(spacing: 0) {
-                    if hideControlStrip {
-                        portraitActionBar
-                        Divider()
-                        if let portraitStripContent {
-                            portraitStripContent
-                            Divider()
-                        }
-                    } else {
-                        controlStrip
-                        Divider()
-                    }
+                    controlStrip
+                    Divider()
 
                     if renderedAthletes.isEmpty {
                         emptyState
@@ -795,10 +672,10 @@ struct FloorGridView: View {
                         Label("Notes", systemImage: "note.text")
                     }
                     .buttonStyle(.bordered)
-                    .accessibilityValue(formation?.hasCoachCardContent == true ? "Has notes" : "")
+                    .accessibilityValue(formation?.notes.isEmpty == false ? "Has notes" : "")
                     .help("Add notes or reminders for this formation")
                     .overlay(alignment: .topTrailing) {
-                        if formation?.hasCoachCardContent == true {
+                        if formation?.notes.isEmpty == false {
                             Circle()
                                 .fill(.orange)
                                 .frame(width: 8, height: 8)
@@ -819,31 +696,6 @@ struct FloorGridView: View {
             .padding(.vertical, isHeightConstrained ? 6 : (isCompactLayout ? 8 : 8))
         }
         .background(.bar)
-    }
-
-    private var portraitActionBar: some View {
-        PortraitActionBar(
-            onAddAthlete: addAthlete,
-            onShowRoster: { showingRosterSheet = true },
-            onShowNotes: { showingNotesSheet = true },
-            onUndo: undoLastMove,
-            onTogglePaths: { showTransitionPaths.toggle() },
-            onSharePreview: shareTransitionPreview,
-            showTransitionPaths: showTransitionPaths,
-            hasTransition: hasTransition,
-            undoDisabled: undoStack.isEmpty,
-            hasNotes: formation?.hasCoachCardContent == true,
-            collidingCount: collidingAthletes.count,
-            onCycleCollision: {
-                collisionCycleIndex = (collisionCycleIndex + 1) % max(collidingAthletes.count, 1)
-                selectCollision(at: collisionCycleIndex)
-            },
-            pathCollidingCount: pathCollidingAthletes.count,
-            onCyclePathCollision: {
-                pathCollisionCycleIndex = (pathCollisionCycleIndex + 1) % max(pathCollidingAthletes.count, 1)
-                selectPathCollision(at: pathCollisionCycleIndex)
-            }
-        )
     }
 
     private var compactOverflowMenu: some View {
@@ -875,7 +727,7 @@ struct FloorGridView: View {
         }
         .buttonStyle(.bordered)
         .accessibilityLabel("More actions")
-        .accessibilityValue(formation?.hasCoachCardContent == true ? "Has notes" : "")
+        .accessibilityValue(formation?.notes.isEmpty == false ? "Has notes" : "")
     }
 
     private var compactOverflowMenuLabel: some View {
@@ -884,7 +736,7 @@ struct FloorGridView: View {
             Text("More")
         }
         .overlay(alignment: .topTrailing) {
-            if formation?.hasCoachCardContent == true {
+            if formation?.notes.isEmpty == false {
                 Circle()
                     .fill(.orange)
                     .frame(width: 8, height: 8)
@@ -1013,13 +865,10 @@ struct FloorGridView: View {
                 endpointMarkers: endpointMarkers,
                 alignmentGuides: activeAlignmentGuides,
                 collisionIDs: collisionSummary.ids,
-                pathCollisionIDs: effectivePathCollisionIDs,
-                blinkingResolvedIDs: blinkingResolvedIDs,
-                blinkPhase: blinkPhase,
+                pathCollisionIDs: cachedPathCollisionIDs,
                 cellSize: cellSize,
                 offset: offset,
                 swapSourceID: swapSourceAthleteID,
-                selectionLasso: selectionLasso,
                 focusedEndpoint: focusedEndpoint,
                 hasTransition: hasTransition,
                 startFormationColor: transitionStartColor,
@@ -1027,7 +876,6 @@ struct FloorGridView: View {
                 transitionProgress: player?.progress ?? 0,
                 formationColor: currentFormationColor,
                 ghostAthletes: previousFormationAthletes,
-                ghostTransitionPaths: showTransitionPaths ? previousTransitionPaths : [],
                 hoveredHandlePosition: hoveredHandlePosition,
                 hoveredAthleteID: hoveredAthleteID,
                 focusedPathHandle: focusedPathHandle
@@ -1077,9 +925,8 @@ struct FloorGridView: View {
                         guard selectedAthleteIDs.count >= 2 else { return }
                         if rotationStartPositions.isEmpty {
                             // Capture starting positions for undo + rotation reference
-                            rotationStartPositions = Dictionary(
-                                uniqueKeysWithValues: renderedAthletes.compactMap { selectedAthleteIDs.contains($0.id) ? ($0.id, $0.position) : nil }
-                            )
+                            let selected = renderedAthletes.filter { selectedAthleteIDs.contains($0.id) }
+                            rotationStartPositions = Dictionary(uniqueKeysWithValues: selected.map { ($0.id, $0.position) })
                         }
                         applyRotation(angle: value.radians)
                     }
@@ -1145,7 +992,7 @@ struct FloorGridView: View {
                             }
                         } else if !hasMadeFirstSelection {
                             banner(
-                                text: "Tap an athlete to edit it. Drag on empty space to lasso-select.",
+                                text: "Tap an athlete to edit it. Drag on empty space to box-select.",
                                 color: .accentColor
                             )
                         }
@@ -1175,11 +1022,7 @@ struct FloorGridView: View {
                                 onPath: { showingInspectorSheet = true },
                                 isSwapMode: isSwapMode,
                                 canSwap: selectedAthleteID != nil,
-                                canEditPath: selectedAthleteID != nil,
-                                onPreviousFormation: { onPreviousFormation?() },
-                                onNextFormation: { onNextFormation?() },
-                                isFirstFormation: isFirstFormation,
-                                isLastFormation: isLastFormation
+                                canEditPath: selectedAthleteID != nil
                             )
                         }
                     }
@@ -1208,11 +1051,7 @@ struct FloorGridView: View {
                         canEditPath: selectedAthleteID != nil,
                         onAdd: addAthlete,
                         formationLabel: formationContextLabel,
-                        formationColor: currentFormationColor,
-                        onPreviousFormation: { onPreviousFormation?() },
-                        onNextFormation: { onNextFormation?() },
-                        isFirstFormation: isFirstFormation,
-                        isLastFormation: isLastFormation
+                        formationColor: currentFormationColor
                     )
                     .padding(.leading, 8)
                     .padding(.top, 12)
@@ -1225,27 +1064,6 @@ struct FloorGridView: View {
                     if !isPhoneLayout {
                         formationContextBadge
                             .padding(.init(top: 0, leading: 12, bottom: 12, trailing: 0))
-                    }
-                }
-                .overlay(alignment: .bottom) {
-                    if zoomScale != 1.0 || canvasPanOffset != .zero {
-                        Button(action: resetView) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "arrow.counterclockwise")
-                                Text("Reset View")
-                            }
-                            .font(.subheadline.weight(.medium))
-                            .foregroundColor(.primary)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(.ultraThinMaterial, in: Capsule())
-                            .overlay {
-                                Capsule().strokeBorder(.white.opacity(0.1))
-                            }
-                        }
-                        .padding(.bottom, isPhoneLayout && !isPhoneLandscape ? 80 : 20)
-                        .transition(.scale.combined(with: .opacity))
-                        .accessibilityLabel("Reset canvas view")
                     }
                 }
         }
@@ -1286,9 +1104,7 @@ struct FloorGridView: View {
                     .foregroundColor(.secondary)
                 }
 
-                // Use previousFormationName directly to avoid layout jumps during playback
-                // when previousFormationAthletes returns [] to save allocations.
-                if let previousFormationName {
+                if !previousFormationAthletes.isEmpty, let previousFormationName {
                     HStack(spacing: 4) {
                         Circle()
                             .stroke(.white.opacity(0.3), lineWidth: 1)
@@ -1344,11 +1160,7 @@ struct FloorGridView: View {
                     onPath: { showingInspectorSheet = true },
                     isSwapMode: isSwapMode,
                     canSwap: selectedAthleteID != nil,
-                    canEditPath: selectedAthleteID != nil,
-                    onPreviousFormation: { onPreviousFormation?() },
-                    onNextFormation: { onNextFormation?() },
-                    isFirstFormation: isFirstFormation,
-                    isLastFormation: isLastFormation
+                    canEditPath: selectedAthleteID != nil
                 )
                 .toolbar {
                     ToolbarItem(placement: .navigationBarTrailing) {
@@ -1370,6 +1182,124 @@ struct FloorGridView: View {
         }
         .presentationDetents(isPhoneLayout ? [.large] : [.medium, .large])
         .presentationDragIndicator(.visible)
+    }
+
+    @ViewBuilder
+    private var phoneToolbarMenuContent: some View {
+        if canShareTransition {
+            Button(action: shareTransitionPreview) {
+                Label("Share Preview", systemImage: "square.and.arrow.up")
+            }
+        }
+
+        Button(action: { showingRosterSheet = true }) {
+            Label("Roster", systemImage: "list.bullet.rectangle")
+        }
+
+        Button(action: { showingNotesSheet = true }) {
+            Label("Notes", systemImage: "note.text")
+        }
+
+        Divider()
+
+        Button(action: onDuplicateAsNext) {
+            Label(
+                canAddFormation ? "Duplicate as Next" : "Duplicate as Next (Pro)",
+                systemImage: canAddFormation ? "plus.square.on.square" : "lock.fill"
+            )
+        }
+
+        Button(action: { onRenameFormation?() }) {
+            Label("Rename Formation", systemImage: "pencil")
+        }
+
+        let idx = formationIndex ?? 0
+        Button(action: { store.moveFormationEarlier(id: formationID) }) {
+            Label("Move Earlier", systemImage: "arrow.up")
+        }
+        .disabled(idx == 0)
+
+        Button(action: { store.moveFormationLater(id: formationID) }) {
+            Label("Move Later", systemImage: "arrow.down")
+        }
+        .disabled(idx >= store.routine.formations.count - 1)
+
+        Divider()
+
+        if hasTransition {
+            Button(action: resetSelectedPaths) {
+                Label(selectedAthleteIDs.count == 1 ? "Reset Path" : "Reset Paths", systemImage: "arrow.counterclockwise")
+            }
+        } else {
+            Button(action: resetView) {
+                Label("Reset View", systemImage: "arrow.counterclockwise")
+            }
+        }
+
+        Button(action: undoLastMove) {
+            Label("Undo Move", systemImage: "arrow.uturn.backward")
+        }
+        .disabled(undoStack.isEmpty)
+
+        Divider()
+
+        Button(role: .destructive, action: { onDeleteFormation?() }) {
+            Label("Delete Formation", systemImage: "trash")
+        }
+
+        Button(role: .destructive, action: { onResetRoutine?() }) {
+            Label("Reset Routine", systemImage: "arrow.counterclockwise")
+        }
+    }
+
+    private var phoneToolbarMenu: some View {
+        Menu {
+            phoneToolbarMenuContent
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .overlay(alignment: .topTrailing) {
+                    if formation?.notes.isEmpty == false {
+                        Circle()
+                            .fill(.orange)
+                            .frame(width: 7, height: 7)
+                            .offset(x: 3, y: -3)
+                    }
+                }
+        }
+        .accessibilityLabel("Editing tools")
+        .accessibilityValue(formation?.notes.isEmpty == false ? "Has notes" : "")
+    }
+
+    private var landscapeControlStrip: some View {
+        HStack(spacing: 2) {
+            if let onBack {
+                Button(action: onBack) {
+                    Image(systemName: "chevron.left")
+                        .font(.caption.weight(.bold))
+                        .frame(width: 32, height: 32)
+                }
+                .accessibilityLabel("Back to formations")
+            }
+
+            Menu {
+                phoneToolbarMenuContent
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.caption.weight(.bold))
+                    .frame(width: 32, height: 32)
+                    .overlay(alignment: .topTrailing) {
+                        if formation?.notes.isEmpty == false {
+                            Circle()
+                                .fill(.orange)
+                                .frame(width: 6, height: 6)
+                                .offset(x: 2, y: 2)
+                        }
+                    }
+            }
+            .accessibilityLabel("Editing tools")
+        }
+        .foregroundColor(.white)
+        .background(.ultraThinMaterial, in: Capsule())
     }
 
     private var phoneTopOverlay: some View {
@@ -1416,7 +1346,7 @@ struct FloorGridView: View {
             Image(systemName: "ellipsis.circle.fill")
                 .frame(width: 30, height: 30)
                 .overlay(alignment: .topTrailing) {
-                    if formation?.hasCoachCardContent == true {
+                    if formation?.notes.isEmpty == false {
                         Circle()
                             .fill(.orange)
                             .frame(width: 7, height: 7)
@@ -1426,7 +1356,7 @@ struct FloorGridView: View {
         }
         .buttonStyle(.bordered)
         .accessibilityLabel("More actions")
-        .accessibilityValue(formation?.hasCoachCardContent == true ? "Has notes" : "")
+        .accessibilityValue(formation?.notes.isEmpty == false ? "Has notes" : "")
         .controlSize(.small)
     }
 
@@ -1641,7 +1571,7 @@ struct FloorGridView: View {
                 VStack(alignment: .leading, spacing: isCompactLayout ? 8 : 10) {
                     Text("Waypoints")
                         .font(.subheadline.weight(.semibold))
-                    ForEach(Array(zip(transition.pathWaypoints.indices, transition.pathWaypoints)), id: \.1.id) { waypointIndex, waypoint in
+                    ForEach(Array(transition.pathWaypoints.enumerated()), id: \.element.id) { waypointIndex, waypoint in
                         waypointCard(
                             waypointIndex: waypointIndex,
                             waypoint: waypoint,
@@ -1849,37 +1779,29 @@ struct FloorGridView: View {
 
                                 Spacer()
                             }
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                rosterAthleteRenameID = athlete.id
-                                athleteLabelDraft = athlete.label
-                                showingAthleteRenamePrompt = true
-                            }
-                            .accessibilityElement(children: .combine)
-                            .accessibilityAddTraits(.isButton)
-                            .accessibilityLabel("\(athlete.label), \(athlete.role.displayName)")
-                            .accessibilityHint("Double tap to edit name")
                         }
                         .onMove { from, to in
                             store.moveRoster(fromOffsets: from, toOffset: to)
                         }
                         .onDelete { offsets in
                             rosterDeleteIDs = offsets.map { store.routine.roster[$0].id }
-                            showingRosterDeleteConfirmation = true
                         }
                     }
                 }
             }
             .confirmationDialog(
                 "Delete \(rosterDeleteIDs.count == 1 ? "this athlete" : "these athletes")?",
-                isPresented: $showingRosterDeleteConfirmation,
+                isPresented: Binding(
+                    get: { !rosterDeleteIDs.isEmpty },
+                    set: { if !$0 { rosterDeleteIDs = [] } }
+                ),
                 titleVisibility: .visible
             ) {
                 Button("Delete", role: .destructive) {
                     let context = LAContext()
                     var error: NSError?
                     if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
-                        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Authentication is required to perform this destructive action.") { success, evaluateError in
+                        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Authentication is required to perform this destructive action.") { success, _ in
                             DispatchQueue.main.async {
                                 if success {
                                     for id in self.rosterDeleteIDs {
@@ -1887,17 +1809,15 @@ struct FloorGridView: View {
                                     }
                                     self.selectedAthleteIDs.subtract(self.rosterDeleteIDs)
                                     self.rosterDeleteIDs = []
-                                } else if let laError = evaluateError as? LAError, laError.code == .userCancel {
-                                    // Ignore user cancellation
-                                } else {
-                                    self.showingAuthenticationFailedError = true
                                 }
                             }
                         }
                     } else {
-                        DispatchQueue.main.async {
-                            self.showingAuthenticationError = true
+                        for id in rosterDeleteIDs {
+                            store.deleteAthlete(id: id)
                         }
+                        selectedAthleteIDs.subtract(rosterDeleteIDs)
+                        rosterDeleteIDs = []
                     }
                 }
                 Button("Cancel", role: .cancel) {
@@ -1912,42 +1832,32 @@ struct FloorGridView: View {
                     EditButton()
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    HStack {
-                        Button(action: {
-                            addAthlete()
-                        }) {
-                            Image(systemName: "plus")
-                        }
-                        .accessibilityLabel("Add Athlete")
-                        Button("Done") { showingRosterSheet = false }
-                    }
+                    Button("Done") { showingRosterSheet = false }
                 }
-            }
-            .alert("Rename Athlete", isPresented: $showingAthleteRenamePrompt) {
-                TextField("Label", text: $athleteLabelDraft)
-                Button("Save") {
-                    commitAthleteRename()
-                }
-                .disabled(athleteLabelDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("Athlete labels are shared across every formation.")
             }
         }
     }
 
     private var notesSheet: some View {
-        CoachCardEditorSheet(
-            formation: formation,
-            onSave: { plainText, richTextRTF, drawingData in
-                store.mutateFormation(id: formationID) { formation in
-                    formation.notes = plainText
-                    formation.formattedNotesRTF = richTextRTF
-                    formation.notesDrawingData = drawingData
+        NavigationStack {
+            TextEditor(
+                text: Binding(
+                    get: { formation?.notes ?? "" },
+                    set: { newValue in
+                        store.mutateFormation(id: formationID) { formation in
+                            formation.notes = newValue
+                        }
+                    }
+                )
+            )
+            .padding()
+            .navigationTitle("Formation Notes")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { showingNotesSheet = false }
                 }
-            },
-            onDone: { showingNotesSheet = false }
-        )
+            }
+        }
     }
 
     private func banner(text: String, color: Color) -> some View {
@@ -2136,8 +2046,8 @@ struct FloorGridView: View {
                     handleFormationDragContinued(value, cellSize: cellSize)
                     return
                 }
-                if isDrawingSelectionLasso {
-                    handleSelectionLassoContinued(value)
+                if isDrawingSelectionBox {
+                    handleSelectionBoxContinued(value)
                     return
                 }
 
@@ -2275,7 +2185,8 @@ struct FloorGridView: View {
                         guard dragDistance >= dragActivationDistance else { return }
                         dragStartPositions = Dictionary(
                             uniqueKeysWithValues: renderedAthletes
-                                .compactMap { selectedAthleteIDs.contains($0.id) ? ($0.id, $0.position) : nil }
+                                .filter { selectedAthleteIDs.contains($0.id) }
+                                .map { ($0.id, $0.position) }
                         )
                         isDraggingAthletes = true
                         handleFormationDragContinued(value, cellSize: cellSize)
@@ -2298,7 +2209,8 @@ struct FloorGridView: View {
                         guard dragDistance >= dragActivationDistance else { return }
                         dragStartPositions = Dictionary(
                             uniqueKeysWithValues: renderedAthletes
-                                .compactMap { selectedAthleteIDs.contains($0.id) ? ($0.id, $0.position) : nil }
+                                .filter { selectedAthleteIDs.contains($0.id) }
+                                .map { ($0.id, $0.position) }
                         )
                         isDraggingAthletes = true
                         handleFormationDragContinued(value, cellSize: cellSize)
@@ -2325,7 +2237,7 @@ struct FloorGridView: View {
                     }
                 }
 
-                // 2d: Empty space → pan if zoomed on compact, otherwise lasso select
+                // 2d: Empty space → pan if zoomed on compact, otherwise selection box
                 focusedEndpoint = hasTransition ? currentFormationEndpoint : nil
                 guard dragDistance >= dragActivationDistance else { return }
 
@@ -2339,9 +2251,10 @@ struct FloorGridView: View {
                     return
                 }
 
-                selectionLasso = FloorSelectionLasso(startPoint: value.startLocation)
-                isDrawingSelectionLasso = true
-                handleSelectionLassoContinued(value)
+                selectionStartPoint = value.startLocation
+                selectionRect = CGRect(origin: value.startLocation, size: .zero)
+                isDrawingSelectionBox = true
+                handleSelectionBoxContinued(value)
             }
             .onEnded { value in
                 let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize)
@@ -2351,8 +2264,8 @@ struct FloorGridView: View {
                     isDraggingPathHandle = false
                     isPanningCanvas = false
                     draggingWaypointID = nil
-                    isDrawingSelectionLasso = false
-                    selectionLasso = nil
+                    isDrawingSelectionBox = false
+                    selectionRect = nil
                     dragStartPositions = [:]
                     endpointDragStartPosition = nil
                     activeAlignmentGuides = []
@@ -2405,18 +2318,18 @@ struct FloorGridView: View {
                     return
                 }
 
-                if isDrawingSelectionLasso, let selectionLasso {
+                if isDrawingSelectionBox, let selectionRect {
                     let newSelection = Set(
                         renderedAthletes.compactMap { athlete in
                             let screenPoint = CGPoint(
                                 x: athlete.position.x * cellSize + offset.x,
                                 y: athlete.position.y * cellSize + offset.y
                             )
-                            return selectionLasso.contains(screenPoint) ? athlete.id : nil
+                            return selectionRect.contains(screenPoint) ? athlete.id : nil
                         }
                     )
 
-                    if selectionLasso.isTapCandidate {
+                    if selectionRect.width < 5 && selectionRect.height < 5 {
                         // Tap on empty space — also try selecting from transition athletes
                         let tapPoint = CGPoint(
                             x: (value.location.x - offset.x) / cellSize,
@@ -2708,7 +2621,8 @@ struct FloorGridView: View {
             translation: rawTranslation,
             startingPositions: [endpointDragStartPosition],
             otherAthletePositions: editableAthletes
-                .compactMap { $0.id != selectedAthleteID ? $0.position : nil }
+                .filter { $0.id != selectedAthleteID }
+                .map(\.position)
         )
         activeAlignmentGuides = snapResult.guides
 
@@ -2733,16 +2647,10 @@ struct FloorGridView: View {
         activeAlignmentGuides = snapResult.guides
 
         store.mutateFormation(id: formationID) { formation in
-            // ⚡ Bolt: Cache array index lookups in an O(1) dictionary outside the loop to avoid O(N^2) math during drags.
-            // Using `uniquingKeysWith` prevents fatal crashes if duplicate athlete IDs ever slip into malformed data.
-            let placementLookup = Dictionary(
-                formation.placements.enumerated().map { ($0.element.athleteID, $0.offset) },
-                uniquingKeysWith: { first, _ in first }
-            )
             for athleteID in selectedAthleteIDs {
                 guard
                     let startPosition = dragStartPositions[athleteID],
-                    let placementIndex = placementLookup[athleteID]
+                    let placementIndex = formation.placementIndex(for: athleteID)
                 else { continue }
 
                 let nextPosition = CGPoint(
@@ -2752,9 +2660,6 @@ struct FloorGridView: View {
                 formation.placements[placementIndex].position = nextPosition
             }
         }
-        if player != nil {
-            refreshTransitionFromStore()
-        }
     }
 
     // MARK: - Rotation
@@ -2763,23 +2668,17 @@ struct FloorGridView: View {
         guard !rotationStartPositions.isEmpty else { return }
 
         // Compute center of mass of the selected group
-        // ⚡ Bolt: Eliminate O(N) array allocations per frame by computing x and y in a single pass.
         let positions = Array(rotationStartPositions.values)
-        let sum = positions.reduce(CGPoint.zero) { CGPoint(x: $0.x + $1.x, y: $0.y + $1.y) }
-        let center = CGPoint(x: sum.x / CGFloat(positions.count), y: sum.y / CGFloat(positions.count))
+        let centerX = positions.map(\.x).reduce(0, +) / CGFloat(positions.count)
+        let centerY = positions.map(\.y).reduce(0, +) / CGFloat(positions.count)
+        let center = CGPoint(x: centerX, y: centerY)
 
         let cosA = cos(angle)
         let sinA = sin(angle)
 
         store.mutateFormation(id: formationID) { formation in
-            // ⚡ Bolt: Cache array index lookups in an O(1) dictionary outside the loop to avoid O(N^2) math during rotations.
-            // Using `uniquingKeysWith` prevents fatal crashes if duplicate athlete IDs ever slip into malformed data.
-            let placementLookup = Dictionary(
-                formation.placements.enumerated().map { ($0.element.athleteID, $0.offset) },
-                uniquingKeysWith: { first, _ in first }
-            )
             for (athleteID, startPosition) in rotationStartPositions {
-                guard let placementIndex = placementLookup[athleteID] else { continue }
+                guard let placementIndex = formation.placementIndex(for: athleteID) else { continue }
 
                 // Rotate around center
                 let dx = startPosition.x - center.x
@@ -2796,14 +2695,14 @@ struct FloorGridView: View {
         }
     }
 
-    private func handleSelectionLassoContinued(_ value: DragGesture.Value) {
+    private func handleSelectionBoxContinued(_ value: DragGesture.Value) {
         activeAlignmentGuides = []
-        if selectionLasso == nil {
-            selectionLasso = FloorSelectionLasso(startPoint: value.startLocation)
-        }
-        guard var selectionLasso else { return }
-        selectionLasso.append(value.location)
-        self.selectionLasso = selectionLasso
+        selectionRect = CGRect(
+            x: min(selectionStartPoint.x, value.location.x),
+            y: min(selectionStartPoint.y, value.location.y),
+            width: abs(value.location.x - selectionStartPoint.x),
+            height: abs(value.location.y - selectionStartPoint.y)
+        )
     }
 
     // MARK: - Double-Tap Gesture for Waypoints
@@ -2964,7 +2863,8 @@ struct FloorGridView: View {
             translation: translation,
             startingPositions: Array(dragStartPositions.values),
             otherAthletePositions: renderedAthletes
-                .compactMap { selectedAthleteIDs.contains($0.id) ? nil : $0.position },
+                .filter { !selectedAthleteIDs.contains($0.id) }
+                .map(\.position),
             skipLinearGuides: renderedAthletes.count > 20
         )
         return SnapResult(translation: result.translation, guides: result.guides)
@@ -2991,17 +2891,15 @@ struct FloorGridView: View {
     }
 
     private func commitAthleteRename() {
-        let targetID = rosterAthleteRenameID ?? selectedAthleteID
-        guard let targetID else { return }
+        guard let selectedAthleteID else { return }
         let trimmedLabel = athleteLabelDraft
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !trimmedLabel.isEmpty else { return }
 
-        store.mutateRosterAthlete(id: targetID) { athlete in
+        store.mutateRosterAthlete(id: selectedAthleteID) { athlete in
             athlete.label = String(trimmedLabel.prefix(4))
         }
-        rosterAthleteRenameID = nil
     }
 
     private func applyTemplate() {
@@ -3040,21 +2938,15 @@ struct FloorGridView: View {
         let context = LAContext()
         var error: NSError?
         if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
-            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Authentication is required to perform this destructive action.") { success, evaluateError in
+            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Authentication is required to perform this destructive action.") { success, _ in
                 DispatchQueue.main.async {
                     if success {
                         self.performDeleteSelectedAthlete()
-                    } else if let laError = evaluateError as? LAError, laError.code == .userCancel {
-                        // Ignore user cancellation
-                    } else {
-                        self.showingAuthenticationFailedError = true
                     }
                 }
             }
         } else {
-            DispatchQueue.main.async {
-                self.showingAuthenticationError = true
-            }
+            performDeleteSelectedAthlete()
         }
     }
 
@@ -3067,14 +2959,8 @@ struct FloorGridView: View {
     private func undoLastMove() {
         guard let previousPositions = undoStack.popLast() else { return }
         store.mutateFormation(id: formationID) { formation in
-            // ⚡ Bolt: Cache array index lookups in an O(1) dictionary outside the loop to avoid O(N^2) math during undos.
-            // Using `uniquingKeysWith` prevents fatal crashes if duplicate athlete IDs ever slip into malformed data.
-            let placementLookup = Dictionary(
-                formation.placements.enumerated().map { ($0.element.athleteID, $0.offset) },
-                uniquingKeysWith: { first, _ in first }
-            )
             for entry in previousPositions {
-                if let placementIndex = placementLookup[entry.id] {
+                if let placementIndex = formation.placementIndex(for: entry.id) {
                     formation.placements[placementIndex].position = entry.position
                 }
             }
@@ -3124,7 +3010,7 @@ struct FloorGridView: View {
             transitionPaths: transitionPaths,
             endpointMarkers: endpointMarkers,
             collisionIDs: collisionSummary.ids,
-            pathCollisionIDs: effectivePathCollisionIDs,
+            pathCollisionIDs: cachedPathCollisionIDs,
             startFormationColor: transitionStartColor,
             endFormationColor: transitionEndColor,
             transitionProgress: player?.progress ?? 0
@@ -3178,361 +3064,6 @@ struct FloorGridView: View {
 private struct SnapResult {
     let translation: CGPoint
     let guides: [AlignmentGuideRenderItem]
-}
-
-private struct CoachCardEditorSheet: View {
-    let formation: Formation?
-    var onSave: (_ plainText: String, _ richTextRTF: Data?, _ drawingData: Data?) -> Void
-    var onDone: () -> Void
-
-    @State private var attributedText = NSAttributedString(string: "")
-    @State private var selectedRange = NSRange(location: 0, length: 0)
-    @State private var strokeColor: UIColor = .systemBlue
-    @State private var strokeWidth: CGFloat = 8
-    @State private var useEraser = false
-    @State private var canvasView = PKCanvasView()
-    @State private var loadedInitialState = false
-
-    private let fontSizes: [CGFloat] = [14, 16, 18, 22, 28]
-    private let markerPalette: [UIColor] = [.systemBlue, .systemRed, .systemGreen, .systemOrange, .systemPurple, .black]
-
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                formattingBar
-                divider
-                drawingBar
-                divider
-
-                ZStack {
-                    RichTextEditorView(
-                        attributedText: $attributedText,
-                        selectedRange: $selectedRange
-                    )
-                    .padding(12)
-
-                    CoachCardDrawingCanvas(
-                        canvasView: $canvasView,
-                        isEraserEnabled: $useEraser,
-                        strokeColor: $strokeColor,
-                        strokeWidth: $strokeWidth
-                    )
-                    .allowsHitTesting(true)
-                }
-            }
-            .navigationTitle("Coach Card")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        persistChanges()
-                        onDone()
-                    }
-                }
-            }
-            .onAppear {
-                guard loadedInitialState == false else { return }
-                loadInitialState()
-                loadedInitialState = true
-            }
-        }
-    }
-
-    private var divider: some View {
-        Rectangle()
-            .fill(Color.secondary.opacity(0.15))
-            .frame(height: 1)
-    }
-
-    private var formattingBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                formatButton {
-                    Text("B").font(.system(size: 14, weight: .bold))
-                } action: {
-                    applyFontTrait(.traitBold)
-                }
-                formatButton {
-                    Text("I").font(.system(size: 14, weight: .regular)).italic()
-                } action: {
-                    applyFontTrait(.traitItalic)
-                }
-                formatButton {
-                    Text("U").font(.system(size: 14, weight: .medium)).underline()
-                } action: {
-                    toggleUnderline()
-                }
-
-                Picker("Text size", selection: Binding(
-                    get: { activeFontSize() },
-                    set: { applyFontSize($0) }
-                )) {
-                    ForEach(fontSizes, id: \.self) { size in
-                        Text("\(Int(size))").tag(size)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 220)
-
-                ForEach(markerPalette, id: \.self) { color in
-                    Button {
-                        applyTextColor(color)
-                    } label: {
-                        Circle()
-                            .fill(Color(color))
-                            .frame(width: 24, height: 24)
-                            .overlay(Circle().stroke(Color.white.opacity(0.5), lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Set text color")
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-        }
-        .background(Color(.secondarySystemBackground))
-    }
-
-    private var drawingBar: some View {
-        HStack(spacing: 10) {
-            Toggle(isOn: $useEraser) {
-                Text(useEraser ? "Eraser" : "Marker")
-                    .font(.caption.weight(.semibold))
-            }
-            .toggleStyle(.button)
-
-            Slider(value: $strokeWidth, in: 2...20, step: 1) {
-                Text("Stroke Width")
-            } minimumValueLabel: {
-                Text("2")
-                    .font(.caption2)
-            } maximumValueLabel: {
-                Text("20")
-                    .font(.caption2)
-            }
-
-            ForEach(markerPalette, id: \.self) { color in
-                Button {
-                    strokeColor = color
-                } label: {
-                    Circle()
-                        .fill(Color(color))
-                        .frame(width: 20, height: 20)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white.opacity(strokeColor == color ? 1 : 0.4), lineWidth: strokeColor == color ? 2 : 1)
-                        )
-                }
-                .buttonStyle(.plain)
-            }
-
-            Button("Clear Drawing", role: .destructive) {
-                canvasView.drawing = PKDrawing()
-            }
-            .font(.caption.weight(.semibold))
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color(.secondarySystemBackground))
-    }
-
-    private func formatButton<Label: View>(@ViewBuilder label: () -> Label, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            label()
-                .frame(width: 32, height: 32)
-                .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func loadInitialState() {
-        if let rtfData = formation?.formattedNotesRTF,
-           let text = try? NSAttributedString(
-               data: rtfData,
-               options: [.documentType: NSAttributedString.DocumentType.rtf],
-               documentAttributes: nil
-           ) {
-            attributedText = text
-        } else {
-            attributedText = NSAttributedString(
-                string: formation?.notes ?? "",
-                attributes: [
-                    .font: UIFont.systemFont(ofSize: 16),
-                    .foregroundColor: UIColor.label
-                ]
-            )
-        }
-
-        if let drawingData = formation?.notesDrawingData,
-           let drawing = try? PKDrawing(data: drawingData) {
-            canvasView.drawing = drawing
-        }
-    }
-
-    private func persistChanges() {
-        let wholeRange = NSRange(location: 0, length: attributedText.length)
-        let mutable = NSMutableAttributedString(attributedString: attributedText)
-        mutable.enumerateAttribute(.font, in: wholeRange) { value, range, _ in
-            if value == nil {
-                mutable.addAttribute(.font, value: UIFont.systemFont(ofSize: 16), range: range)
-            }
-        }
-
-        let rtfData = try? mutable.data(
-            from: NSRange(location: 0, length: mutable.length),
-            documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
-        )
-
-        let drawingData = canvasView.drawing.bounds.isEmpty ? nil : canvasView.drawing.dataRepresentation()
-        onSave(mutable.string, rtfData, drawingData)
-    }
-
-    private func selectedRangeOrAllText() -> NSRange {
-        if selectedRange.length > 0 {
-            return selectedRange
-        }
-        return NSRange(location: 0, length: attributedText.length)
-    }
-
-    private func applyFontTrait(_ trait: UIFontDescriptor.SymbolicTraits) {
-        guard attributedText.length > 0 else { return }
-        let range = selectedRangeOrAllText()
-        let mutable = NSMutableAttributedString(attributedString: attributedText)
-        mutable.enumerateAttribute(.font, in: range) { value, subrange, _ in
-            let baseFont = (value as? UIFont) ?? UIFont.systemFont(ofSize: 16)
-            var traits = baseFont.fontDescriptor.symbolicTraits
-            if traits.contains(trait) {
-                traits.remove(trait)
-            } else {
-                traits.insert(trait)
-            }
-            let descriptor = baseFont.fontDescriptor.withSymbolicTraits(traits) ?? baseFont.fontDescriptor
-            let updated = UIFont(descriptor: descriptor, size: baseFont.pointSize)
-            mutable.addAttribute(.font, value: updated, range: subrange)
-        }
-        attributedText = mutable
-    }
-
-    private func toggleUnderline() {
-        guard attributedText.length > 0 else { return }
-        let range = selectedRangeOrAllText()
-        let mutable = NSMutableAttributedString(attributedString: attributedText)
-        mutable.enumerateAttribute(.underlineStyle, in: range) { value, subrange, _ in
-            let current = (value as? NSNumber)?.intValue ?? 0
-            let updated = current == 0 ? NSUnderlineStyle.single.rawValue : 0
-            mutable.addAttribute(.underlineStyle, value: updated, range: subrange)
-        }
-        attributedText = mutable
-    }
-
-    private func applyFontSize(_ size: CGFloat) {
-        guard attributedText.length > 0 else { return }
-        let range = selectedRangeOrAllText()
-        let mutable = NSMutableAttributedString(attributedString: attributedText)
-        mutable.enumerateAttribute(.font, in: range) { value, subrange, _ in
-            let font = (value as? UIFont) ?? UIFont.systemFont(ofSize: 16)
-            let descriptor = font.fontDescriptor
-            let updated = UIFont(descriptor: descriptor, size: size)
-            mutable.addAttribute(.font, value: updated, range: subrange)
-        }
-        attributedText = mutable
-    }
-
-    private func activeFontSize() -> CGFloat {
-        guard attributedText.length > 0, selectedRange.location < attributedText.length else {
-            return fontSizes[1]
-        }
-        let attrs = attributedText.attributes(at: selectedRange.location, effectiveRange: nil)
-        if let font = attrs[.font] as? UIFont {
-            let nearest = fontSizes.min(by: { abs($0 - font.pointSize) < abs($1 - font.pointSize) })
-            return nearest ?? fontSizes[1]
-        }
-        return fontSizes[1]
-    }
-
-    private func applyTextColor(_ color: UIColor) {
-        guard attributedText.length > 0 else { return }
-        let mutable = NSMutableAttributedString(attributedString: attributedText)
-        mutable.addAttribute(.foregroundColor, value: color, range: selectedRangeOrAllText())
-        attributedText = mutable
-    }
-}
-
-private struct RichTextEditorView: UIViewRepresentable {
-    @Binding var attributedText: NSAttributedString
-    @Binding var selectedRange: NSRange
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
-    }
-
-    func makeUIView(context: Context) -> UITextView {
-        let textView = UITextView()
-        textView.delegate = context.coordinator
-        textView.backgroundColor = .clear
-        textView.isScrollEnabled = true
-        textView.allowsEditingTextAttributes = true
-        textView.autocorrectionType = .yes
-        textView.font = .systemFont(ofSize: 16)
-        textView.textContainerInset = UIEdgeInsets(top: 12, left: 8, bottom: 80, right: 8)
-        textView.attributedText = attributedText
-        return textView
-    }
-
-    func updateUIView(_ uiView: UITextView, context: Context) {
-        if uiView.attributedText.isEqual(to: attributedText) == false {
-            uiView.attributedText = attributedText
-        }
-        if uiView.selectedRange != selectedRange, selectedRange.location <= uiView.attributedText.length {
-            uiView.selectedRange = selectedRange
-        }
-    }
-
-    final class Coordinator: NSObject, UITextViewDelegate {
-        var parent: RichTextEditorView
-
-        init(_ parent: RichTextEditorView) {
-            self.parent = parent
-        }
-
-        func textViewDidChange(_ textView: UITextView) {
-            parent.attributedText = textView.attributedText
-        }
-
-        func textViewDidChangeSelection(_ textView: UITextView) {
-            parent.selectedRange = textView.selectedRange
-        }
-    }
-}
-
-private struct CoachCardDrawingCanvas: UIViewRepresentable {
-    @Binding var canvasView: PKCanvasView
-    @Binding var isEraserEnabled: Bool
-    @Binding var strokeColor: UIColor
-    @Binding var strokeWidth: CGFloat
-
-    func makeUIView(context: Context) -> PKCanvasView {
-        canvasView.backgroundColor = .clear
-        canvasView.isOpaque = false
-        canvasView.drawingPolicy = .anyInput
-        canvasView.alwaysBounceVertical = true
-        canvasView.minimumZoomScale = 1
-        canvasView.maximumZoomScale = 1
-        applyTool()
-        return canvasView
-    }
-
-    func updateUIView(_ uiView: PKCanvasView, context: Context) {
-        applyTool()
-    }
-
-    private func applyTool() {
-        if isEraserEnabled {
-            canvasView.tool = PKEraserTool(.vector)
-        } else {
-            canvasView.tool = PKInkingTool(.marker, color: strokeColor, width: strokeWidth)
-        }
-    }
 }
 
 // MARK: - Previews
