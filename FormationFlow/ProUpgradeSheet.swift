@@ -7,6 +7,7 @@ struct ProUpgradeSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var purchaseState: PurchaseState = .idle
+    @State private var isRestoring = false
 
     enum PurchaseState {
         case idle
@@ -84,14 +85,28 @@ struct ProUpgradeSheet: View {
                 )
             }
 
-            Button("Restore Purchase") {
+            Button {
                 Task {
+                    isRestoring = true
                     await entitlementManager.restore()
+                    isRestoring = false
                     if entitlementManager.isPro { dismiss() }
+                }
+            } label: {
+                if isRestoring {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle())
+                } else {
+                    Text("Restore Purchase")
                 }
             }
             .font(.footnote)
             .foregroundColor(.secondary)
+            .disabled({
+                if case .loading = purchaseState { return true }
+                return isRestoring
+            }())
+            .accessibilityLabel(isRestoring ? "Restoring Purchase" : "Restore Purchase")
 
             Text("One-time purchase. No subscription.")
                 .font(.caption)
