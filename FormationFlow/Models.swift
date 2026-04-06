@@ -587,7 +587,7 @@ struct TransitionEndpointMarkerRenderItem: Identifiable, Equatable, Hashable {
     }
 
     static let rainbowColors: [Color] = [
-        .red, .orange, .yellow, .green, .cyan, .blue, .indigo, .purple
+        .cyan, .orange, .yellow, .green, .mint, .blue, .indigo, .purple
     ]
 
     static func rainbowColor(forIndex index: Int) -> Color {
