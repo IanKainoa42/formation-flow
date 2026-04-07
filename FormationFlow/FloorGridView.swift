@@ -1124,6 +1124,20 @@ struct FloorGridView: View {
                             .padding(.init(top: 0, leading: 12, bottom: 12, trailing: 0))
                     }
                 }
+                .overlay(alignment: .bottomTrailing) {
+                    if zoomScale != 1.0 || canvasPanOffset != .zero {
+                        Button(action: resetView) {
+                            Label("Reset View", systemImage: "arrow.counterclockwise")
+                                .font(.subheadline.weight(.medium))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                        }
+                        .foregroundColor(.primary)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .padding(.trailing, 12)
+                        .padding(.bottom, isPhoneLayout && !isPhoneLandscape ? 92 : 12)
+                    }
+                }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
