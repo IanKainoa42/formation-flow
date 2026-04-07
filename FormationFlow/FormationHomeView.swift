@@ -1,4 +1,5 @@
 import SwiftUI
+import LocalAuthentication
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -17,6 +18,8 @@ struct RoutineWorkspaceView: View {
     @State private var splitViewVisibility: NavigationSplitViewVisibility = .all
     @State private var previewReferenceMode: PreviewReferenceMode = .outOfSelected
     @State private var showingResetConfirmation = false
+    @State private var showingAuthFailedAlert = false
+    @State private var authErrorMessage = ""
     @State private var showingCompactFormationPicker = false
     @State private var renamingFormationID: UUID?
     @State private var formationNameDraft = ""
@@ -151,6 +154,11 @@ struct RoutineWorkspaceView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This clears the roster, formations, notes, and transition data, then starts over with one empty formation.")
+        }
+        .alert("Authentication Failed", isPresented: $showingAuthFailedAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(authErrorMessage)
         }
         .alert("Rename Formation", isPresented: showingRenamePrompt) {
             TextField("Formation name", text: $formationNameDraft)
@@ -995,7 +1003,30 @@ struct RoutineWorkspaceView: View {
     }
 
     private func authenticateAndResetRoutine() {
-        resetRoutine()
+        let context = LAContext()
+        var error: NSError?
+
+        if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
+            let reason = "Authentication is required to perform sensitive destructive actions and securely reset the routine."
+            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, authError in
+                DispatchQueue.main.async {
+                    if success {
+                        self.resetRoutine()
+                    } else {
+                        if let error = authError as? LAError, error.code == .userCancel {
+                            // User cancelled, safely ignore
+                        } else {
+                            self.authErrorMessage = "Authentication failed."
+                            self.showingAuthFailedAlert = true
+                        }
+                    }
+                }
+            }
+        } else {
+            // Securely deny the action if authentication is not available
+            authErrorMessage = "Device authentication is not available or not configured."
+            showingAuthFailedAlert = true
+        }
     }
 
     private func resetRoutine() {
