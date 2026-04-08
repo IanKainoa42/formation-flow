@@ -865,7 +865,7 @@ struct RoutineWorkspaceView: View {
                 }
 
                 Button(role: .destructive) {
-                    deleteCurrentRoutine()
+                    authenticateAndDeleteRoutine()
                 } label: {
                     Label("Delete Routine", systemImage: "trash")
                 }
@@ -927,6 +927,33 @@ struct RoutineWorkspaceView: View {
     private func deleteCurrentRoutine() {
         store.deleteRoutine(id: store.workspace.activeRoutineID)
         selectedFormationID = store.routine.formations.first?.id
+    }
+
+    private func authenticateAndDeleteRoutine() {
+        let context = LAContext()
+        var error: NSError?
+
+        if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
+            let reason = "Authentication is required to perform sensitive destructive actions and securely delete the routine."
+            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, authError in
+                DispatchQueue.main.async {
+                    if success {
+                        self.deleteCurrentRoutine()
+                    } else {
+                        if let error = authError as? LAError, error.code == .userCancel {
+                            // User cancelled, safely ignore
+                        } else {
+                            self.authErrorMessage = "Authentication failed."
+                            self.showingAuthFailedAlert = true
+                        }
+                    }
+                }
+            }
+        } else {
+            // Securely deny the action if authentication is not available
+            authErrorMessage = "Device authentication is not available or not configured."
+            showingAuthFailedAlert = true
+        }
     }
 
     // MARK: - Actions
