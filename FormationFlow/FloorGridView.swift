@@ -983,8 +983,11 @@ struct FloorGridView: View {
                         guard selectedAthleteIDs.count >= 2 else { return }
                         if rotationStartPositions.isEmpty {
                             // Capture starting positions for undo + rotation reference
-                            let selected = renderedAthletes.filter { selectedAthleteIDs.contains($0.id) }
-                            rotationStartPositions = Dictionary(uniqueKeysWithValues: selected.map { ($0.id, $0.position) })
+                            rotationStartPositions = Dictionary(
+                                uniqueKeysWithValues: renderedAthletes.compactMap {
+                                    selectedAthleteIDs.contains($0.id) ? ($0.id, $0.position) : nil
+                                }
+                            )
                         }
                         applyRotation(angle: value.radians)
                     }
@@ -1976,9 +1979,9 @@ struct FloorGridView: View {
                         focusedEndpoint = currentFormationEndpoint
                         guard dragDistance >= dragActivationDistance else { return }
                         dragStartPositions = Dictionary(
-                            uniqueKeysWithValues: renderedAthletes
-                                .filter { selectedAthleteIDs.contains($0.id) }
-                                .map { ($0.id, $0.position) }
+                            uniqueKeysWithValues: renderedAthletes.compactMap {
+                                selectedAthleteIDs.contains($0.id) ? ($0.id, $0.position) : nil
+                            }
                         )
                         isDraggingAthletes = true
                         handleFormationDragContinued(value, cellSize: cellSize)
@@ -2000,9 +2003,9 @@ struct FloorGridView: View {
                         focusedEndpoint = nil
                         guard dragDistance >= dragActivationDistance else { return }
                         dragStartPositions = Dictionary(
-                            uniqueKeysWithValues: renderedAthletes
-                                .filter { selectedAthleteIDs.contains($0.id) }
-                                .map { ($0.id, $0.position) }
+                            uniqueKeysWithValues: renderedAthletes.compactMap {
+                                selectedAthleteIDs.contains($0.id) ? ($0.id, $0.position) : nil
+                            }
                         )
                         isDraggingAthletes = true
                         handleFormationDragContinued(value, cellSize: cellSize)
@@ -2412,9 +2415,9 @@ struct FloorGridView: View {
         let snapResult = AlignmentSnapEngine.snap(
             translation: rawTranslation,
             startingPositions: [endpointDragStartPosition],
-            otherAthletePositions: editableAthletes
-                .filter { $0.id != selectedAthleteID }
-                .map(\.position)
+            otherAthletePositions: editableAthletes.compactMap {
+                $0.id != selectedAthleteID ? $0.position : nil
+            }
         )
         activeAlignmentGuides = snapResult.guides
 
@@ -2657,9 +2660,9 @@ struct FloorGridView: View {
         let result = AlignmentSnapEngine.snap(
             translation: translation,
             startingPositions: Array(dragStartPositions.values),
-            otherAthletePositions: renderedAthletes
-                .filter { !selectedAthleteIDs.contains($0.id) }
-                .map(\.position),
+            otherAthletePositions: renderedAthletes.compactMap {
+                !selectedAthleteIDs.contains($0.id) ? $0.position : nil
+            },
             skipLinearGuides: renderedAthletes.count > 20
         )
         return SnapResult(translation: result.translation, guides: result.guides)
