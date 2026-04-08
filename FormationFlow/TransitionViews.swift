@@ -113,6 +113,8 @@ enum TransportControls {
         }
         .buttonStyle(.bordered)
         .accessibilityLabel("Edit Path")
+        .accessibilityHint("Open the inspector to adjust the path curve and hold duration")
+        .help("Edit movement path and timing")
     }
 
     @ViewBuilder
