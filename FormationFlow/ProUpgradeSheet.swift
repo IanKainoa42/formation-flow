@@ -52,13 +52,15 @@ struct ProUpgradeSheet: View {
                 Button {
                     Task { await handlePurchase() }
                 } label: {
-                    if case .loading = purchaseState {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                    } else {
+                    HStack(spacing: 8) {
+                        if case .loading = purchaseState {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        }
                         let buttonText = {
+                            if case .loading = purchaseState {
+                                return "Upgrading..."
+                            }
                             if case .error(_) = purchaseState {
                                 return "Try Again — $4.99"
                             }
@@ -66,9 +68,9 @@ struct ProUpgradeSheet: View {
                         }()
                         Text(buttonText)
                             .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
                     }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.orange)
@@ -93,11 +95,12 @@ struct ProUpgradeSheet: View {
                     if entitlementManager.isPro { dismiss() }
                 }
             } label: {
-                if isRestoring {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle())
-                } else {
-                    Text("Restore Purchase")
+                HStack(spacing: 6) {
+                    if isRestoring {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle())
+                    }
+                    Text(isRestoring ? "Restoring Purchase..." : "Restore Purchase")
                 }
             }
             .font(.footnote)
