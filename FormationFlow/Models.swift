@@ -672,13 +672,17 @@ enum AlignmentSnapEngine {
         }
         let candidates = alignmentGuideCandidates(otherAthletePositions: otherAthletePositions)
         let verticalMatch = bestSnapMatch(
-            currentValues: movingPositions.map(\.x),
-            candidates: candidates.filter { $0.orientation == .vertical },
+            movingPositions: movingPositions,
+            valueExtractor: \.x,
+            candidates: candidates,
+            targetOrientation: .vertical,
             threshold: threshold
         )
         let horizontalMatch = bestSnapMatch(
-            currentValues: movingPositions.map(\.y),
-            candidates: candidates.filter { $0.orientation == .horizontal },
+            movingPositions: movingPositions,
+            valueExtractor: \.y,
+            candidates: candidates,
+            targetOrientation: .horizontal,
             threshold: threshold
         )
         let adjustedTranslation = CGPoint(
@@ -779,13 +783,17 @@ enum AlignmentSnapEngine {
     }
 
     private static func bestSnapMatch(
-        currentValues: [CGFloat],
+        movingPositions: [CGPoint],
+        valueExtractor: KeyPath<CGPoint, CGFloat>,
         candidates: [SnapGuideCandidate],
+        targetOrientation: AlignmentGuideOrientation,
         threshold: CGFloat
     ) -> SnapMatch? {
-        currentValues
-            .flatMap { currentValue in
-                candidates.compactMap { candidate -> SnapMatch? in
+        movingPositions
+            .flatMap { position in
+                let currentValue = position[keyPath: valueExtractor]
+                return candidates.compactMap { candidate -> SnapMatch? in
+                    guard candidate.orientation == targetOrientation else { return nil }
                     let delta = candidate.value - currentValue
                     guard abs(delta) <= threshold else { return nil }
                     return SnapMatch(
