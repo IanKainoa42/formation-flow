@@ -33,6 +33,8 @@ struct RoutineWorkspaceView: View {
     @State private var isSwapMode = false
     @State private var triggerDeleteAthlete = false
     @State private var isIPadPortrait = false
+    @State private var showingFormationDeleteConfirmation = false
+    @State private var formationsToDelete: [UUID] = []
 
     private var isCompactLayout: Bool {
         let isPhone: Bool
@@ -154,6 +156,20 @@ struct RoutineWorkspaceView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This clears the roster, formations, notes, and transition data, then starts over with one empty formation.")
+        }
+        .confirmationDialog(
+            formationsToDelete.count > 1 ? "Delete \(formationsToDelete.count) formations?" : "Delete formation?",
+            isPresented: $showingFormationDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                deleteFormations(ids: formationsToDelete)
+            }
+            Button("Cancel", role: .cancel) {
+                formationsToDelete = []
+            }
+        } message: {
+            Text("This will remove the selected formations and their transitions. This cannot be undone.")
         }
         .alert("Authentication Failed", isPresented: $showingAuthFailedAlert) {
             Button("OK", role: .cancel) { }
@@ -990,7 +1006,8 @@ struct RoutineWorkspaceView: View {
     }
 
     private func requestFormationDeletion(_ formationIDs: [UUID]) {
-        deleteFormations(ids: formationIDs)
+        formationsToDelete = formationIDs
+        showingFormationDeleteConfirmation = true
     }
 
     private func deleteSelectedFormation() {
