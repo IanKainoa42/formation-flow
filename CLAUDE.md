@@ -50,9 +50,9 @@ codesign --force --sign "Apple Distribution: IAN KAINOA RICHARDSON (WC46K49VFA)"
   /tmp/FormationFlowIPA/Payload/FormationFlow.app
 cd /tmp/FormationFlowIPA && zip -r /tmp/FormationFlow.ipa Payload
 
-# 4. Upload (API key stored in 1Password as "App Store Connect API Key")
+# 4. Upload (preferred key 8APDGY74BZ, fallback 6H24WZ2RQ5; both on issuer below)
 xcrun altool --upload-app --type ios --file /tmp/FormationFlow.ipa \
-  --apiKey 6H24WZ2RQ5 --apiIssuer 7642a25e-aca7-402d-8b7d-de18dfef1756
+  --apiKey 8APDGY74BZ --apiIssuer 7642a25e-aca7-402d-8b7d-de18dfef1756
 ```
 
 ## Architecture
