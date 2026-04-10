@@ -718,6 +718,7 @@ struct FloorGridView: View {
                             Label("Reset View", systemImage: "arrow.counterclockwise")
                         }
                         .buttonStyle(.bordered)
+                        .accessibilityLabel("Reset View")
                         .help("Reset zoom and pan back to the default view")
                     }
 
@@ -769,6 +770,7 @@ struct FloorGridView: View {
                 Button(action: resetView) {
                     Label("Reset View", systemImage: "arrow.counterclockwise")
                 }
+                .accessibilityLabel("Reset View")
             }
 
             Button(action: undoLastMove) {
@@ -1137,6 +1139,7 @@ struct FloorGridView: View {
                         }
                         .foregroundColor(.primary)
                         .background(.ultraThinMaterial, in: Capsule())
+                        .accessibilityLabel("Reset View")
                         .padding(.trailing, 12)
                         .padding(.bottom, isPhoneLayout && !isPhoneLandscape ? 92 : 12)
                     }
@@ -1315,6 +1318,7 @@ struct FloorGridView: View {
             Button(action: resetView) {
                 Label("Reset View", systemImage: "arrow.counterclockwise")
             }
+            .accessibilityLabel("Reset View")
         }
 
         Button(action: undoLastMove) {
@@ -1417,6 +1421,7 @@ struct FloorGridView: View {
                 Button(action: resetView) {
                     Label("Reset View", systemImage: "arrow.counterclockwise")
                 }
+                .accessibilityLabel("Reset View")
             }
 
             Button(action: undoLastMove) {
