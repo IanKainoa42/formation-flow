@@ -37,3 +37,8 @@
 **Learning:** Inconsistent or confusing icons on core actions (like toggling transition paths) cause friction. Furthermore, icon-only buttons require explicit `.accessibilityHint` descriptions, especially when placed in toolbars where space is constrained and labels are omitted.
 
 **Action:** Ensure standard SF Symbols (like `eye`/`eye.slash`) are used instead of text characters for toggles, and always accompany icon-only buttons with `.accessibilityHint` to clarify their purpose for VoiceOver users.
+## 2026-04-11 - [Disabled Button Context Tooltips]
+
+**Learning:** When interactive buttons are disabled using the `.disabled()` modifier, VoiceOver simply announces them as "Dimmed". Users have no context on *why* the button is unavailable or how to enable it. This causes confusion and friction, particularly on actions like "Play routine" or "Next formation" where prerequisites aren't immediately obvious.
+
+**Action:** Whenever using `.disabled()` on interactive components, always attach a context-aware `.help()` modifier that provides a clear explanation. For example: `.help(disabled ? "Already at the last formation" : "Go to the next formation")`. This improves VoiceOver context and provides tooltips on iPadOS/macOS.
