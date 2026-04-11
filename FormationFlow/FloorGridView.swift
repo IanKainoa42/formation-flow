@@ -1,5 +1,6 @@
 import Combine
 import SwiftUI
+import LocalAuthentication
 import UIKit
 
 enum SwapFormationTarget: String, CaseIterable {
@@ -75,6 +76,8 @@ struct FloorGridView: View {
     @State private var shareResultMessage = ""
     @State private var showingShareResult = false
     @State private var cachedPathCollisionIDs: Set<UUID> = []
+    @State private var showingAuthFailedAlert = false
+    @State private var authErrorMessage = ""
 
     private var formationIndex: Int? {
         store.formationIndex(id: formationID)
@@ -449,11 +452,16 @@ struct FloorGridView: View {
             titleVisibility: .visible
         ) {
             Button("Delete Athlete", role: .destructive) {
-                deleteSelectedAthlete()
+                authenticateAndDeleteAthlete()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This removes the athlete from the roster, every formation, and all transitions. This cannot be undone.")
+        }
+        .alert("Authentication Failed", isPresented: $showingAuthFailedAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(authErrorMessage)
         }
         .confirmationDialog(
             "Delete waypoint?",
@@ -534,7 +542,7 @@ struct FloorGridView: View {
         .onChange(of: triggerDeleteAthlete) { _, shouldDelete in
             if shouldDelete {
                 triggerDeleteAthlete = false
-                deleteSelectedAthlete()
+                authenticateAndDeleteAthlete()
             }
         }
         .confirmationDialog(
@@ -1211,7 +1219,7 @@ struct FloorGridView: View {
                 formationID: formationID,
                 selectedAthleteIDs: $selectedAthleteIDs,
                 isCompactLayout: true,
-                onDeleteAthlete: { deleteSelectedAthlete() },
+                onDeleteAthlete: { authenticateAndDeleteAthlete() },
                 player: player,
                 startFormationID: startFormationID,
                 endFormationID: endFormationID,
@@ -2735,6 +2743,33 @@ struct FloorGridView: View {
     private func endSwapMode() {
         isSwapMode = false
         swapSourceAthleteID = nil
+    }
+
+    private func authenticateAndDeleteAthlete() {
+        let context = LAContext()
+        var error: NSError?
+
+        if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
+            let reason = "Authentication is required to perform sensitive destructive actions and securely delete the athlete."
+            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, authError in
+                DispatchQueue.main.async {
+                    if success {
+                        self.deleteSelectedAthlete()
+                    } else {
+                        if let error = authError as? LAError, error.code == .userCancel {
+                            // User cancelled, safely ignore
+                        } else {
+                            self.authErrorMessage = "Authentication failed."
+                            self.showingAuthFailedAlert = true
+                        }
+                    }
+                }
+            }
+        } else {
+            // Securely deny the action if authentication is not available
+            authErrorMessage = "Device authentication is not available or not configured."
+            showingAuthFailedAlert = true
+        }
     }
 
     private func deleteSelectedAthlete() {
