@@ -714,29 +714,38 @@ enum AlignmentSnapEngine {
             contentsOf: courtGuideCandidates(length: CourtConstants.height, orientation: .horizontal)
         )
 
-        let xValues = Array(Set(otherAthletePositions.map { round($0.x) }))
-        let yValues = Array(Set(otherAthletePositions.map { round($0.y) }))
+        var seenX = Set<CGFloat>()
+        var seenY = Set<CGFloat>()
 
-        candidates.append(
-            contentsOf: xValues.map {
-                SnapGuideCandidate(
-                    orientation: .vertical,
-                    value: $0,
-                    emphasis: .strong,
-                    priority: 130
+        // ⚡ Bolt Performance Optimization:
+        // By replacing `Array(Set(otherAthletePositions.map { ... }))` with a single loop
+        // and using `Set.insert(_:).inserted`, we eliminate multiple O(N) intermediate
+        // heap allocations (map -> Set -> Array) during high-frequency drag alignment evaluations.
+        // Expected impact: Removes memory overhead per evaluation tick on large arrays.
+        for position in otherAthletePositions {
+            let x = round(position.x)
+            if seenX.insert(x).inserted {
+                candidates.append(
+                    SnapGuideCandidate(
+                        orientation: .vertical,
+                        value: x,
+                        emphasis: .strong,
+                        priority: 130
+                    )
                 )
             }
-        )
-        candidates.append(
-            contentsOf: yValues.map {
-                SnapGuideCandidate(
-                    orientation: .horizontal,
-                    value: $0,
-                    emphasis: .strong,
-                    priority: 130
+            let y = round(position.y)
+            if seenY.insert(y).inserted {
+                candidates.append(
+                    SnapGuideCandidate(
+                        orientation: .horizontal,
+                        value: y,
+                        emphasis: .strong,
+                        priority: 130
+                    )
                 )
             }
-        )
+        }
 
         return candidates
     }
@@ -766,18 +775,19 @@ enum AlignmentSnapEngine {
         )
 
         // Panel center guides at the midpoint of each 8ft panel (4, 12, 20, ...)
-        let panelCenters = stride(from: CGFloat(4), to: length, by: 8)
-            .filter { abs($0 - center) > 0.5 }
-        candidates.append(
-            contentsOf: panelCenters.map {
-                SnapGuideCandidate(
-                    orientation: orientation,
-                    value: $0,
-                    emphasis: .subtle,
-                    priority: 100
-                )
-            }
-        )
+        // ⚡ Bolt Performance Optimization:
+        // Combined `.filter` and `.map` into a single `.compactMap` call.
+        // Expected impact: Eliminates one O(N) array allocation.
+        let panelCenterCandidates = stride(from: CGFloat(4), to: length, by: 8).compactMap { panelCenter -> SnapGuideCandidate? in
+            guard abs(panelCenter - center) > 0.5 else { return nil }
+            return SnapGuideCandidate(
+                orientation: orientation,
+                value: panelCenter,
+                emphasis: .subtle,
+                priority: 100
+            )
+        }
+        candidates.append(contentsOf: panelCenterCandidates)
 
         return candidates
     }
