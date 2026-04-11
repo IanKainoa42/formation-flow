@@ -126,7 +126,7 @@ enum TransportControls {
         .buttonStyle(.bordered)
         .disabled(disabled)
         .accessibilityLabel("Previous formation")
-        .help("Go to the previous formation")
+        .help(disabled ? "Already at the first formation" : "Go to the previous formation")
     }
 
     @ViewBuilder
@@ -138,7 +138,7 @@ enum TransportControls {
         .buttonStyle(.bordered)
         .disabled(disabled)
         .accessibilityLabel("Next formation")
-        .help("Go to the next formation")
+        .help(disabled ? "Already at the last formation" : "Go to the next formation")
     }
 }
 

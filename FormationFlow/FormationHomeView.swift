@@ -391,6 +391,7 @@ struct RoutineWorkspaceView: View {
                     }
                     .disabled(store.routine.formations.count < 2)
                     .accessibilityLabel("Play routine")
+                    .help(store.routine.formations.count < 2 ? "Add at least 2 formations to play the routine" : "Play the full routine")
 
                     EditButton()
                     Button(action: addFormation) {
@@ -462,6 +463,7 @@ struct RoutineWorkspaceView: View {
                 }
                 .disabled(store.routine.formations.count < 2)
                 .accessibilityLabel("Play routine")
+                .help(store.routine.formations.count < 2 ? "Add at least 2 formations to play the routine" : "Play the full routine")
 
                 EditButton()
                 Button(action: addFormation) {
