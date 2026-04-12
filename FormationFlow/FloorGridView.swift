@@ -1622,11 +1622,7 @@ struct FloorGridView: View {
                 titleVisibility: .visible
             ) {
                 Button("Delete", role: .destructive) {
-                    for id in rosterDeleteIDs {
-                        store.deleteAthlete(id: id)
-                    }
-                    selectedAthleteIDs.subtract(rosterDeleteIDs)
-                    rosterDeleteIDs = []
+                    authenticateAndDeleteRosterAthletes()
                 }
                 Button("Cancel", role: .cancel) {
                     rosterDeleteIDs = []
@@ -2770,6 +2766,41 @@ struct FloorGridView: View {
             authErrorMessage = "Device authentication is not available or not configured."
             showingAuthFailedAlert = true
         }
+    }
+
+    private func authenticateAndDeleteRosterAthletes() {
+        let context = LAContext()
+        var error: NSError?
+
+        if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
+            let reason = "Authentication is required to perform sensitive destructive actions and securely delete athletes."
+            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, authError in
+                DispatchQueue.main.async {
+                    if success {
+                        self.deleteRosterAthletes()
+                    } else {
+                        if let error = authError as? LAError, error.code == .userCancel {
+                            // User cancelled, safely ignore
+                        } else {
+                            self.authErrorMessage = "Authentication failed."
+                            self.showingAuthFailedAlert = true
+                        }
+                    }
+                }
+            }
+        } else {
+            // Securely deny the action if authentication is not available
+            authErrorMessage = "Device authentication is not available or not configured."
+            showingAuthFailedAlert = true
+        }
+    }
+
+    private func deleteRosterAthletes() {
+        for id in rosterDeleteIDs {
+            store.deleteAthlete(id: id)
+        }
+        selectedAthleteIDs.subtract(rosterDeleteIDs)
+        rosterDeleteIDs = []
     }
 
     private func deleteSelectedAthlete() {
