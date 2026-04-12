@@ -1294,7 +1294,9 @@ final class RoutineStore: ObservableObject {
         duplicated.name = nextRoutineName()
 
         // Give new UUIDs to formations to avoid sharing IDs across routines
-        let idMap = Dictionary(uniqueKeysWithValues: duplicated.formations.map { ($0.id, UUID()) })
+        let idMap = duplicated.formations.reduce(into: [UUID: UUID]()) { result, formation in
+            result[formation.id] = UUID()
+        }
         for i in duplicated.formations.indices {
             if let newID = idMap[duplicated.formations[i].id] {
                 duplicated.formations[i].id = newID
@@ -2129,7 +2131,7 @@ struct PathCalculations {
             )
         }
 
-        let maxEffectiveTime = timings.map(\.effectiveTime).max() ?? 1
+        let maxEffectiveTime = timings.max(by: { $0.effectiveTime < $1.effectiveTime })?.effectiveTime ?? 1
         let effectiveCounts = max(counts, 0.5)
 
         // Sample each athlete's position at each time step
