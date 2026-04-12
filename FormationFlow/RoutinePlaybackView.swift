@@ -53,6 +53,7 @@ struct RoutinePlaybackView: View {
                         }
                         .padding(16)
                         .accessibilityLabel("Close")
+                        .help("Close routine playback")
 
                         Spacer()
                     }
@@ -92,6 +93,7 @@ struct RoutinePlaybackView: View {
                     }
                     .accessibilityAddTraits(.isButton)
                     .accessibilityHint("Jumps to the next formation")
+                    .help("Jumps to the next formation")
 
                 Spacer()
 
@@ -138,6 +140,7 @@ struct RoutinePlaybackView: View {
                 .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
                 .accessibilityValue(player.isPlaying ? "Playing" : "Paused")
                 .accessibilityHint(player.isPlaying ? "Pause the routine playback" : "Play the routine animation")
+                .help(player.isPlaying ? "Pause the routine playback" : "Play the routine animation")
 
                 // Reset
                 Button(action: player.reset) {
@@ -147,6 +150,7 @@ struct RoutinePlaybackView: View {
                 .buttonStyle(.bordered)
                 .accessibilityLabel("Reset playback")
                 .accessibilityHint("Jump back to the start of the routine")
+                .help("Jump back to the start of the routine")
 
                 Spacer()
 
@@ -176,6 +180,7 @@ struct RoutinePlaybackView: View {
                 .accessibilityLabel("Toggle trails")
                 .accessibilityValue(player.showTrail ? "On" : "Off")
                 .accessibilityHint(player.showTrail ? "Hide movement trails" : "Show movement trails for the athletes")
+                .help(player.showTrail ? "Hide movement trails" : "Show movement trails for the athletes")
             }
         }
         .padding(.horizontal, 14)
