@@ -178,11 +178,11 @@ If your task says "optimize", "cache", "reduce allocations", "O(1)", "O(N)", or 
 
 **Bolt agent sessions are specifically included.** Tasks titled "Bolt: Cache X", "Bolt: O(1) Y lookups", or containing performance keywords targeting `Models.swift` must stop. Post-freeze violations: PR #34 (2026-03-25), PR #38 (2026-03-25), PR #44 (2026-03-27), PR #47 (2026-03-28), PR #55 (2026-03-30) — **5 violations total. The freeze is absolute.**
 
-- **`FormationFlow/FloorGridView.swift`** — The main canvas editor. Touched 19 times in 14 days (6 Bolt optimization passes, 3 feature additions, 3 Palette passes, 2 security/other, 5 additional). Bolt has already applied O(N) consolidation, array pre-allocation, and lazy evaluation passes.
+- **`FormationFlow/FloorGridView.swift`** — The main canvas editor. Touched 22+ times total (9 Bolt optimization passes, 3 feature additions, 3 Palette passes, 2 security/other, 5+ additional). Post-freeze Bolt violations: PR #81 ("Bolt: Optimize center of mass calculation" — Apr 6), PR #84 ("Bolt: Optimize rotation gesture center of mass" — Apr 7), PR #87 ("Bolt: Optimize gesture array allocations" — Apr 8). This is **9 Bolt passes total** — the file is structurally optimized. Bolt has already applied O(N) consolidation, array pre-allocation, lazy evaluation, and center-of-mass caching.
 - **`FormationFlow/FormationHomeView.swift`** — The top-level home/navigation view. Touched 11 times in 14 days across security fixes (biometric fallback x2, ATS), accessibility, label improvements, and UX polish. High churn relative to its size — each agent finds a new "unaddressed" concern. Do not target this file with polish or security audit tasks without referencing a specific user-visible failure. Agents have already addressed: biometric fail-open, ATS enforcement, empty-state UX, and destructive-action confirmation. Comment "Task rejected: FormationHomeView.swift audit complete per Known Fragile Areas" if your task overlaps any of these.
 - **`FormationFlow/RoutinePlaybackView.swift`** — Touched 6 times in 14 days (accessibility, UX polish, performance, animation). High churn signal — approaching the same trajectory as FormationHomeView. Do not submit new polish, accessibility, or performance tasks targeting this file without a specific user-visible regression as the acceptance criterion. Comment "Task rejected: RoutinePlaybackView.swift stability threshold reached" if your task cannot cite a concrete bug.
 
-**Stability rule for FloorGridView.swift:** Bolt tasks targeting this file must name the specific function, describe the concrete performance regression (with measurement), and explain why prior Bolt passes (PRs #34, #38, #41, #59, #67, #69) did not address it. If you cannot answer all three, output: "Task rejected: FloorGridView.swift Bolt quota reached — prior 6 passes already applied. Provide profiler evidence to unlock."
+**Stability rule for FloorGridView.swift:** Bolt tasks targeting this file must name the specific function, describe the concrete performance regression (with measurement), and explain why prior Bolt passes (PRs #34, #38, #41, #59, #67, #69, #81, #84, #87) did not address it. If you cannot answer all three, output: "Task rejected: FloorGridView.swift Bolt quota reached — 9 passes already applied. Provide profiler evidence (Instruments trace) to unlock."
 
 ## Known Fixed Security Issues
 
@@ -194,10 +194,13 @@ Do NOT re-file these as security problems — they have already been resolved:
 
 Before staging any commit, delete all intermediate patch artifacts:
 - `*.orig` files (e.g., `SomeView.swift.orig`)
+- `*.patch` files
 - `patch.diff` or any `*.diff` files
-- Temp Swift files not in the Xcode project (e.g., `test_auth.swift` — this file was committed in PR #35 and should be removed)
+- Root-level `.sh` scripts (e.g., `patch2.sh`, `patch_confirmation.sh` — committed in PR #92)
+- Root-level `.py` scripts (e.g., `patch_file.py`, `patch_file2.py` — committed in PR #92)
+- Temp Swift files not in the Xcode project (e.g., `test_auth.swift` — PR #35)
 
-These are intermediate tools, not source code, and must not be committed.
+All of the above are now in `.gitignore`. Do not use `git add -f` — stage by specific path only. Violations: PR #35 (`test_auth.swift`), PR #92 (4 shell/Python scripts).
 
 ## SwiftUI Accessibility: Slider Anti-Pattern
 

@@ -31,8 +31,13 @@ fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
 
-# Agent artifact cleanup — mechanical enforcement (Jules committed test_auth.swift in PR #48)
+# Agent artifact cleanup — mechanical enforcement (Jules committed test_auth.swift in PR #48; patch*.sh + patch_file*.py in PR #92)
 *.orig
+*.patch
 patch*.diff
 *.diff
 test_auth.swift
+# Root-level .sh and .py intermediates Jules creates (legitimate scripts live in fastlane/)
+/patch*.sh
+/patch_file*.py
+/*.py
