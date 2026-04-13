@@ -176,19 +176,40 @@ All positions use **floor feet** (not pixels). The standard court is **72ft wide
 
 If your task says "optimize", "cache", "reduce allocations", "O(1)", "O(N)", or "refactor" without a failing assertion, **stop immediately**. Comment: "Task rejected: Models.swift is locked per Known Fragile Areas."
 
-**Bolt agent sessions are specifically included.** Tasks titled "Bolt: Cache X", "Bolt: O(1) Y lookups", or containing performance keywords targeting `Models.swift` must stop. Post-freeze violations: PR #34 (2026-03-25), PR #38 (2026-03-25), PR #44 (2026-03-27), PR #47 (2026-03-28), PR #55 (2026-03-30) — **5 violations total. The freeze is absolute.**
+**Bolt and Palette agent sessions are specifically included.** Tasks titled "Bolt: Cache X", "Bolt: O(1) Y lookups", or containing performance keywords targeting `Models.swift` must stop. Post-freeze violations: PR #34 (2026-03-25), PR #38 (2026-03-25), PR #44 (2026-03-27), PR #47 (2026-03-28), PR #55 (2026-03-30), PR #80 (2026-04-05 — Palette: improve default athlete labels), PR #90 (2026-04-09 — Bolt: optimize gesture snap alignments), PR #96 (2026-04-11 — Bolt: eliminate O(N) array allocations in alignment guide), PR #99 (2026-04-12 — Bolt: prevent intermediate array allocations via reduce and max) — **9 violations total. The freeze is absolute. Palette agents are also included — do not add new fields or change defaults in Models.swift.**
 
-- **`FormationFlow/FloorGridView.swift`** — The main canvas editor. Touched 22+ times total (9 Bolt optimization passes, 3 feature additions, 3 Palette passes, 2 security/other, 5+ additional). Post-freeze Bolt violations: PR #81 ("Bolt: Optimize center of mass calculation" — Apr 6), PR #84 ("Bolt: Optimize rotation gesture center of mass" — Apr 7), PR #87 ("Bolt: Optimize gesture array allocations" — Apr 8). This is **9 Bolt passes total** — the file is structurally optimized. Bolt has already applied O(N) consolidation, array pre-allocation, lazy evaluation, and center-of-mass caching.
+- **`FormationFlow/FloorGridView.swift`** — The main canvas editor. Touched 25+ times total (9 Bolt optimization passes, 3 feature additions, 3 Palette passes, 5 Sentinel security passes, 5+ additional). Post-freeze violations — Bolt: PR #81 (Apr 6, center of mass), PR #84 (Apr 7, rotation gesture), PR #87 (Apr 8, gesture array allocations); Sentinel: PR #82 (Apr 6, biometric error handling), PR #97 (Apr 11, biometric for athlete deletion), PR #100 (Apr 12, biometric for bulk roster deletion). This is **9 Bolt passes + 3 Sentinel passes post-freeze** — the file is structurally optimized and all biometric operations have been implemented. Bolt has already applied O(N) consolidation, array pre-allocation, lazy evaluation, and center-of-mass caching. Sentinel has already gated all destructive operations in this file (see Known Completed Biometric Audit below).
 - **`FormationFlow/FormationHomeView.swift`** — The top-level home/navigation view. Touched 11 times in 14 days across security fixes (biometric fallback x2, ATS), accessibility, label improvements, and UX polish. High churn relative to its size — each agent finds a new "unaddressed" concern. Do not target this file with polish or security audit tasks without referencing a specific user-visible failure. Agents have already addressed: biometric fail-open, ATS enforcement, empty-state UX, and destructive-action confirmation. Comment "Task rejected: FormationHomeView.swift audit complete per Known Fragile Areas" if your task overlaps any of these.
 - **`FormationFlow/RoutinePlaybackView.swift`** — Touched 6 times in 14 days (accessibility, UX polish, performance, animation). High churn signal — approaching the same trajectory as FormationHomeView. Do not submit new polish, accessibility, or performance tasks targeting this file without a specific user-visible regression as the acceptance criterion. Comment "Task rejected: RoutinePlaybackView.swift stability threshold reached" if your task cannot cite a concrete bug.
 
 **Stability rule for FloorGridView.swift:** Bolt tasks targeting this file must name the specific function, describe the concrete performance regression (with measurement), and explain why prior Bolt passes (PRs #34, #38, #41, #59, #67, #69, #81, #84, #87) did not address it. If you cannot answer all three, output: "Task rejected: FloorGridView.swift Bolt quota reached — 9 passes already applied. Provide profiler evidence (Instruments trace) to unlock."
+
+**Sentinel tasks targeting FloorGridView.swift** must demonstrate a specific unprotected destructive operation not already covered by the biometric audit (see Known Completed Biometric Audit below). All standard destructive actions in this file have been gated. Post: "Task rejected: FloorGridView.swift biometric audit complete per Known Fragile Areas. Name the specific unprotected operation to unlock."
 
 ## Known Fixed Security Issues
 
 Do NOT re-file these as security problems — they have already been resolved:
 
 - **`fastlane/Fastfile` hardcoded API secrets** — Removed in PR #48 (2026-03-28). Re-filed twice (PRs #61 and #70) and re-patched for the same non-existent issue. The file currently uses `ENV[...]` for all App Store Connect credentials. **Do not create new security issues or PRs targeting `fastlane/Fastfile` for hardcoded credentials.** Verified clean as of PR #70 (2026-04-02).
+
+### Known Completed Biometric Audit (Sentinel — Apr 2026)
+
+Sentinel ran 10 consecutive security PRs (#75–#100, Apr 3–12 2026) auditing all destructive operations. The following are **already protected with biometric authentication**. Do NOT create new Sentinel tasks for these:
+
+| Operation | PR | File | Date |
+|-----------|-----|------|------|
+| Hardcoded API key removal | #75 | fastlane/Fastfile | Apr 3 |
+| Biometric fallback + ATS | #76 | FormationHomeView.swift | Apr 4 |
+| Biometric failure alert | #79 | FormationHomeView.swift | Apr 5 |
+| Silent biometric failure fix | #82 | FloorGridView.swift | Apr 6 |
+| Biometric for Routine Reset | #85 | FormationHomeView.swift | Apr 7 |
+| Biometric for Delete Routine | #88 | FormationHomeView.swift | Apr 8 |
+| App Switcher privacy overlay | #91 | FormationFlowApp.swift | Apr 9 |
+| Biometric for Formation deletion | #94 | FormationHomeView.swift | Apr 10 |
+| Biometric for athlete deletion | #97 | FloorGridView.swift | Apr 11 |
+| Biometric for bulk roster deletion | #100 | FloorGridView.swift | Apr 12 |
+
+**Scope rule for new Sentinel tasks:** Must name a specific destructive operation NOT in the table above, with the exact file and function. Generic: "audit FormationFlow for security issues" = Sentinel will re-examine all of the above and open duplicate PRs. Required format: "Add biometric auth to [function] in [file]. Done when: Face ID prompt appears before [specific action]."
 
 ## Commit Hygiene
 
