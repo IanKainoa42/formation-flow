@@ -292,6 +292,7 @@ struct TransitionInspectorSectionView: View {
                 }
                 .buttonStyle(.bordered)
                 .disabled(!hasCustomPaths)
+                .help(!hasCustomPaths ? "No custom paths to reset" : "Reset all paths to default")
             }
             Text("\(startFormationName) \u{2192} \(endFormationName)")
                 .font(.subheadline)

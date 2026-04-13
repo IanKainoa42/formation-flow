@@ -92,6 +92,7 @@ struct PortraitActionBar: View {
                 .controlSize(.small)
                 .disabled(undoDisabled)
                 .accessibilityLabel("Undo move")
+                .help(undoDisabled ? "Nothing to undo" : "Undo the last move")
 
                 if hasTransition {
                     Button(action: onTogglePaths) {

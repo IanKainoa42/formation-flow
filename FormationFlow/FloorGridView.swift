@@ -785,6 +785,7 @@ struct FloorGridView: View {
                 Label("Undo Move", systemImage: "arrow.uturn.backward")
             }
             .disabled(undoStack.isEmpty)
+            .help(undoStack.isEmpty ? "Nothing to undo" : "Undo the last move")
         } label: {
             compactOverflowMenuLabel
         }
@@ -1310,11 +1311,13 @@ struct FloorGridView: View {
             Label("Move Earlier", systemImage: "arrow.up")
         }
         .disabled(idx == 0)
+        .help(idx == 0 ? "Already at the first formation" : "Move formation earlier")
 
         Button(action: { store.moveFormationLater(id: formationID) }) {
             Label("Move Later", systemImage: "arrow.down")
         }
         .disabled(idx >= store.routine.formations.count - 1)
+        .help(idx >= store.routine.formations.count - 1 ? "Already at the last formation" : "Move formation later")
 
         Divider()
 
@@ -1333,6 +1336,7 @@ struct FloorGridView: View {
             Label("Undo Move", systemImage: "arrow.uturn.backward")
         }
         .disabled(undoStack.isEmpty)
+        .help(undoStack.isEmpty ? "Nothing to undo" : "Undo the last move")
 
         Divider()
 
@@ -1436,6 +1440,7 @@ struct FloorGridView: View {
                 Label("Undo Move", systemImage: "arrow.uturn.backward")
             }
             .disabled(undoStack.isEmpty)
+            .help(undoStack.isEmpty ? "Nothing to undo" : "Undo the last move")
         } label: {
             Image(systemName: "ellipsis.circle.fill")
                 .frame(width: 30, height: 30)
