@@ -764,6 +764,7 @@ struct RoutineWorkspaceView: View {
             Label("Move Earlier", systemImage: "arrow.up")
         }
         .disabled(index == 0)
+        .help(index == 0 ? "Already at the first formation" : "Move formation earlier")
         
         Button {
             store.moveFormationLater(id: formation.id)
@@ -771,6 +772,7 @@ struct RoutineWorkspaceView: View {
             Label("Move Later", systemImage: "arrow.down")
         }
         .disabled(index >= store.routine.formations.count - 1)
+        .help(index >= store.routine.formations.count - 1 ? "Already at the last formation" : "Move formation later")
 
         Divider()
 
@@ -800,6 +802,7 @@ struct RoutineWorkspaceView: View {
             Label("Move Earlier", systemImage: "arrow.up")
         }
         .disabled(index == 0)
+        .help(index == 0 ? "Already at the first formation" : "Move formation earlier")
         
         Button {
             store.moveFormationLater(id: formation.id)
@@ -807,6 +810,7 @@ struct RoutineWorkspaceView: View {
             Label("Move Later", systemImage: "arrow.down")
         }
         .disabled(index >= store.routine.formations.count - 1)
+        .help(index >= store.routine.formations.count - 1 ? "Already at the last formation" : "Move formation later")
 
         Divider()
 
@@ -901,6 +905,7 @@ struct RoutineWorkspaceView: View {
                     Label("Delete Routine", systemImage: "trash")
                 }
                 .disabled(store.workspace.routines.count <= 1)
+                .help(store.workspace.routines.count <= 1 ? "Cannot delete the only routine" : "Delete Routine")
             }
 
             Section {
