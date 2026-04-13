@@ -35,6 +35,7 @@ struct RoutineWorkspaceView: View {
     @State private var isIPadPortrait = false
     @State private var showingFormationDeleteConfirmation = false
     @State private var formationsToDelete: [UUID] = []
+    @State private var showingRoutineDeleteConfirmation = false
 
     private var isCompactLayout: Bool {
         let isPhone: Bool
@@ -170,6 +171,18 @@ struct RoutineWorkspaceView: View {
             }
         } message: {
             Text("This will remove the selected formations and their transitions. This cannot be undone.")
+        }
+        .confirmationDialog(
+            "Delete Routine?",
+            isPresented: $showingRoutineDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Routine", role: .destructive) {
+                authenticateAndDeleteRoutine()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will permanently delete the routine and all its formations. This cannot be undone.")
         }
         .alert("Authentication Failed", isPresented: $showingAuthFailedAlert) {
             Button("OK", role: .cancel) { }
@@ -883,7 +896,7 @@ struct RoutineWorkspaceView: View {
                 }
 
                 Button(role: .destructive) {
-                    authenticateAndDeleteRoutine()
+                    showingRoutineDeleteConfirmation = true
                 } label: {
                     Label("Delete Routine", systemImage: "trash")
                 }
