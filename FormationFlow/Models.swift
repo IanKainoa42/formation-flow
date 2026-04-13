@@ -479,10 +479,11 @@ struct TransitionSpec: Codable, Identifiable, Equatable, Hashable {
     }
 
     mutating func synchronize(athleteIDs: [UUID]) {
-        let lookup = Dictionary(
-            athleteTransitions.map { ($0.athleteID, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
+        let lookup = athleteTransitions.reduce(into: [UUID: AthleteTransition]()) { result, transition in
+            if result[transition.athleteID] == nil {
+                result[transition.athleteID] = transition
+            }
+        }
         athleteTransitions = athleteIDs.map { athleteID in
             lookup[athleteID] ?? AthleteTransition(athleteID: athleteID)
         }
@@ -1421,14 +1422,16 @@ final class RoutineStore: ObservableObject {
         else { return [] }
 
         let spec = transitionSpec(for: fromID, to: toID)
-        let endLookup = Dictionary(
-            routine.formations[toIndex].placements.map { ($0.athleteID, $0.position) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        let transitionLookup = Dictionary(
-            spec.athleteTransitions.map { ($0.athleteID, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
+        let endLookup = routine.formations[toIndex].placements.reduce(into: [UUID: CGPoint]()) { result, placement in
+            if result[placement.athleteID] == nil {
+                result[placement.athleteID] = placement.position
+            }
+        }
+        let transitionLookup = spec.athleteTransitions.reduce(into: [UUID: AthleteTransition]()) { result, transition in
+            if result[transition.athleteID] == nil {
+                result[transition.athleteID] = transition
+            }
+        }
 
         return routine.formations[fromIndex].placements.compactMap { placement in
             guard let endPosition = endLookup[placement.athleteID] else { return nil }
@@ -1571,10 +1574,11 @@ final class RoutineStore: ObservableObject {
         let orderedIDs = routine.roster.map(\.id)
 
         for formationIndex in routine.formations.indices {
-            var placementLookup = Dictionary(
-                routine.formations[formationIndex].placements.map { ($0.athleteID, $0) },
-                uniquingKeysWith: { first, _ in first }
-            )
+            var placementLookup = routine.formations[formationIndex].placements.reduce(into: [UUID: FormationPlacement]()) { result, placement in
+                if result[placement.athleteID] == nil {
+                    result[placement.athleteID] = placement
+                }
+            }
             routine.formations[formationIndex].placements = orderedIDs.compactMap { placementLookup.removeValue(forKey: $0) }
         }
 
@@ -1682,7 +1686,11 @@ final class RoutineStore: ObservableObject {
     }
 
     private func rebuildRosterLookup() {
-        rosterLookup = Dictionary(routine.roster.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        rosterLookup = routine.roster.reduce(into: [UUID: RosterAthlete]()) { result, athlete in
+            if result[athlete.id] == nil {
+                result[athlete.id] = athlete
+            }
+        }
     }
 
     private func reconcileRoutineShape() {
@@ -1692,10 +1700,11 @@ final class RoutineStore: ObservableObject {
 
         let rosterIDs = routine.roster.map(\.id)
         for index in routine.formations.indices {
-            var placementLookup = Dictionary(
-                routine.formations[index].placements.map { ($0.athleteID, $0) },
-                uniquingKeysWith: { first, _ in first }
-            )
+            var placementLookup = routine.formations[index].placements.reduce(into: [UUID: FormationPlacement]()) { result, placement in
+                if result[placement.athleteID] == nil {
+                    result[placement.athleteID] = placement
+                }
+            }
             routine.formations[index].placements = rosterIDs.enumerated().map { offset, athleteID in
                 placementLookup.removeValue(forKey: athleteID)
                     ?? FormationPlacement(
@@ -1710,21 +1719,22 @@ final class RoutineStore: ObservableObject {
     }
 
     private func rebuildFormationLookup() {
-        formationIndexLookup = Dictionary(
-            routine.formations.enumerated().map { ($0.element.id, $0.offset) },
-            uniquingKeysWith: { first, _ in first }
-        )
+        formationIndexLookup = routine.formations.enumerated().reduce(into: [UUID: Int]()) { result, element in
+            if result[element.element.id] == nil {
+                result[element.element.id] = element.offset
+            }
+        }
     }
 
     private func reconcileTransitionSpecs() {
         rebuildFormationLookup()
 
-        let existing = Dictionary(
-            routine.transitionSpecs.map {
-                (TransitionEdge(fromID: $0.fromFormationID, toID: $0.toFormationID), $0)
-            },
-            uniquingKeysWith: { first, _ in first }
-        )
+        let existing = routine.transitionSpecs.reduce(into: [TransitionEdge: TransitionSpec]()) { result, spec in
+            let edge = TransitionEdge(fromID: spec.fromFormationID, toID: spec.toFormationID)
+            if result[edge] == nil {
+                result[edge] = spec
+            }
+        }
 
         routine.transitionSpecs = routine.formations.indices.dropLast().map { index in
             let fromFormation = routine.formations[index]
@@ -1746,10 +1756,12 @@ final class RoutineStore: ObservableObject {
     }
 
     private func rebuildTransitionSpecLookup() {
-        transitionSpecIndexLookup = Dictionary(
-            routine.transitionSpecs.enumerated().map { (TransitionEdge(fromID: $0.element.fromFormationID, toID: $0.element.toFormationID), $0.offset) },
-            uniquingKeysWith: { first, _ in first }
-        )
+        transitionSpecIndexLookup = routine.transitionSpecs.enumerated().reduce(into: [TransitionEdge: Int]()) { result, element in
+            let edge = TransitionEdge(fromID: element.element.fromFormationID, toID: element.element.toFormationID)
+            if result[edge] == nil {
+                result[edge] = element.offset
+            }
+        }
     }
 }
 
@@ -2276,14 +2288,19 @@ final class TransitionPlayer: ObservableObject {
     }
 
     private func updateEndLookup() {
-        endLookup = Dictionary(endAthletes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        endLookup = endAthletes.reduce(into: [UUID: RenderedAthlete]()) { result, athlete in
+            if result[athlete.id] == nil {
+                result[athlete.id] = athlete
+            }
+        }
     }
 
     private func updateTransitionLookup() {
-        transitionLookup = Dictionary(
-            transitionSpec.athleteTransitions.map { ($0.athleteID, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
+        transitionLookup = transitionSpec.athleteTransitions.reduce(into: [UUID: AthleteTransition]()) { result, transition in
+            if result[transition.athleteID] == nil {
+                result[transition.athleteID] = transition
+            }
+        }
     }
 
     private func updateTimingCache() {

@@ -17,3 +17,8 @@
 **Learning:** When generating alignment guides continuously during a high-frequency drag gesture, the `Array(Set(collection.map { ... }))` pattern causes multiple heap allocations per frame because it maps an intermediate array, hashes it into an intermediate Set, and copies it back to a final array.
 
 **Action:** Replace map/Set/Array chaining with a single `for` loop combined with `Set.insert(_:).inserted`. This allows building unique collections directly without intermediate arrays, effectively eliminating redundant O(N) heap allocations while safely guaranteeing unique elements and improving rendering throughput.
+## 2026-04-13 - Eliminating O(N) Array Allocations in Dictionary Inits
+
+**Learning:** When generating Dictionaries from collections, chaining `.map { ... }` into `Dictionary(..., uniquingKeysWith:)` forces an intermediate `[(Key, Value)]` array allocation. This is redundant and harms performance in high-frequency functions.
+
+**Action:** Replace `Dictionary(collection.map { ... }, uniquingKeysWith:)` with `collection.reduce(into: [Key: Value]()) { ... }`. To preserve `uniquingKeysWith: { first, _ in first }` behavior, use `if result[key] == nil { result[key] = value }` inside the loop.
