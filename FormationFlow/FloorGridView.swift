@@ -478,7 +478,7 @@ struct FloorGridView: View {
             titleVisibility: .visible
         ) {
             Button("Delete Waypoint", role: .destructive) {
-                authenticateAndDeleteWaypoint()
+                deletePendingWaypoint()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -557,7 +557,7 @@ struct FloorGridView: View {
             titleVisibility: .visible
         ) {
             Button("Reset All Paths", role: .destructive) {
-                authenticateAndResetAllPaths()
+                resetAllPaths()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -2607,33 +2607,6 @@ struct FloorGridView: View {
         refreshTransitionFromStore()
     }
 
-    private func authenticateAndDeleteWaypoint() {
-        let context = LAContext()
-        var error: NSError?
-
-        if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
-            let reason = "Authentication is required to perform sensitive destructive actions and securely delete the waypoint."
-            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, authError in
-                DispatchQueue.main.async {
-                    if success {
-                        self.deletePendingWaypoint()
-                    } else {
-                        if let error = authError as? LAError, error.code == .userCancel {
-                            // User cancelled, safely ignore
-                        } else {
-                            self.authErrorMessage = "Authentication failed."
-                            self.showingAuthFailedAlert = true
-                        }
-                    }
-                }
-            }
-        } else {
-            // Securely deny the action if authentication is not available
-            authErrorMessage = "Device authentication is not available or not configured."
-            showingAuthFailedAlert = true
-        }
-    }
-
     private func deletePendingWaypoint() {
         guard
             let waypointID = pendingWaypointDeletionID,
@@ -2664,33 +2637,6 @@ struct FloorGridView: View {
             refreshTransitionFromStore()
         } else {
             showingResetAllPathsConfirmation = true
-        }
-    }
-
-    private func authenticateAndResetAllPaths() {
-        let context = LAContext()
-        var error: NSError?
-
-        if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
-            let reason = "Authentication is required to perform sensitive destructive actions and securely reset paths."
-            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, authError in
-                DispatchQueue.main.async {
-                    if success {
-                        self.resetAllPaths()
-                    } else {
-                        if let error = authError as? LAError, error.code == .userCancel {
-                            // User cancelled, safely ignore
-                        } else {
-                            self.authErrorMessage = "Authentication failed."
-                            self.showingAuthFailedAlert = true
-                        }
-                    }
-                }
-            }
-        } else {
-            // Securely deny the action if authentication is not available
-            authErrorMessage = "Device authentication is not available or not configured."
-            showingAuthFailedAlert = true
         }
     }
 
