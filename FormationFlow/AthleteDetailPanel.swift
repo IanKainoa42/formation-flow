@@ -799,7 +799,7 @@ struct SelectedAthleteSidebarView: View {
                         TransportControls.playPauseButton(player: player, size: 28)
                         TransportControls.loopButton(player: player, size: 28)
                         Spacer()
-                        TransportControls.swapButton(isActive: isSwapMode, size: 28, action: onSwap)
+                        TransportControls.swapButton(isActive: isSwapMode, size: 28, disabled: false, action: onSwap)
                     }
 
                     TransportControls.progressSlider(player: player)

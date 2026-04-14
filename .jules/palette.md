@@ -42,3 +42,9 @@
 **Learning:** When interactive buttons are disabled using the `.disabled()` modifier, VoiceOver simply announces them as "Dimmed". Users have no context on *why* the button is unavailable or how to enable it. This causes confusion and friction, particularly on actions like "Play routine" or "Next formation" where prerequisites aren't immediately obvious.
 
 **Action:** Whenever using `.disabled()` on interactive components, always attach a context-aware `.help()` modifier that provides a clear explanation. For example: `.help(disabled ? "Already at the last formation" : "Go to the next formation")`. This improves VoiceOver context and provides tooltips on iPadOS/macOS.
+
+## 2024-05-18 - [Reusable Component Disabled States]
+
+**Learning:** When appending the `.disabled()` modifier to a custom SwiftUI view component (e.g., `TransportControls.swapButton(...).disabled(!canSwap)`) at the call site, the component itself loses the ability to know it is disabled. This prevents the component from rendering a contextual `.help()` tooltip explaining *why* it is disabled. VoiceOver users simply hear "Dimmed" without explanation.
+
+**Action:** When creating reusable interactive components (`@ViewBuilder` functions or structs) that can be disabled, pass a `disabled: Bool` flag as a parameter instead of chaining the modifier later. Apply `.disabled(disabled)` internally so the component's internal `.help()` modifier can use that context to provide an appropriate tooltip.

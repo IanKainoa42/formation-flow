@@ -92,29 +92,31 @@ enum TransportControls {
     }
 
     @ViewBuilder
-    static func swapButton(isActive: Bool, size: CGFloat = 34, action: @escaping () -> Void) -> some View {
+    static func swapButton(isActive: Bool, size: CGFloat = 34, disabled: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: "arrow.triangle.2.circlepath")
                 .frame(width: size, height: size)
         }
         .buttonStyle(.bordered)
+        .disabled(disabled)
         .tint(isActive ? .blue : .secondary)
         .accessibilityLabel(isActive ? "Cancel Swap" : "Swap Position")
         .accessibilityValue(isActive ? "Active" : "Inactive")
         .accessibilityHint(isActive ? "Cancel the swap operation" : "Swap start or end positions between two athletes")
-        .help(isActive ? "Cancel the swap operation" : "Swap start or end positions between two athletes")
+        .help(disabled ? "Add athletes to swap their positions" : isActive ? "Cancel the swap operation" : "Swap start or end positions between two athletes")
     }
 
     @ViewBuilder
-    static func pathButton(size: CGFloat = 34, action: @escaping () -> Void) -> some View {
+    static func pathButton(size: CGFloat = 34, disabled: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
                 .frame(width: size, height: size)
         }
         .buttonStyle(.bordered)
+        .disabled(disabled)
         .accessibilityLabel("Edit Path")
         .accessibilityHint("Open the inspector to adjust the path curve and hold duration")
-        .help("Edit movement path and timing")
+        .help(disabled ? "Select a transition to edit its path" : "Edit movement path and timing")
     }
 
     @ViewBuilder
@@ -209,10 +211,8 @@ struct TransitionTransportSidebarView: View {
 
     private var actionButtons: some View {
         HStack(spacing: 12) {
-            TransportControls.swapButton(isActive: isSwapMode, action: onSwap)
-                .disabled(!canSwap)
-            TransportControls.pathButton(action: onPath)
-                .disabled(!canEditPath)
+            TransportControls.swapButton(isActive: isSwapMode, disabled: !canSwap, action: onSwap)
+            TransportControls.pathButton(disabled: !canEditPath, action: onPath)
         }
     }
 }
@@ -240,10 +240,8 @@ struct CompactTransitionPlaybackOverlayView: View {
                     .lineLimit(1)
                 Spacer()
                 TransportControls.loopButton(player: player, size: 30)
-                TransportControls.swapButton(isActive: isSwapMode, size: 30, action: onSwap)
-                    .disabled(!canSwap)
-                TransportControls.pathButton(size: 30, action: onPath)
-                    .disabled(!canEditPath)
+                TransportControls.swapButton(isActive: isSwapMode, size: 30, disabled: !canSwap, action: onSwap)
+                TransportControls.pathButton(size: 30, disabled: !canEditPath, action: onPath)
             }
 
             HStack(spacing: 10) {
@@ -324,11 +322,9 @@ struct CompactTransitionPlaybackRailView: View {
 
             // Swap and path buttons fill the full row width
             HStack(spacing: 8) {
-                TransportControls.swapButton(isActive: isSwapMode, size: 30, action: onSwap)
-                    .disabled(!canSwap)
+                TransportControls.swapButton(isActive: isSwapMode, size: 30, disabled: !canSwap, action: onSwap)
                     .frame(maxWidth: .infinity)
-                TransportControls.pathButton(size: 30, action: onPath)
-                    .disabled(!canEditPath)
+                TransportControls.pathButton(size: 30, disabled: !canEditPath, action: onPath)
                     .frame(maxWidth: .infinity)
             }
 
@@ -416,10 +412,8 @@ struct SidebarTransportView: View {
             .accessibilityLabel("Playback Speed")
 
             HStack(spacing: 8) {
-                TransportControls.swapButton(isActive: isSwapMode, size: 28, action: onSwap)
-                    .disabled(!canSwap)
-                TransportControls.pathButton(size: 28, action: onPath)
-                    .disabled(!canEditPath)
+                TransportControls.swapButton(isActive: isSwapMode, size: 28, disabled: !canSwap, action: onSwap)
+                TransportControls.pathButton(size: 28, disabled: !canEditPath, action: onPath)
             }
         }
     }
