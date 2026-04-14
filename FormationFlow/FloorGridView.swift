@@ -205,7 +205,10 @@ struct FloorGridView: View {
         let spec = store.transitionSpec(for: prevFormation.id, to: curFormation.id)
         let prevAthletes = store.renderedAthletes(for: prevFormation)
         let curAthletes = store.renderedAthletes(for: curFormation)
-        let curLookup = Dictionary(curAthletes.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        // ⚡ Bolt: Eliminate intermediate array allocation
+        let curLookup = curAthletes.reduce(into: [UUID: RenderedAthlete]()) { result, athlete in
+            if result[athlete.id] == nil { result[athlete.id] = athlete }
+        }
         return prevAthletes.compactMap { athlete in
             guard let end = curLookup[athlete.id] else { return nil }
             let transition = spec.athleteTransitions.first { $0.athleteID == athlete.id }
@@ -227,7 +230,10 @@ struct FloorGridView: View {
         let spec = store.transitionSpec(for: curFormation.id, to: nextFormation.id)
         let curAthletes = store.renderedAthletes(for: curFormation)
         let nextAthletes = store.renderedAthletes(for: nextFormation)
-        let nextLookup = Dictionary(nextAthletes.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        // ⚡ Bolt: Eliminate intermediate array allocation
+        let nextLookup = nextAthletes.reduce(into: [UUID: RenderedAthlete]()) { result, athlete in
+            if result[athlete.id] == nil { result[athlete.id] = athlete }
+        }
         return curAthletes.compactMap { athlete in
             guard let end = nextLookup[athlete.id] else { return nil }
             let transition = spec.athleteTransitions.first { $0.athleteID == athlete.id }
