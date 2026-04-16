@@ -853,7 +853,7 @@ struct FloorGridView: View {
                             }
                             .buttonStyle(.bordered)
                             .disabled(renderedAthletes.isEmpty)
-                            .help("Copy this formation's positions into a new formation")
+                            .help(renderedAthletes.isEmpty ? "Add athletes to copy to a new formation" : "Copy this formation's positions into a new formation")
                         }
                     } else {
                         HStack(spacing: 12) {
@@ -877,7 +877,7 @@ struct FloorGridView: View {
                             }
                             .buttonStyle(.bordered)
                             .disabled(renderedAthletes.isEmpty)
-                            .help("Copy this formation's positions into a new formation")
+                            .help(renderedAthletes.isEmpty ? "Add athletes to copy to a new formation" : "Copy this formation's positions into a new formation")
                         }
                     }
                 }
