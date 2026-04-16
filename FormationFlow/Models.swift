@@ -890,25 +890,30 @@ enum AlignmentSnapEngine {
             }
         }
 
-        return matches
-            .sorted {
-                if $0.alignedCount != $1.alignedCount {
-                    return $0.alignedCount > $1.alignedCount
-                }
-                if $0.stationaryCount != $1.stationaryCount {
-                    return $0.stationaryCount > $1.stationaryCount
-                }
-                if abs($0.averageDistance - $1.averageDistance) > 0.001 {
-                    return $0.averageDistance < $1.averageDistance
-                }
-                return $0.segmentLength > $1.segmentLength
+        let sortedMatches = matches.sorted {
+            if $0.alignedCount != $1.alignedCount {
+                return $0.alignedCount > $1.alignedCount
             }
-            .reduce(into: [LinearGuideMatch]()) { result, match in
-                guard !result.contains(where: { $0.membershipKey == match.membershipKey }) else { return }
-                result.append(match)
+            if $0.stationaryCount != $1.stationaryCount {
+                return $0.stationaryCount > $1.stationaryCount
             }
-            .prefix(3)
-            .map(\.guide)
+            if abs($0.averageDistance - $1.averageDistance) > 0.001 {
+                return $0.averageDistance < $1.averageDistance
+            }
+            return $0.segmentLength > $1.segmentLength
+        }
+
+        var uniqueGuides: [AlignmentGuideRenderItem] = []
+        var seenMemberships = Set<LinearGuideMembershipKey>()
+
+        for match in sortedMatches {
+            if seenMemberships.insert(match.membershipKey).inserted {
+                uniqueGuides.append(match.guide)
+                if uniqueGuides.count >= 3 { break }
+            }
+        }
+
+        return uniqueGuides
     }
 
     private static func guideSegment(

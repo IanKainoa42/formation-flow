@@ -22,3 +22,8 @@
 **Learning:** When generating Dictionaries from collections, chaining `.map { ... }` into `Dictionary(..., uniquingKeysWith:)` forces an intermediate `[(Key, Value)]` array allocation. This is redundant and harms performance in high-frequency functions.
 
 **Action:** Replace `Dictionary(collection.map { ... }, uniquingKeysWith:)` with `collection.reduce(into: [Key: Value]()) { ... }`. To preserve `uniquingKeysWith: { first, _ in first }` behavior, use `if result[key] == nil { result[key] = value }` inside the loop.
+## 2026-04-14 - Eliminating O(M^2) Array Containment Checks in High-Frequency Paths
+
+**Learning:** When filtering a collection using `.reduce` with a `.contains` check inside the accumulation block, the complexity inherently degrades to O(M^2) because each item must scan the growing results array. Chaining `.prefix` and `.map` further allocates redundant arrays.
+
+**Action:** Replace `matches.reduce(into:) { if !result.contains(where: ...) }.prefix(k).map(...)` with a single `for` loop that manages uniqueness via `Set.insert(_:).inserted`. This ensures O(1) membership lookups and permits an early `break` as soon as `k` items are found, preserving performance during continuous gesture processing.
