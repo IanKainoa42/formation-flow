@@ -164,7 +164,7 @@ struct RoutineWorkspaceView: View {
             titleVisibility: .visible
         ) {
             Button("Delete", role: .destructive) {
-                authenticateAndDeleteFormations(ids: formationsToDelete)
+                deleteFormations(ids: formationsToDelete)
             }
             Button("Cancel", role: .cancel) {
                 formationsToDelete = []
@@ -1033,33 +1033,6 @@ struct RoutineWorkspaceView: View {
     private func deleteSelectedFormation() {
         guard let selectedFormationID else { return }
         requestFormationDeletion([selectedFormationID])
-    }
-
-    private func authenticateAndDeleteFormations(ids: [UUID]) {
-        let context = LAContext()
-        var error: NSError?
-
-        if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
-            let reason = "Authentication is required to perform sensitive destructive actions and securely delete the formation."
-            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, authError in
-                DispatchQueue.main.async {
-                    if success {
-                        self.deleteFormations(ids: ids)
-                    } else {
-                        if let error = authError as? LAError, error.code == .userCancel {
-                            // User cancelled, safely ignore
-                        } else {
-                            self.authErrorMessage = "Authentication failed."
-                            self.showingAuthFailedAlert = true
-                        }
-                    }
-                }
-            }
-        } else {
-            // Securely deny the action if authentication is not available
-            authErrorMessage = "Device authentication is not available or not configured."
-            showingAuthFailedAlert = true
-        }
     }
 
     private func deleteFormations(ids: [UUID]) {
