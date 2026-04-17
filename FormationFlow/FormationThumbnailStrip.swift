@@ -13,7 +13,10 @@ struct FormationThumbnailStrip: View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
-                    ForEach(Array(zip(store.routine.formations.indices, store.routine.formations)), id: \.1.id) { index, formation in
+                    // ⚡ Bolt: Prevent intermediate array allocations by avoiding `Array(zip(...))` inside ForEach
+                    ForEach(store.routine.formations) { formation in
+                        let index = store.formationIndex(id: formation.id) ?? 0
+
                         if index > 0 {
                             Image(systemName: "chevron.right")
                                 .font(.caption2)
