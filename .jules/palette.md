@@ -48,3 +48,9 @@
 **Learning:** When appending the `.disabled()` modifier to a custom SwiftUI view component (e.g., `TransportControls.swapButton(...).disabled(!canSwap)`) at the call site, the component itself loses the ability to know it is disabled. This prevents the component from rendering a contextual `.help()` tooltip explaining *why* it is disabled. VoiceOver users simply hear "Dimmed" without explanation.
 
 **Action:** When creating reusable interactive components (`@ViewBuilder` functions or structs) that can be disabled, pass a `disabled: Bool` flag as a parameter instead of chaining the modifier later. Apply `.disabled(disabled)` internally so the component's internal `.help()` modifier can use that context to provide an appropriate tooltip.
+
+## 2024-05-18 - [Icon-Only Action Bar Buttons Tooltips]
+
+**Learning:** Icon-only buttons located in narrow toolbars or action bars (like `PortraitActionBar`) often lack text labels to save space. While they might have `.accessibilityLabel` modifiers for screen readers, they lack visual context for sighted pointer users on macOS/iPadOS, leading to a confusing user experience.
+
+**Action:** Ensure all icon-only buttons, especially those in action bars, include `.help()` modifiers. These modifiers should ideally mirror the button's `.accessibilityLabel` or provide a succinct description of the action.

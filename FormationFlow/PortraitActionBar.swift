@@ -69,6 +69,7 @@ struct PortraitActionBar: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .accessibilityLabel("Roster")
+                .help("Roster")
 
                 Button(action: onShowNotes) {
                     Image(systemName: "note.text")
@@ -76,6 +77,7 @@ struct PortraitActionBar: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .accessibilityLabel("Notes")
+                .help("Notes")
                 .overlay(alignment: .topTrailing) {
                     if hasNotes {
                         Circle()
@@ -103,6 +105,7 @@ struct PortraitActionBar: View {
                     .background(showTransitionPaths ? Color.accentColor.opacity(0.2) : .clear, in: RoundedRectangle(cornerRadius: 6))
                     .accessibilityLabel(showTransitionPaths ? "Hide paths" : "Show paths")
                     .accessibilityHint("Toggle visibility of transition paths")
+                    .help("Toggle visibility of transition paths")
                 }
             }
 
@@ -116,6 +119,7 @@ struct PortraitActionBar: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .accessibilityLabel("Share preview")
+                .help("Share preview")
             }
         }
         .padding(.horizontal, 8)
