@@ -37,6 +37,8 @@ struct AthleteInspectorView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Clear selection")
+                .accessibilityHint("Deselect this athlete")
+                .help("Clear selection")
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -332,6 +334,7 @@ struct TransitionInspectorSectionView: View {
                             .foregroundColor(.secondary)
                     }
                     .accessibilityLabel("Upgrade to Pro to adjust start delay")
+                    .help("Upgrade to Pro to adjust start delay")
                 }
             }
             Text(TransitionCountFormatting.label(transition.moveDelayCounts))
@@ -401,6 +404,7 @@ struct TransitionInspectorSectionView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Delete waypoint")
+                .help("Delete waypoint")
             }
 
             HStack {
@@ -846,6 +850,8 @@ struct SelectedAthleteSidebarView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Clear selection")
+                        .accessibilityHint("Deselect this athlete")
+                        .help("Clear selection")
                     }
 
                     AthleteRolePicker(
@@ -938,6 +944,8 @@ struct SelectedAthleteSidebarView: View {
                                         Image(systemName: "lock.fill")
                                             .foregroundColor(.secondary)
                                     }
+                                    .accessibilityLabel("Upgrade to Pro to adjust start delay")
+                                    .help("Upgrade to Pro to adjust start delay")
                                 }
                             }
                         }
