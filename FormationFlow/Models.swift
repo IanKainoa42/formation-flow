@@ -962,14 +962,49 @@ enum AlignmentSnapEngine {
     }
 
     private static func deduplicatedIntersections(_ points: [CGPoint]) -> [CGPoint] {
-        points.reduce(into: [CGPoint]()) { result, point in
-            let alreadyIncluded = result.contains {
-                hypot($0.x - point.x, $0.y - point.y) < 0.05
+        // ⚡ Bolt Performance Optimization:
+        // Replaced O(N^2) `.reduce` with `.contains` scan using a spatial hash grid.
+        // This reduces complexity to O(N) by only checking points in adjacent grid cells.
+        // Expected impact: Significant reduction in time complexity for proximity checks.
+        struct GridCell: Hashable {
+            let x: Int
+            let y: Int
+        }
+        let tolerance: CGFloat = 0.05
+        let toleranceSq = tolerance * tolerance
+        var grid: [GridCell: [CGPoint]] = [:]
+        var result: [CGPoint] = []
+
+        for point in points {
+            let cellX = Int(floor(point.x / tolerance))
+            let cellY = Int(floor(point.y / tolerance))
+
+            var alreadyIncluded = false
+            for cx in (cellX - 1)...(cellX + 1) {
+                for cy in (cellY - 1)...(cellY + 1) {
+                    let cell = GridCell(x: cx, y: cy)
+                    if let cellPoints = grid[cell] {
+                        for p in cellPoints {
+                            let dx = p.x - point.x
+                            let dy = p.y - point.y
+                            if dx * dx + dy * dy < toleranceSq {
+                                alreadyIncluded = true
+                                break
+                            }
+                        }
+                    }
+                    if alreadyIncluded { break }
+                }
+                if alreadyIncluded { break }
             }
+
             if !alreadyIncluded {
                 result.append(point)
+                let cell = GridCell(x: cellX, y: cellY)
+                grid[cell, default: []].append(point)
             }
         }
+        return result
     }
 
     private struct SnapGuideCandidate {
