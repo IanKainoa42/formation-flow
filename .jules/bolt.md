@@ -27,3 +27,8 @@
 **Learning:** When filtering a collection using `.reduce` with a `.contains` check inside the accumulation block, the complexity inherently degrades to O(M^2) because each item must scan the growing results array. Chaining `.prefix` and `.map` further allocates redundant arrays.
 
 **Action:** Replace `matches.reduce(into:) { if !result.contains(where: ...) }.prefix(k).map(...)` with a single `for` loop that manages uniqueness via `Set.insert(_:).inserted`. This ensures O(1) membership lookups and permits an early `break` as soon as `k` items are found, preserving performance during continuous gesture processing.
+## 2026-05-18 - Replacing O(N^2) Spatial Contains with O(N) Spatial Grid
+
+**Learning:** When checking a large list of points for geometric proximity (e.g., `hypot(dx, dy) < threshold`), iterating through the collection and checking `.contains` is O(N^2). This creates significant bottlenecks for larger sets of points.
+
+**Action:** Replace `points.reduce(into: []) { result, point in if !result.contains(where: { hypot... }) }` with an O(N) spatial grid. Convert each point's coordinates to grid cell coordinates (`Int(floor(x / tolerance))`) and only check the 9 neighboring cells. Use squared distance `dx * dx + dy * dy < tolerance * tolerance` instead of the more expensive `hypot` function.
