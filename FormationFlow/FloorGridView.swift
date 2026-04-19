@@ -2485,11 +2485,10 @@ struct FloorGridView: View {
 
         // ⚡ Bolt: Eliminate redundant `.map` and intermediate arrays in O(N) path
         // Compute center of mass of the selected group using a single pass
-        let positions = Array(rotationStartPositions.values)
-        let sum = positions.reduce(CGPoint.zero) { CGPoint(x: $0.x + $1.x, y: $0.y + $1.y) }
+        let sum = rotationStartPositions.values.reduce(CGPoint.zero) { CGPoint(x: $0.x + $1.x, y: $0.y + $1.y) }
         let center = CGPoint(
-            x: sum.x / CGFloat(positions.count),
-            y: sum.y / CGFloat(positions.count)
+            x: sum.x / CGFloat(rotationStartPositions.count),
+            y: sum.y / CGFloat(rotationStartPositions.count)
         )
 
         let cosA = cos(angle)
