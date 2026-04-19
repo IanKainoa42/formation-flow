@@ -789,6 +789,9 @@ struct SelectedAthleteSidebarView: View {
 
     @State private var labelDraft: String = ""
     @State private var showDeleteConfirmation = false
+    @State private var showClearPathConfirmation = false
+    @State private var showingAuthFailedAlert = false
+    @State private var authErrorMessage = ""
 
     private var selectedAthleteID: UUID? {
         selectedAthleteIDs.count == 1 ? selectedAthleteIDs.first : nil
@@ -953,15 +956,7 @@ struct SelectedAthleteSidebarView: View {
                         // Path
                         HStack(spacing: 8) {
                             Button {
-                                guard let selectedAthleteID, let startFormationID, let endFormationID else { return }
-                                store.mutateAthleteTransition(
-                                    from: startFormationID, to: endFormationID,
-                                    athleteID: selectedAthleteID
-                                ) { t in
-                                    t.pathControlPoint = nil
-                                    t.pathWaypoints = []
-                                }
-                                onRefreshTransition()
+                                showClearPathConfirmation = true
                             } label: {
                                 Label("Straight", systemImage: "line.diagonal")
                                     .frame(maxWidth: .infinity)
@@ -1026,5 +1021,61 @@ struct SelectedAthleteSidebarView: View {
         } message: {
             Text("This will remove them from all \(store.routine.formations.count) formations and their transitions. This cannot be undone.")
         }
+        .confirmationDialog(
+            "Reset path?",
+            isPresented: $showClearPathConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Reset Path", role: .destructive) {
+                authenticateAndClearPath()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will remove all custom curves and waypoints for this athlete. This cannot be undone.")
+        }
+        .alert("Authentication Failed", isPresented: $showingAuthFailedAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(authErrorMessage)
+        }
+    }
+
+    private func authenticateAndClearPath() {
+        let context = LAContext()
+        var error: NSError?
+
+        if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
+            let reason = "Authentication is required to perform sensitive destructive actions and securely reset the path."
+            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, authError in
+                DispatchQueue.main.async {
+                    if success {
+                        self.clearPath()
+                    } else {
+                        if let error = authError as? LAError, error.code == .userCancel {
+                            // User cancelled, safely ignore
+                        } else {
+                            self.authErrorMessage = "Authentication failed."
+                            self.showingAuthFailedAlert = true
+                        }
+                    }
+                }
+            }
+        } else {
+            // Securely deny the action if authentication is not available
+            authErrorMessage = "Device authentication is not available or not configured."
+            showingAuthFailedAlert = true
+        }
+    }
+
+    private func clearPath() {
+        guard let selectedAthleteID, let startFormationID, let endFormationID else { return }
+        store.mutateAthleteTransition(
+            from: startFormationID, to: endFormationID,
+            athleteID: selectedAthleteID
+        ) { t in
+            t.pathControlPoint = nil
+            t.pathWaypoints = []
+        }
+        onRefreshTransition()
     }
 }
