@@ -32,3 +32,9 @@
 **Learning:** When checking a large list of points for geometric proximity (e.g., `hypot(dx, dy) < threshold`), iterating through the collection and checking `.contains` is O(N^2). This creates significant bottlenecks for larger sets of points.
 
 **Action:** Replace `points.reduce(into: []) { result, point in if !result.contains(where: { hypot... }) }` with an O(N) spatial grid. Convert each point's coordinates to grid cell coordinates (`Int(floor(x / tolerance))`) and only check the 9 neighboring cells. Use squared distance `dx * dx + dy * dy < tolerance * tolerance` instead of the more expensive `hypot` function.
+
+## 2026-04-19 - [Eliminate Array wrapping around Dictionary.Values]
+
+**Learning:** When trying to eliminate intermediate arrays in `.reduce` operations, wrapping a Dictionary's `.values` in `Array()` still causes an O(N) heap allocation. Dictionary `.values` is already a Collection and can be reduced directly.
+
+**Action:** Reduce directly on `collection.values` instead of `Array(collection.values)` to maintain O(1) memory allocation in hot paths.
