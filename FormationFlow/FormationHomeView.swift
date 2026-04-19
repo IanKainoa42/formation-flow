@@ -1,5 +1,4 @@
 import SwiftUI
-import LocalAuthentication
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -18,8 +17,6 @@ struct RoutineWorkspaceView: View {
     @State private var splitViewVisibility: NavigationSplitViewVisibility = .all
     @State private var previewReferenceMode: PreviewReferenceMode = .outOfSelected
     @State private var showingResetConfirmation = false
-    @State private var showingAuthFailedAlert = false
-    @State private var authErrorMessage = ""
     @State private var showingCompactFormationPicker = false
     @State private var renamingFormationID: UUID?
     @State private var formationNameDraft = ""
@@ -152,7 +149,7 @@ struct RoutineWorkspaceView: View {
             titleVisibility: .visible
         ) {
             Button("Reset Routine", role: .destructive) {
-                authenticateAndResetRoutine()
+                resetRoutine()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -178,16 +175,11 @@ struct RoutineWorkspaceView: View {
             titleVisibility: .visible
         ) {
             Button("Delete Routine", role: .destructive) {
-                authenticateAndDeleteRoutine()
+                deleteCurrentRoutine()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This will permanently delete the routine and all its formations. This cannot be undone.")
-        }
-        .alert("Authentication Failed", isPresented: $showingAuthFailedAlert) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(authErrorMessage)
         }
         .alert("Rename Formation", isPresented: showingRenamePrompt) {
             TextField("Formation name", text: $formationNameDraft)
@@ -965,33 +957,6 @@ struct RoutineWorkspaceView: View {
         selectedFormationID = store.routine.formations.first?.id
     }
 
-    private func authenticateAndDeleteRoutine() {
-        let context = LAContext()
-        var error: NSError?
-
-        if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
-            let reason = "Authentication is required to perform sensitive destructive actions and securely delete the routine."
-            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, authError in
-                DispatchQueue.main.async {
-                    if success {
-                        self.deleteCurrentRoutine()
-                    } else {
-                        if let error = authError as? LAError, error.code == .userCancel {
-                            // User cancelled, safely ignore
-                        } else {
-                            self.authErrorMessage = "Authentication failed."
-                            self.showingAuthFailedAlert = true
-                        }
-                    }
-                }
-            }
-        } else {
-            // Securely deny the action if authentication is not available
-            authErrorMessage = "Device authentication is not available or not configured."
-            showingAuthFailedAlert = true
-        }
-    }
-
     // MARK: - Actions
 
     private func addFormation() {
@@ -1063,33 +1028,6 @@ struct RoutineWorkspaceView: View {
                 selectedFormationID = nil
                 compactNavigationPath.removeAll()
             }
-        }
-    }
-
-    private func authenticateAndResetRoutine() {
-        let context = LAContext()
-        var error: NSError?
-
-        if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
-            let reason = "Authentication is required to perform sensitive destructive actions and securely reset the routine."
-            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, authError in
-                DispatchQueue.main.async {
-                    if success {
-                        self.resetRoutine()
-                    } else {
-                        if let error = authError as? LAError, error.code == .userCancel {
-                            // User cancelled, safely ignore
-                        } else {
-                            self.authErrorMessage = "Authentication failed."
-                            self.showingAuthFailedAlert = true
-                        }
-                    }
-                }
-            }
-        } else {
-            // Securely deny the action if authentication is not available
-            authErrorMessage = "Device authentication is not available or not configured."
-            showingAuthFailedAlert = true
         }
     }
 
