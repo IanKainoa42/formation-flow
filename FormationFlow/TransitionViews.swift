@@ -38,6 +38,7 @@ enum TransportControls {
         }
         .buttonStyle(.bordered)
         .accessibilityLabel("Reset transition")
+        .accessibilityHint("Jump back to the start of the transition")
         .help("Jump back to the start of the transition")
     }
 
@@ -52,6 +53,7 @@ enum TransportControls {
         .buttonStyle(.borderedProminent)
         .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
         .accessibilityValue(player.isPlaying ? "Playing" : "Paused")
+        .accessibilityHint(player.isPlaying ? "Pause the transition preview" : "Play the transition animation")
         .help(player.isPlaying ? "Pause the transition preview" : "Play the transition animation")
     }
 
@@ -67,6 +69,7 @@ enum TransportControls {
         .tint(player.isLooping ? .accentColor : .secondary)
         .accessibilityLabel("Toggle loop")
         .accessibilityValue(player.isLooping ? "On" : "Off")
+        .accessibilityHint(player.isLooping ? "Stop looping — play once and stop" : "Loop — repeat the transition continuously")
         .help(player.isLooping ? "Stop looping — play once and stop" : "Loop — repeat the transition continuously")
     }
 
@@ -128,6 +131,7 @@ enum TransportControls {
         .buttonStyle(.bordered)
         .disabled(disabled)
         .accessibilityLabel("Previous formation")
+        .accessibilityHint(disabled ? "Already at the first formation" : "Go to the previous formation")
         .help(disabled ? "Already at the first formation" : "Go to the previous formation")
     }
 
@@ -140,6 +144,7 @@ enum TransportControls {
         .buttonStyle(.bordered)
         .disabled(disabled)
         .accessibilityLabel("Next formation")
+        .accessibilityHint(disabled ? "Already at the last formation" : "Go to the next formation")
         .help(disabled ? "Already at the last formation" : "Go to the next formation")
     }
 }
