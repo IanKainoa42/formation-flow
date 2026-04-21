@@ -1376,7 +1376,8 @@ final class RoutineStore: ObservableObject {
     }
 
     private func nextRoutineName() -> String {
-        let existing = Set(workspace.routines.map(\.name))
+        // ⚡ Bolt: Eliminate intermediate array allocation in Set init
+        let existing = workspace.routines.reduce(into: Set<String>()) { $0.insert($1.name) }
         var index = workspace.routines.count + 1
         var candidate = "Routine \(index)"
         while existing.contains(candidate) {
@@ -1689,7 +1690,8 @@ final class RoutineStore: ObservableObject {
     }
 
     private func nextRosterLabel() -> String {
-        let existing = Set(routine.roster.map(\.label))
+        // ⚡ Bolt: Eliminate intermediate array allocation in Set init
+        let existing = routine.roster.reduce(into: Set<String>()) { $0.insert($1.label) }
         var index = routine.roster.count + 1
         let alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
@@ -1715,7 +1717,8 @@ final class RoutineStore: ObservableObject {
     }
 
     private func nextFormationName() -> String {
-        let existing = Set(routine.formations.map(\.name))
+        // ⚡ Bolt: Eliminate intermediate array allocation in Set init
+        let existing = routine.formations.reduce(into: Set<String>()) { $0.insert($1.name) }
         var index = routine.formations.count + 1
         var candidate = "Formation \(index)"
         while existing.contains(candidate) {
