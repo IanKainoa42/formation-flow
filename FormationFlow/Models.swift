@@ -2258,6 +2258,115 @@ struct PathCalculations {
 
         return collisionIDs
     }
+
+    static func findPathCollisionMarkers(
+        paths: [TransitionPathRenderItem],
+        counts: CGFloat = 8,
+        steps: Int = 60,
+        minDistance: CGFloat = CourtConstants.collisionDistance
+    ) -> (ids: Set<UUID>, markers: [CGPoint]) {
+        guard paths.count > 1 else { return ([], []) }
+
+        let timings: [(travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat, thresholds: [CGFloat], nodes: [CGPoint], lengths: [CGFloat], totalLength: CGFloat, item: TransitionPathRenderItem)] = paths.map { item in
+            let transition = AthleteTransition(
+                athleteID: item.athleteID,
+                moveDelay: item.moveDelay,
+                pathControlPoint: item.controlPoint,
+                pathWaypoints: item.waypoints
+            )
+            let travel = travelDistance(from: item.startPosition, to: item.endPosition, transition: transition)
+            let hold = item.waypoints.reduce(CGFloat(0)) { $0 + $1.holdCounts }
+            let thresholds = !item.waypoints.isEmpty
+                ? waypointProgressThresholds(
+                    from: item.startPosition,
+                    to: item.endPosition,
+                    waypoints: item.waypoints
+                )
+                : []
+            let nodes = waypointNodes(from: item.startPosition, to: item.endPosition, waypoints: item.waypoints)
+            let lengths = segmentLengths(nodes)
+            let totalLength = lengths.reduce(0, +)
+            return (travel, hold, travel + hold, thresholds, nodes, lengths, totalLength, item)
+        }
+
+        let maxEffectiveTime = timings.max(by: { $0.effectiveTime < $1.effectiveTime })?.effectiveTime ?? 1
+        let effectiveCounts = max(counts, 0.5)
+
+        let sampledPositions: [[CGPoint]] = timings.map { timing in
+            var positions: [CGPoint] = []
+            positions.reserveCapacity(steps + 1)
+            for step in 0...steps {
+                let progress = CGFloat(step) / CGFloat(steps)
+                let durationFraction = maxEffectiveTime > 0 ? timing.effectiveTime / maxEffectiveTime : 1
+                let timingOffset = min(0.99, timing.item.moveDelay / effectiveCounts)
+                let adjustedProgress = max(0, progress - timingOffset) / (1.0 - timingOffset)
+                let athleteProgress = durationFraction > 0 ? min(1.0, adjustedProgress / durationFraction) : 1.0
+
+                let effectiveProgress: CGFloat
+                if !timing.item.waypoints.isEmpty && timing.hold > 0 {
+                    let moveDuration = durationFraction * effectiveCounts * (timing.travel / max(timing.effectiveTime, 0.001))
+                    effectiveProgress = holdAdjustedPathProgress(
+                        wallProgress: athleteProgress,
+                        waypoints: timing.item.waypoints,
+                        thresholds: timing.thresholds,
+                        moveDuration: moveDuration,
+                        totalHoldTime: timing.hold
+                    )
+                } else {
+                    effectiveProgress = athleteProgress
+                }
+
+                let position: CGPoint
+                if !timing.item.waypoints.isEmpty {
+                    position = interpolateWaypointPath(
+                        nodes: timing.nodes,
+                        lengths: timing.lengths,
+                        totalLength: timing.totalLength,
+                        waypoints: timing.item.waypoints,
+                        progress: effectiveProgress
+                    )
+                } else if let controlPoint = timing.item.controlPoint {
+                    position = quadraticBezierPoint(
+                        from: timing.item.startPosition,
+                        control: controlPoint,
+                        to: timing.item.endPosition,
+                        t: athleteProgress
+                    )
+                } else {
+                    position = CGPoint(
+                        x: timing.item.startPosition.x + (timing.item.endPosition.x - timing.item.startPosition.x) * athleteProgress,
+                        y: timing.item.startPosition.y + (timing.item.endPosition.y - timing.item.startPosition.y) * athleteProgress
+                    )
+                }
+                positions.append(position)
+            }
+            return positions
+        }
+
+        let minDistanceSquared = minDistance * minDistance
+        var collisionIDs = Set<UUID>()
+        var markers: [CGPoint] = []
+
+        for firstIndex in 0..<paths.count {
+            for secondIndex in (firstIndex + 1)..<paths.count {
+                for step in 1..<steps {
+                    let a = sampledPositions[firstIndex][step]
+                    let b = sampledPositions[secondIndex][step]
+                    if squaredDistance(from: a, to: b) < minDistanceSquared {
+                        collisionIDs.insert(paths[firstIndex].athleteID)
+                        collisionIDs.insert(paths[secondIndex].athleteID)
+                        let midpoint = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
+                        if !markers.contains(where: { squaredDistance(from: $0, to: midpoint) < 1 }) {
+                            markers.append(midpoint)
+                        }
+                        break
+                    }
+                }
+            }
+        }
+
+        return (collisionIDs, markers)
+    }
 }
 
 // MARK: - Transition Player
@@ -2308,6 +2417,7 @@ final class TransitionPlayer: ObservableObject {
     // ⚡ Bolt: Cache path generation and spatial collisions outside the animation loop
     private(set) var cachedTransitionPaths: [TransitionPathRenderItem] = []
     private(set) var cachedPathCollisionIDs: Set<UUID> = []
+    private(set) var cachedPathCollisionMarkers: [CGPoint] = []
 
     private var animationTimer: AnimationTimer?
     private var idleResetTask: Task<Void, Never>?
@@ -2392,10 +2502,12 @@ final class TransitionPlayer: ObservableObject {
             )
         }
 
-        cachedPathCollisionIDs = PathCalculations.findPathCollisionIDs(
+        let collisions = PathCalculations.findPathCollisionMarkers(
             paths: cachedTransitionPaths,
             counts: CGFloat(counts)
         )
+        cachedPathCollisionIDs = collisions.ids
+        cachedPathCollisionMarkers = collisions.markers
     }
 
     deinit {

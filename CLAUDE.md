@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-FormationFlow is a native iOS/iPad app for digital choreography planning. Coaches place athletes on a virtual court grid, save formations, and animate transitions between them. Built for Cheer Force San Diego (CFSD).
+FormationFlow is a native iOS/iPadOS app for digital choreography planning. Coaches place athletes on a virtual court grid, save formations, and animate transitions between them. Built for Cheer Force San Diego (CFSD).
 
 ## Tech Stack
 
 - **Language:** Swift 5.9+
 - **UI Framework:** SwiftUI with `Canvas` for high-performance 2D rendering
-- **Target:** iOS 17+, iPad only (`TARGETED_DEVICE_FAMILY = 2`)
+- **Target:** iOS 17+, Universal — iPhone + iPad (`TARGETED_DEVICE_FAMILY = "1,2"`)
 - **IDE:** Xcode 15+ (project uses `FormationFlow.xcodeproj`, no SPM/CocoaPods)
 - **Dependencies:** None — zero external dependencies
 - **Persistence:** `UserDefaults` with JSON encoding (key: `routine.v1`)
@@ -210,7 +210,7 @@ Do NOT re-file these as security problems — they have already been resolved:
 - ATS / `NSAppTransportSecurity` in Info.plist — KEEP
 - `.confirmationDialog` modifiers — KEEP (these are the destructive-action UX going forward)
 
-**HARD STOP for Sentinel agents:** Do NOT re-add biometric authentication, Face ID prompts, `LAContext`, `LocalAuthentication`, `NSFaceIDUsageDescription`, the `.blur(...)` app-switcher overlay, or any `authenticateAndX()` wrapper to this project. Reversed PRs: #76, #79, #82, #85, #88, #91, #94, #97, #100, #110. If your Sentinel task asks for "biometric protection of [destructive action]" or "app-switcher privacy overlay" — comment: **"Task rejected: biometric authentication was deliberately removed in IAN-169 (2026-04-19). Re-adding it requires explicit owner approval — not Sentinel scope."**
+**HARD STOP for Sentinel agents:** Do NOT re-add biometric authentication, Face ID prompts, `LAContext`, `LocalAuthentication`, `NSFaceIDUsageDescription`, the `.blur(...)` app-switcher overlay, or any `authenticateAndX()` wrapper to this project. Reversed PRs: #76, #79, #82, #85, #88, #91, #94, #97, #100, #110, #119, #122 (PRs #119 and #122 re-added biometric after the reversal decision and were immediately reverted — this pattern has now occurred twice post-IAN-169). If your Sentinel task asks for "biometric protection of [destructive action]" or "app-switcher privacy overlay" — comment: **"Task rejected: biometric authentication was deliberately removed in IAN-169 (2026-04-19). Re-adding it requires explicit owner approval — not Sentinel scope."**
 
 The `.confirmationDialog` on every destructive action is the agreed UX. Do not propose any other authentication or confirmation layer on top of it.
 
@@ -223,8 +223,10 @@ Before staging any commit, delete all intermediate patch artifacts:
 - Root-level `.sh` scripts (e.g., `patch2.sh`, `patch_confirmation.sh` — committed in PR #92)
 - Root-level `.py` scripts (e.g., `patch_file.py`, `patch_file2.py` — committed in PR #92)
 - Temp Swift files not in the Xcode project (e.g., `test_auth.swift` — PR #35)
+- `plan.md` — Jules planning artifact committed in PRs #118, #120 (Apr 2026). In `.gitignore` but will re-appear if `git add -f` is used. Stage by specific path only.
+- `.Jules/palette.md`, `.jules/bolt.md` — Jules agent state files. Currently tracked in git. Run `git rm --cached .Jules/palette.md .jules/bolt.md` to untrack. Do not commit these.
 
-All of the above are now in `.gitignore`. Do not use `git add -f` — stage by specific path only. Violations: PR #35 (`test_auth.swift`), PR #92 (4 shell/Python scripts).
+All of the above are now in `.gitignore`. Do not use `git add -f` — stage by specific path only. Violations: PR #35 (`test_auth.swift`), PR #92 (4 shell/Python scripts), PRs #118/#120 (`plan.md`), PRs #117/#121/#123 (`.Jules/palette.md`, `.jules/bolt.md`).
 
 ## SwiftUI Accessibility: Slider Anti-Pattern
 

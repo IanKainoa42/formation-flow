@@ -461,6 +461,7 @@ struct TransitionShareCardView: View {
     let endpointMarkers: [TransitionEndpointMarkerRenderItem]
     let collisionIDs: Set<UUID>
     let pathCollisionIDs: Set<UUID>
+    let pathCollisionMarkerPositions: [CGPoint]
     let startFormationColor: Color
     let endFormationColor: Color
     let transitionProgress: CGFloat
@@ -505,6 +506,7 @@ struct TransitionShareCardView: View {
                     endpointMarkers: endpointMarkers,
                     collisionIDs: collisionIDs,
                     pathCollisionIDs: pathCollisionIDs,
+                    pathCollisionMarkerPositions: pathCollisionMarkerPositions,
                     cellSize: cellSize,
                     offset: offset,
                     hasTransition: true,

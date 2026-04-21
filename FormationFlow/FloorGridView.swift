@@ -74,7 +74,10 @@ struct FloorGridView: View {
     @State private var sharePayload: TransitionSharePayload?
     @State private var shareResultMessage = ""
     @State private var showingShareResult = false
-    @State private var cachedPathCollisionIDs: Set<UUID> = []
+
+    private var pathCollisionIDs: Set<UUID> {
+        player?.cachedPathCollisionIDs ?? []
+    }
 
     private var formationIndex: Int? {
         store.formationIndex(id: formationID)
@@ -305,14 +308,6 @@ struct FloorGridView: View {
         return startMarkers + endMarkers
     }
 
-    private func recomputePathCollisionIDs() {
-        guard let player else {
-            cachedPathCollisionIDs = []
-            return
-        }
-        cachedPathCollisionIDs = PathCalculations.findPathCollisionIDs(paths: transitionPaths, counts: CGFloat(player.counts))
-    }
-
     private var currentFormationEndpoint: PreviewEditableEndpoint? {
         guard hasTransition else { return nil }
         if formationID == startFormationID { return .start }
@@ -367,7 +362,7 @@ struct FloorGridView: View {
     }
 
     private var pathCollidingAthletes: [RenderedAthlete] {
-        renderedAthletes.filter { cachedPathCollisionIDs.contains($0.id) }
+        renderedAthletes.filter { pathCollisionIDs.contains($0.id) }
     }
 
     private var canShareTransition: Bool {
@@ -496,16 +491,6 @@ struct FloorGridView: View {
             rotationStartPositions = [:]
             clearTransitionDragState()
             selectedAthleteIDs = []
-            recomputePathCollisionIDs()
-        }
-        .onAppear {
-            recomputePathCollisionIDs()
-        }
-        .onChange(of: startFormationID) { _, _ in
-            recomputePathCollisionIDs()
-        }
-        .onChange(of: endFormationID) { _, _ in
-            recomputePathCollisionIDs()
         }
         .onChange(of: isSwapMode) { _, newValue in
             if newValue, swapSourceAthleteID == nil {
@@ -927,10 +912,12 @@ struct FloorGridView: View {
                 endpointMarkers: endpointMarkers,
                 alignmentGuides: activeAlignmentGuides,
                 collisionIDs: collisionSummary.ids,
-                pathCollisionIDs: cachedPathCollisionIDs,
+                pathCollisionIDs: pathCollisionIDs,
+                pathCollisionMarkerPositions: player?.cachedPathCollisionMarkers ?? [],
                 cellSize: cellSize,
                 offset: offset,
                 swapSourceID: swapSourceAthleteID,
+                selectionLasso: selectionLassoForDisplay,
                 focusedEndpoint: focusedEndpoint,
                 hasTransition: hasTransition,
                 startFormationColor: transitionStartColor,
@@ -1859,8 +1846,18 @@ struct FloorGridView: View {
                     return
                 }
 
+                // Athletes always win over path handles at the drag start point.
+                let athleteAtStart: RenderedAthlete? = {
+                    if let hoveredID = hoveredAthleteID,
+                       let hovered = renderedAthletes.first(where: { $0.id == hoveredID }) {
+                        return hovered
+                    }
+                    return athleteHit(at: startScaledPoint, within: renderedAthletes, cellSize: cellSize)
+                }()
+
                 // Priority 2: Focused path handle gets a large grab area
-                if let focusedPathHandle,
+                if athleteAtStart == nil,
+                   let focusedPathHandle,
                    let selectedAthleteID, let player,
                    showTransitionPaths, hasTransition
                 {
@@ -1883,8 +1880,9 @@ struct FloorGridView: View {
 
                 // Priority 3: Hit-test for new drag initiation
                     if showTransitionPaths, hasTransition {
-                        // 3a: Path handles (checked first so they win over athlete dot)
-                    if let selectedAthleteID,
+                        // 3a: Path handles — only if no athlete is under the touch
+                    if athleteAtStart == nil,
+                       let selectedAthleteID,
                        let startFormationID, let endFormationID,
                        let player
                     {
@@ -2505,6 +2503,15 @@ struct FloorGridView: View {
         }
     }
 
+    private var selectionLassoForDisplay: FloorSelectionLasso? {
+        guard isDrawingSelectionBox, let rect = selectionRect, rect.width > 0 || rect.height > 0 else { return nil }
+        var lasso = FloorSelectionLasso(startPoint: CGPoint(x: rect.minX, y: rect.minY))
+        lasso.append(CGPoint(x: rect.maxX, y: rect.minY), minimumDistance: 0)
+        lasso.append(CGPoint(x: rect.maxX, y: rect.maxY), minimumDistance: 0)
+        lasso.append(CGPoint(x: rect.minX, y: rect.maxY), minimumDistance: 0)
+        return lasso
+    }
+
     private func handleSelectionBoxContinued(_ value: DragGesture.Value) {
         activeAlignmentGuides = []
         selectionRect = CGRect(
@@ -2659,7 +2666,6 @@ struct FloorGridView: View {
             endAthletes: store.renderedAthletes(for: endFormationID),
             transitionSpec: store.transitionSpec(for: startFormationID, to: endFormationID)
         )
-        recomputePathCollisionIDs()
     }
 
     // MARK: - Formation Actions
@@ -2812,7 +2818,8 @@ struct FloorGridView: View {
             transitionPaths: transitionPaths,
             endpointMarkers: endpointMarkers,
             collisionIDs: collisionSummary.ids,
-            pathCollisionIDs: cachedPathCollisionIDs,
+            pathCollisionIDs: pathCollisionIDs,
+            pathCollisionMarkerPositions: player?.cachedPathCollisionMarkers ?? [],
             startFormationColor: transitionStartColor,
             endFormationColor: transitionEndColor,
             transitionProgress: player?.progress ?? 0

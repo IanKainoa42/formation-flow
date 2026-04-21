@@ -175,7 +175,7 @@
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 73;
+				CURRENT_PROJECT_VERSION = 74;
 				INFOPLIST_FILE = FormationFlow/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = FormationFlow;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.sports";
@@ -284,7 +284,7 @@
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 73;
+				CURRENT_PROJECT_VERSION = 74;
 				INFOPLIST_FILE = FormationFlow/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = FormationFlow;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.sports";

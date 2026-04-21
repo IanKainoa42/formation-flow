@@ -95,6 +95,7 @@ struct FloorCanvasView: View {
     var alignmentGuides: [AlignmentGuideRenderItem] = []
     var collisionIDs: Set<UUID> = []
     var pathCollisionIDs: Set<UUID> = []
+    var pathCollisionMarkerPositions: [CGPoint] = []
     var blinkingResolvedIDs: Set<UUID> = []
     var blinkPhase: Int = 0
     var cellSize: CGFloat = 12
@@ -181,81 +182,11 @@ struct FloorCanvasView: View {
     }
 
 
-    private struct PathCollisionMarker: Hashable {
-        let position: CGPoint
-    }
-
-    private var pathCollisionMarkers: [PathCollisionMarker] {
-        guard transitionPaths.count > 1, !pathCollisionIDs.isEmpty else { return [] }
-
-        let candidatePaths = transitionPaths.filter { pathCollisionIDs.contains($0.athleteID) }
-        guard candidatePaths.count > 1 else { return [] }
-
-        var markers: [PathCollisionMarker] = []
-        let minDistanceSquared = CourtConstants.collisionDistance * CourtConstants.collisionDistance
-
-        for firstIndex in 0..<(candidatePaths.count - 1) {
-            let firstSamples = sampledPathPoints(for: candidatePaths[firstIndex])
-            for secondIndex in (firstIndex + 1)..<candidatePaths.count {
-                let secondSamples = sampledPathPoints(for: candidatePaths[secondIndex])
-                let limit = min(firstSamples.count, secondSamples.count)
-                guard limit > 0 else { continue }
-
-                for sampleIndex in 0..<limit {
-                    let firstPoint = firstSamples[sampleIndex]
-                    let secondPoint = secondSamples[sampleIndex]
-                    let dx = firstPoint.x - secondPoint.x
-                    let dy = firstPoint.y - secondPoint.y
-                    let squaredDistance = dx * dx + dy * dy
-                    guard squaredDistance <= minDistanceSquared else { continue }
-
-                    let midpoint = CGPoint(
-                        x: (firstPoint.x + secondPoint.x) / 2,
-                        y: (firstPoint.y + secondPoint.y) / 2
-                    )
-                    let marker = PathCollisionMarker(position: midpoint)
-                    if markers.contains(where: { PathCalculations.squaredDistance(from: $0.position, to: midpoint) < 1 }) {
-                        continue
-                    }
-                    markers.append(marker)
-                    break
-                }
-            }
-        }
-
-        return markers
-    }
-
-    private func sampledPathPoints(for item: TransitionPathRenderItem, sampleCount: Int = 40) -> [CGPoint] {
-        let samples: [CGPoint]
-        if item.waypoints.isEmpty {
-            samples = PathCalculations.athletePath(
-                from: item.startPosition,
-                to: item.endPosition,
-                control: item.controlPoint,
-                steps: sampleCount
-            )
-        } else {
-            samples = PathCalculations.waypointPath(
-                from: item.startPosition,
-                to: item.endPosition,
-                waypoints: item.waypoints,
-                steps: sampleCount
-            )
-        }
-
-        let moveDelay = min(max(item.moveDelay, 0), 0.95)
-        let delaySamples = Int(CGFloat(sampleCount) * moveDelay)
-        guard delaySamples > 0, let start = samples.first else { return samples }
-
-        return Array(repeating: start, count: delaySamples) + samples
-    }
-
     private func drawPathCollisionMarkers(in context: inout GraphicsContext) {
-        guard !pathCollisionMarkers.isEmpty else { return }
+        guard !pathCollisionMarkerPositions.isEmpty else { return }
 
-        for marker in pathCollisionMarkers {
-            let center = CGPoint(x: marker.position.x * cellSize, y: marker.position.y * cellSize)
+        for position in pathCollisionMarkerPositions {
+            let center = CGPoint(x: position.x * cellSize, y: position.y * cellSize)
 
             let glowR = 10 * markerScale
             var glow = Path()
@@ -799,8 +730,8 @@ struct FloorCanvasView: View {
                 context.fill(marker, with: .color(fillColor.opacity(fillOpacity)))
 
                 if isSelected || isHovered {
-                    let strokeColor: Color = isSelected ? formationColor : .white
-                    context.stroke(marker, with: .color(strokeColor.opacity(0.7)), lineWidth: isHovered ? 2.5 : 2)
+                    let strokeOpacity: CGFloat = isSelected ? 1.0 : 0.7
+                    context.stroke(marker, with: .color(.white.opacity(strokeOpacity)), lineWidth: isSelected ? 3 : (isHovered ? 2.5 : 2))
                 }
 
                 let label = Text(athlete.label)
@@ -817,8 +748,8 @@ struct FloorCanvasView: View {
                 context.fill(marker, with: .color(fillColor.opacity(isSelected ? 0.92 : (isHovered ? 0.92 : 0.86))))
 
                 if isSelected || isHovered {
-                    let strokeColor: Color = isSelected ? formationColor : .white
-                    context.stroke(marker, with: .color(strokeColor.opacity(0.7)), lineWidth: isHovered ? 3.5 : 3)
+                    let strokeOpacity: CGFloat = isSelected ? 1.0 : 0.7
+                    context.stroke(marker, with: .color(.white.opacity(strokeOpacity)), lineWidth: isSelected ? 3.5 : (isHovered ? 3.5 : 3))
                 }
 
                 if isColliding {
