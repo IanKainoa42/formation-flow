@@ -211,6 +211,7 @@ struct TransitionTransportSidebarView: View {
             }
             .pickerStyle(.segmented)
             .accessibilityLabel("Playback Speed")
+            .accessibilityHint("Adjust the playback speed of the transition animation")
         }
     }
 
@@ -415,6 +416,7 @@ struct SidebarTransportView: View {
             }
             .pickerStyle(.segmented)
             .accessibilityLabel("Playback Speed")
+            .accessibilityHint("Adjust the playback speed of the transition animation")
 
             HStack(spacing: 8) {
                 TransportControls.swapButton(isActive: isSwapMode, size: 28, disabled: !canSwap, action: onSwap)
