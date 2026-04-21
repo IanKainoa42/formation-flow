@@ -85,6 +85,20 @@ struct ProUpgradeSheet: View {
                         return "Upgrade"
                     }()
                 )
+                .accessibilityHint(
+                    {
+                        if case .loading = purchaseState { return "Upgrading to Pro version" }
+                        if case .error(_) = purchaseState { return "Try upgrading to Pro version again" }
+                        return "Upgrade to Pro version"
+                    }()
+                )
+                .help(
+                    {
+                        if case .loading = purchaseState { return "Upgrading" }
+                        if case .error(_) = purchaseState { return "Try Again" }
+                        return "Upgrade"
+                    }()
+                )
             }
 
             Button {
@@ -110,6 +124,8 @@ struct ProUpgradeSheet: View {
                 return isRestoring
             }())
             .accessibilityLabel(isRestoring ? "Restoring Purchase" : "Restore Purchase")
+            .accessibilityHint(isRestoring ? "Currently restoring previous purchases" : "Restore previous purchases")
+            .help(isRestoring ? "Restoring Purchase" : "Restore Purchase")
 
             Text("One-time purchase. No subscription.")
                 .font(.caption)

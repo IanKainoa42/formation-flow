@@ -82,6 +82,8 @@ struct FormationThumbnailStrip: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(canAddFormation ? "Add formation" : "Upgrade to Pro to add formation")
+                    .accessibilityHint(canAddFormation ? "Add a new formation" : "Upgrade to Pro to add another formation")
+                    .help(canAddFormation ? "Add formation" : "Upgrade to Pro to add formation")
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
