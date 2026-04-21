@@ -38,3 +38,8 @@
 **Learning:** When trying to eliminate intermediate arrays in `.reduce` operations, wrapping a Dictionary's `.values` in `Array()` still causes an O(N) heap allocation. Dictionary `.values` is already a Collection and can be reduced directly.
 
 **Action:** Reduce directly on `collection.values` instead of `Array(collection.values)` to maintain O(1) memory allocation in hot paths.
+## 2026-04-21 - Eliminating O(N) Array Allocations in Set Initialization
+
+**Learning:** When generating a `Set` from specific properties of a collection, using the pattern `Set(collection.map(\.field))` forces the allocation of an intermediate array (`[FieldType]`) which is immediately discarded after the Set is initialized.
+
+**Action:** Replace `Set(collection.map(\.field))` with `collection.reduce(into: Set<Type>()) { $0.insert($1.field) }` to build the set in a single pass without any intermediate array allocations, improving memory efficiency.
