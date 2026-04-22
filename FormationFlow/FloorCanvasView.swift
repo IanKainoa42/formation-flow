@@ -44,7 +44,11 @@ struct FloorSelectionLasso {
             return
         }
 
-        guard hypot(point.x - lastPoint.x, point.y - lastPoint.y) >= minimumDistance else { return }
+        // ⚡ Bolt Performance Optimization:
+        // Use squared distance (dx*dx + dy*dy) to avoid expensive square root (hypot) in proximity checks.
+        let dx = point.x - lastPoint.x
+        let dy = point.y - lastPoint.y
+        guard dx * dx + dy * dy >= minimumDistance * minimumDistance else { return }
         points.append(point)
     }
 
@@ -422,8 +426,11 @@ struct FloorCanvasView: View {
 
             let dx = end.x - start.x
             let dy = end.y - start.y
-            let distance = hypot(dx, dy)
-            guard distance > 5 else {
+
+            // ⚡ Bolt Performance Optimization:
+            // Use squared distance (dx*dx + dy*dy) to avoid expensive square root (hypot) in proximity checks.
+            let squaredDistance = dx * dx + dy * dy
+            guard squaredDistance > 25 else { // 5 squared is 25
                 drawGhostCircle(in: &context, center: start)
                 drawGhostCircle(in: &context, center: end)
                 continue
@@ -548,7 +555,13 @@ struct FloorCanvasView: View {
         for item in ghostPrevPaths {
             let start = CGPoint(x: item.startPosition.x * cellSize, y: item.startPosition.y * cellSize)
             let end = CGPoint(x: item.endPosition.x * cellSize, y: item.endPosition.y * cellSize)
-            guard hypot(end.x - start.x, end.y - start.y) > 3 else { continue }
+
+            // ⚡ Bolt Performance Optimization:
+            // Use squared distance (dx*dx + dy*dy) to avoid expensive square root (hypot) in proximity checks.
+            let dx = end.x - start.x
+            let dy = end.y - start.y
+            guard dx * dx + dy * dy > 9 else { continue } // 3 squared is 9
+
             var path = Path()
             path.move(to: start)
             if !item.waypoints.isEmpty {
@@ -572,7 +585,13 @@ struct FloorCanvasView: View {
         for item in ghostNextPaths {
             let start = CGPoint(x: item.startPosition.x * cellSize, y: item.startPosition.y * cellSize)
             let end = CGPoint(x: item.endPosition.x * cellSize, y: item.endPosition.y * cellSize)
-            guard hypot(end.x - start.x, end.y - start.y) > 3 else { continue }
+
+            // ⚡ Bolt Performance Optimization:
+            // Use squared distance (dx*dx + dy*dy) to avoid expensive square root (hypot) in proximity checks.
+            let dx = end.x - start.x
+            let dy = end.y - start.y
+            guard dx * dx + dy * dy > 9 else { continue } // 3 squared is 9
+
             var path = Path()
             path.move(to: start)
             if !item.waypoints.isEmpty {

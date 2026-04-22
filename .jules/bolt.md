@@ -43,3 +43,6 @@
 **Learning:** When generating a `Set` from specific properties of a collection, using the pattern `Set(collection.map(\.field))` forces the allocation of an intermediate array (`[FieldType]`) which is immediately discarded after the Set is initialized.
 
 **Action:** Replace `Set(collection.map(\.field))` with `collection.reduce(into: Set<Type>()) { $0.insert($1.field) }` to build the set in a single pass without any intermediate array allocations, improving memory efficiency.
+## 2024-05-18 - Replacing hypot with squared distance
+**Learning:** Using `hypot` for distance comparisons inside rendering loops (`FloorCanvasView.swift` e.g. path drawing, ghost drawing) incurs expensive square root calculations, creating a bottleneck for continuous gesture rendering.
+**Action:** Always replace `hypot(dx, dy) > distance` with `dx*dx + dy*dy > distance*distance` for O(1) proximity checks in performance-critical rendering code.
