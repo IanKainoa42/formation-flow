@@ -167,6 +167,7 @@ struct RoutinePlaybackView: View {
                 .pickerStyle(.segmented)
                 .frame(width: 180)
                 .accessibilityLabel("Playback Speed")
+                .accessibilityHint("Adjust the playback speed of the routine animation")
 
                 // Trail toggle
                 Button {
