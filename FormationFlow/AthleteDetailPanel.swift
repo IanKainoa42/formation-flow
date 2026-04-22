@@ -822,6 +822,7 @@ struct SelectedAthleteSidebarView: View {
                     }
                     .pickerStyle(.segmented)
                     .accessibilityLabel("Playback Speed")
+                    .accessibilityHint("Adjust the playback speed of the transition animation")
                 }
                 .padding(16)
 
