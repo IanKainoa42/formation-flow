@@ -41,3 +41,8 @@ test_auth.swift
 /patch*.sh
 /patch_file*.py
 /*.py
+
+# Agent / tool artifacts
+.jules/
+AppStoreScreenshots/auto/
+*.af
