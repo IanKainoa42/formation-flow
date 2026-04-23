@@ -1,1 +1,0 @@
-Learning: Added missing .accessibilityHint() modifiers to icon-only transport controls in TransitionViews.swift. Mirroring the existing .help() text ensures that VoiceOver users receive the same contextual information as pointer users, perfectly aligning with the SwiftUI accessibility convention for interactive elements without text.

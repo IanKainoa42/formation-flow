@@ -1,4 +1,0 @@
-Learning: Added missing .accessibilityHint() modifiers to icon-only transport controls in TransitionViews.swift. Mirroring the existing .help() text ensures that VoiceOver users receive the same contextual information as pointer users, perfectly aligning with the SwiftUI accessibility convention for interactive elements without text.
-## 2026-04-22 - Add Accessibility Hints to Speed Pickers
-**Learning:** Segmented `Picker` controls (like those used for playback speed) have implicit VoiceOver announcements for their selected state, but users may lack context for what the control as a whole does. Adding an explicit `.accessibilityHint()` to the picker provides this missing context.
-**Action:** Always check `Picker` controls, especially segmented ones, to ensure they have an `.accessibilityHint` explaining their purpose.
