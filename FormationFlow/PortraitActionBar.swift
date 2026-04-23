@@ -69,6 +69,7 @@ struct PortraitActionBar: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .accessibilityLabel("Roster")
+                .accessibilityHint("Show the athlete roster")
                 .help("Roster")
 
                 Button(action: onShowNotes) {
@@ -77,6 +78,7 @@ struct PortraitActionBar: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .accessibilityLabel("Notes")
+                .accessibilityHint("Show formation notes")
                 .help("Notes")
                 .overlay(alignment: .topTrailing) {
                     if hasNotes {
@@ -94,6 +96,7 @@ struct PortraitActionBar: View {
                 .controlSize(.small)
                 .disabled(undoDisabled)
                 .accessibilityLabel("Undo move")
+                .accessibilityHint(undoDisabled ? "Nothing to undo" : "Undo the last move")
                 .help(undoDisabled ? "Nothing to undo" : "Undo the last move")
 
                 if hasTransition {
@@ -119,6 +122,7 @@ struct PortraitActionBar: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .accessibilityLabel("Share preview")
+                .accessibilityHint("Share transition preview")
                 .help("Share preview")
             }
         }
