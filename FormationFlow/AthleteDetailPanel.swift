@@ -333,6 +333,7 @@ struct TransitionInspectorSectionView: View {
                             .foregroundColor(.secondary)
                     }
                     .accessibilityLabel("Upgrade to Pro to adjust start delay")
+                    .accessibilityHint("Requires a Pro subscription to change the start delay timing")
                     .help("Upgrade to Pro to adjust start delay")
                 }
             }
@@ -403,6 +404,7 @@ struct TransitionInspectorSectionView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Delete waypoint")
+                .accessibilityHint("Removes this waypoint from the athlete's path")
                 .help("Delete waypoint")
             }
 
@@ -869,6 +871,7 @@ struct SelectedAthleteSidebarView: View {
                                             .foregroundColor(.secondary)
                                     }
                                     .accessibilityLabel("Upgrade to Pro to adjust start delay")
+                                    .accessibilityHint("Requires a Pro subscription to change the start delay timing")
                                     .help("Upgrade to Pro to adjust start delay")
                                 }
                             }
