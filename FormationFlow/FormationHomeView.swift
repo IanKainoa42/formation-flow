@@ -700,7 +700,7 @@ struct RoutineWorkspaceView: View {
 
     @ViewBuilder
     private func formationRow(for formation: Formation, showsDisclosure: Bool = false) -> some View {
-        let index = store.routine.formations.firstIndex(where: { $0.id == formation.id }) ?? 0
+        let index = store.formationIndex(id: formation.id) ?? 0
         let color = TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: index)
         HStack(spacing: 12) {
             FormationListThumbnailView(athletes: store.renderedAthletes(for: formation), color: color)
@@ -985,7 +985,7 @@ struct RoutineWorkspaceView: View {
     private func cycleToNextFormation() {
         let formations = store.routine.formations
         guard formations.count > 1 else { return }
-        let currentIndex = formations.firstIndex(where: { $0.id == selectedFormationID }) ?? 0
+        let currentIndex = store.formationIndex(id: selectedFormationID) ?? 0
         let nextIndex = (currentIndex + 1) % formations.count
         selectedFormationID = formations[nextIndex].id
     }
