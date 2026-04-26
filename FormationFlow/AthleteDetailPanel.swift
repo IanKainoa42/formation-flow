@@ -37,7 +37,7 @@ struct AthleteInspectorView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Clear selection")
                 .accessibilityHint("Deselect this athlete")
-                .help("Clear selection")
+                .help("Deselect this athlete")
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -405,7 +405,7 @@ struct TransitionInspectorSectionView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Delete waypoint")
                 .accessibilityHint("Removes this waypoint from the athlete's path")
-                .help("Delete waypoint")
+                .help("Removes this waypoint from the athlete's path")
             }
 
             HStack {
@@ -776,7 +776,7 @@ struct SelectedAthleteSidebarView: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel("Clear selection")
                         .accessibilityHint("Deselect this athlete")
-                        .help("Clear selection")
+                        .help("Deselect this athlete")
                     }
 
                     AthleteRolePicker(
