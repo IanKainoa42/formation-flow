@@ -19,6 +19,20 @@ struct ProUpgradeSheet: View {
 
     var body: some View {
         VStack(spacing: 24) {
+            HStack {
+                Spacer()
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                        .symbolRenderingMode(.hierarchical)
+                }
+                .accessibilityLabel("Close")
+                .help("Close")
+            }
+
             Spacer()
 
             Image(systemName: "star.circle.fill")

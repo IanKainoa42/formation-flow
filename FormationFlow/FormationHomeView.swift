@@ -37,6 +37,7 @@ struct RoutineWorkspaceView: View {
     @State private var showingFormationDeleteConfirmation = false
     @State private var formationsToDelete: [UUID] = []
     @State private var showingRoutineDeleteConfirmation = false
+    @State private var sidebarEditMode: EditMode = .inactive
 
     private var isCompactLayout: Bool {
         let isPhone: Bool
@@ -415,6 +416,12 @@ struct RoutineWorkspaceView: View {
                     }
                     .accessibilityLabel(canAddFormation ? "Add formation" : "Upgrade to Pro to add formation")
                 }
+            }
+        }
+        .environment(\.editMode, $sidebarEditMode)
+        .onChange(of: sidebarEditMode) { _, newValue in
+            if newValue == .inactive, selectedFormationID == nil, let displayedFormationID {
+                selectedFormationID = displayedFormationID
             }
         }
     }
