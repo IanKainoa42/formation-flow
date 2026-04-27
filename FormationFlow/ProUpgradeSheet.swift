@@ -160,7 +160,9 @@ struct ProUpgradeSheet: View {
             }
         } catch {
             logger.error("Purchase failed: \(error.localizedDescription, privacy: .private)")
-            purchaseState = .error("Something went wrong. Please try again.")
+            let message = (error as? LocalizedError)?.errorDescription
+                ?? "Something went wrong. Please try again."
+            purchaseState = .error(message)
         }
     }
 }

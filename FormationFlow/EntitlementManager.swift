@@ -4,7 +4,7 @@ import OSLog
 
 @MainActor
 final class EntitlementManager: ObservableObject {
-    static let productID = "com.ianrichardson.formationflow.pro"
+    static let productID = "com.formationflow.prounlock"
     private static let cacheKey = "entitlement.isPro"
     private static let logger = Logger(subsystem: "FormationFlow", category: "Entitlement")
 
@@ -84,7 +84,7 @@ final class EntitlementManager: ObservableObject {
         let products = try await Product.products(for: [Self.productID])
         guard let product = products.first else {
             Self.logger.error("Product not found: \(Self.productID, privacy: .private)")
-            return .userCancelled
+            throw PurchaseError.productUnavailable
         }
 
         let result = try await product.purchase()
@@ -150,5 +150,16 @@ final class EntitlementManager: ObservableObject {
         case userCancelled
         case pending
         case failed
+    }
+
+    enum PurchaseError: LocalizedError {
+        case productUnavailable
+
+        var errorDescription: String? {
+            switch self {
+            case .productUnavailable:
+                return "Purchase is temporarily unavailable. Please check your connection and try again."
+            }
+        }
     }
 }

@@ -22,7 +22,7 @@
           "locale" : "en_US"
         }
       ],
-      "productID" : "com.ianrichardson.formationflow.pro",
+      "productID" : "com.formationflow.prounlock",
       "referenceName" : "FormationFlow Pro",
       "type" : "NonConsumable"
     }
@@ -42,7 +42,7 @@
           "locale" : "en_US"
         }
       ],
-      "productID" : "com.ianrichardson.formationflow.pro",
+      "productID" : "com.formationflow.prounlock",
       "referenceName" : "FormationFlow Pro",
       "type" : "NonConsumable"
     }
