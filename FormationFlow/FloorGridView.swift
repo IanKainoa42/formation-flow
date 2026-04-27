@@ -1473,7 +1473,10 @@ struct FloorGridView: View {
                     Button {
                         beginAthleteRename()
                     } label: {
-                        Label("Rename", systemImage: "pencil")
+                        Label(
+                            entitlementManager.isPro ? "Rename" : "Rename (Pro)",
+                            systemImage: entitlementManager.isPro ? "pencil" : "lock.fill"
+                        )
                     }
 
                     Menu(entitlementManager.isPro ? "Role" : "Role (Pro)") {
@@ -2700,7 +2703,9 @@ struct FloorGridView: View {
     private func addAthlete() {
         let newID = store.addAthlete()
         selectedAthleteIDs = [newID]
-        
+
+        guard entitlementManager.isPro else { return }
+
         if let newAthlete = store.routine.roster.first(where: { $0.id == newID }) {
             athleteLabelDraft = newAthlete.label
             showingAthleteRenamePrompt = true
@@ -2708,6 +2713,10 @@ struct FloorGridView: View {
     }
 
     private func beginAthleteRename() {
+        guard entitlementManager.isPro else {
+            showingUpgradeSheet = true
+            return
+        }
         guard let selectedRosterAthlete else { return }
         athleteLabelDraft = selectedRosterAthlete.label
         showingAthleteRenamePrompt = true

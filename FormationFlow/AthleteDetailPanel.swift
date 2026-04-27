@@ -43,18 +43,39 @@ struct AthleteInspectorView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Identity")
                     .font(.subheadline.weight(.semibold))
-                TextField("Label", text: $labelDraft)
-                    .textFieldStyle(.roundedBorder)
-                    .onChange(of: labelDraft) { _, newValue in
-                        let clamped = String(newValue.prefix(4))
-                        if clamped != newValue { labelDraft = clamped }
-                        let trimmed = clamped.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !trimmed.isEmpty {
-                            onUpdateLabel(trimmed)
+                if isPro {
+                    TextField("Label", text: $labelDraft)
+                        .textFieldStyle(.roundedBorder)
+                        .onChange(of: labelDraft) { _, newValue in
+                            let clamped = String(newValue.prefix(4))
+                            if clamped != newValue { labelDraft = clamped }
+                            let trimmed = clamped.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !trimmed.isEmpty {
+                                onUpdateLabel(trimmed)
+                            }
                         }
+                        .onAppear { labelDraft = athlete.label }
+                        .onChange(of: athlete.id) { _, _ in labelDraft = athlete.label }
+                } else {
+                    Button(action: onUpgrade) {
+                        HStack {
+                            Text(athlete.label)
+                                .font(.body.monospaced())
+                            Spacer()
+                            Label("Rename (Pro)", systemImage: "lock.fill")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.secondary.opacity(0.3))
+                        )
                     }
-                    .onAppear { labelDraft = athlete.label }
-                    .onChange(of: athlete.id) { _, _ in labelDraft = athlete.label }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Rename athlete (Pro feature)")
+                }
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -756,21 +777,35 @@ struct SelectedAthleteSidebarView: View {
                 // MARK: Name + Role
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        TextField("Label", text: $labelDraft)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.headline)
-                            .onChange(of: labelDraft) { _, newValue in
-                                let clamped = String(newValue.prefix(4))
-                                if clamped != newValue { labelDraft = clamped }
-                                let trimmed = clamped.trimmingCharacters(in: .whitespacesAndNewlines)
-                                if !trimmed.isEmpty {
-                                    store.mutateRosterAthlete(id: athlete.id) { a in
-                                        a.label = trimmed
+                        if isPro {
+                            TextField("Label", text: $labelDraft)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.headline)
+                                .onChange(of: labelDraft) { _, newValue in
+                                    let clamped = String(newValue.prefix(4))
+                                    if clamped != newValue { labelDraft = clamped }
+                                    let trimmed = clamped.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    if !trimmed.isEmpty {
+                                        store.mutateRosterAthlete(id: athlete.id) { a in
+                                            a.label = trimmed
+                                        }
                                     }
                                 }
+                                .onAppear { labelDraft = athlete.label }
+                                .onChange(of: athlete.id) { _, _ in labelDraft = athlete.label }
+                        } else {
+                            Button(action: onUpgrade) {
+                                HStack(spacing: 6) {
+                                    Text(athlete.label)
+                                        .font(.headline.monospaced())
+                                    Image(systemName: "lock.fill")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
-                            .onAppear { labelDraft = athlete.label }
-                            .onChange(of: athlete.id) { _, _ in labelDraft = athlete.label }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Rename athlete (Pro feature)")
+                        }
 
                         Spacer()
 
