@@ -752,7 +752,10 @@ struct RoutineWorkspaceView: View {
         Button {
             beginRenaming(formation)
         } label: {
-            Label("Rename", systemImage: "pencil")
+            Label(
+                entitlementManager.isPro ? "Rename" : "Rename (Pro)",
+                systemImage: entitlementManager.isPro ? "pencil" : "lock.fill"
+            )
         }
 
         Button {
@@ -799,7 +802,10 @@ struct RoutineWorkspaceView: View {
         Button {
             beginRenaming(formation)
         } label: {
-            Label("Rename", systemImage: "pencil")
+            Label(
+                entitlementManager.isPro ? "Rename" : "Rename (Pro)",
+                systemImage: entitlementManager.isPro ? "pencil" : "lock.fill"
+            )
         }
         
         Divider()
@@ -1062,6 +1068,10 @@ struct RoutineWorkspaceView: View {
     }
 
     private func beginRenaming(_ formation: Formation) {
+        guard entitlementManager.isPro else {
+            showingUpgradeSheet = true
+            return
+        }
         selectedFormationID = formation.id
         renamingFormationID = formation.id
         formationNameDraft = formation.name

@@ -1288,7 +1288,10 @@ struct FloorGridView: View {
         }
 
         Button(action: { onRenameFormation?() }) {
-            Label("Rename Formation", systemImage: "pencil")
+            Label(
+                entitlementManager.isPro ? "Rename Formation" : "Rename Formation (Pro)",
+                systemImage: entitlementManager.isPro ? "pencil" : "lock.fill"
+            )
         }
 
         let idx = formationIndex ?? 0
