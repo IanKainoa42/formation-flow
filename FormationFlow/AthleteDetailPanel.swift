@@ -531,6 +531,8 @@ struct SidebarInspectorView: View {
                         formationCount: store.routine.formations.count,
                         formationName: formation?.name ?? "Formation",
                         compactLayout: isCompactLayout,
+                        isPro: isPro,
+                        onUpgrade: onUpgrade,
                         onUpdateLabel: { newLabel in
                             store.mutateRosterAthlete(id: selectedRosterAthlete.id) { athlete in
                                 athlete.label = newLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -539,6 +541,10 @@ struct SidebarInspectorView: View {
                             }
                         },
                         onUpdateRole: { newRole in
+                            guard isPro else {
+                                onUpgrade()
+                                return
+                            }
                             store.mutateRosterAthlete(id: selectedRosterAthlete.id) { athlete in
                                 athlete.role = newRole
                             }

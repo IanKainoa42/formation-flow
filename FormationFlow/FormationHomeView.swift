@@ -888,7 +888,7 @@ struct RoutineWorkspaceView: View {
                 Button {
                     duplicateCurrentRoutine()
                 } label: {
-                    Label(canAddFormation ? "Duplicate Routine" : "Duplicate Routine (Pro)", systemImage: canAddFormation ? "plus.square.on.square" : "lock.fill")
+                    Label(entitlementManager.isPro ? "Duplicate Routine" : "Duplicate Routine (Pro)", systemImage: entitlementManager.isPro ? "plus.square.on.square" : "lock.fill")
                 }
 
                 Button(role: .destructive) {
@@ -904,7 +904,7 @@ struct RoutineWorkspaceView: View {
                 Button {
                     createNewRoutine()
                 } label: {
-                    Label(canAddFormation ? "New Routine" : "New Routine (Pro)", systemImage: canAddFormation ? "plus" : "lock.fill")
+                    Label(entitlementManager.isPro ? "New Routine" : "New Routine (Pro)", systemImage: entitlementManager.isPro ? "plus" : "lock.fill")
                 }
             }
         } label: {
@@ -934,7 +934,7 @@ struct RoutineWorkspaceView: View {
     }
 
     private func duplicateCurrentRoutine() {
-        guard canAddFormation else {
+        guard entitlementManager.isPro else {
             showingUpgradeSheet = true
             return
         }
@@ -944,7 +944,7 @@ struct RoutineWorkspaceView: View {
     }
 
     private func createNewRoutine() {
-        guard canAddFormation else {
+        guard entitlementManager.isPro else {
             showingUpgradeSheet = true
             return
         }

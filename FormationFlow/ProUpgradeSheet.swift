@@ -8,6 +8,7 @@ struct ProUpgradeSheet: View {
 
     @State private var purchaseState: PurchaseState = .idle
     @State private var isRestoring = false
+    @State private var restoreAlertMessage: String?
 
     enum PurchaseState {
         case idle
@@ -32,7 +33,7 @@ struct ProUpgradeSheet: View {
                 featureRow("Athlete roles & colors")
                 featureRow("Timing controls")
                 featureRow("Advanced path waypoints")
-                featureRow("Multiple routines (soon)")
+                featureRow("Multiple routines")
             }
             .padding(.horizontal, 32)
 
@@ -106,7 +107,11 @@ struct ProUpgradeSheet: View {
                     isRestoring = true
                     await entitlementManager.restore()
                     isRestoring = false
-                    if entitlementManager.isPro { dismiss() }
+                    if entitlementManager.isPro {
+                        dismiss()
+                    } else {
+                        restoreAlertMessage = "No prior purchases were found on this Apple ID."
+                    }
                 }
             } label: {
                 HStack(spacing: 6) {
@@ -136,6 +141,18 @@ struct ProUpgradeSheet: View {
         .padding()
         .onChange(of: entitlementManager.isPro) { _, isPro in
             if isPro { dismiss() }
+        }
+        .alert(
+            "Restore Purchases",
+            isPresented: Binding(
+                get: { restoreAlertMessage != nil },
+                set: { if !$0 { restoreAlertMessage = nil } }
+            ),
+            presenting: restoreAlertMessage
+        ) { _ in
+            Button("OK", role: .cancel) { restoreAlertMessage = nil }
+        } message: { message in
+            Text(message)
         }
     }
 

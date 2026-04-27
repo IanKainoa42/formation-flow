@@ -1476,9 +1476,13 @@ struct FloorGridView: View {
                         Label("Rename", systemImage: "pencil")
                     }
 
-                    Menu("Role") {
+                    Menu(entitlementManager.isPro ? "Role" : "Role (Pro)") {
                         ForEach(AthleteRole.allCases, id: \.self) { role in
                             Button {
+                                guard entitlementManager.isPro else {
+                                    showingUpgradeSheet = true
+                                    return
+                                }
                                 store.mutateRosterAthlete(id: selectedRosterAthlete.id) { athlete in
                                     athlete.role = role
                                 }
