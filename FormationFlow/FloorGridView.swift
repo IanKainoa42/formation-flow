@@ -1684,6 +1684,8 @@ struct FloorGridView: View {
                     Text(endFormationName).tag(SwapFormationTarget.end)
                 }
                 .pickerStyle(.segmented)
+                .accessibilityLabel("Swap target formation")
+                .accessibilityHint("Choose whether to swap athletes in the start or end formation")
                 .frame(maxWidth: 260)
                 .onChange(of: swapFormationTarget) { _, target in
                     player?.pause()
