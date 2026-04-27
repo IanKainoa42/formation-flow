@@ -224,9 +224,9 @@ Before staging any commit, delete all intermediate patch artifacts:
 - Root-level `.py` scripts (e.g., `patch_file.py`, `patch_file2.py` — committed in PR #92)
 - Temp Swift files not in the Xcode project (e.g., `test_auth.swift` — PR #35)
 - `plan.md` — Jules planning artifact committed in PRs #118, #120 (Apr 2026). In `.gitignore` but will re-appear if `git add -f` is used. Stage by specific path only.
-- `.Jules/palette.md`, `.jules/bolt.md`, `.jules/palette.md` — Jules agent state files. **HARD STOP — NEVER commit these files.** Violation count: 7 PRs (#117, #121, #123, #124, #128 and counting). These are Jules session bookkeeping, not source code. If any appear in your staging area: `git reset HEAD .Jules/palette.md .jules/bolt.md .jules/palette.md && git rm --cached .Jules/palette.md .jules/bolt.md .jules/palette.md`. Stage by specific file path only — never `git add .` or `git add .Jules` or `git add .jules`.
+- `.Jules/palette.md`, `.jules/bolt.md`, `.jules/palette.md` — Jules agent state files. **HARD STOP — NEVER commit these files.** Violation count: 10 PRs (#117, #121, #123, #124, #128, #129, #132, #134 and counting). Root cause: `.Jules/` (capital J) was missing from `.gitignore` — added 2026-04-27; both dirs untracked via `git rm --cached`. If any appear in staging: `git reset HEAD .Jules/palette.md .jules/bolt.md .jules/palette.md && git rm --cached .Jules/palette.md .jules/bolt.md .jules/palette.md`. Stage by specific file path only — never `git add .` or `git add .Jules` or `git add .jules`.
 
-All of the above are now in `.gitignore`. Do not use `git add -f` — stage by specific path only. Violations: PR #35 (`test_auth.swift`), PR #92 (4 shell/Python scripts), PRs #118/#120 (`plan.md`), PRs #117/#121/#123/#124/#128 (`.Jules/palette.md`, `.jules/bolt.md`).
+All of the above are now in `.gitignore`. Do not use `git add -f` — stage by specific path only. Violations: PR #35 (`test_auth.swift`), PR #92 (4 shell/Python scripts), PRs #118/#120 (`plan.md`), PRs #117/#121/#123/#124/#128/#129/#132/#134 (`.Jules/palette.md`, `.jules/bolt.md`).
 
 ## SwiftUI Accessibility: Slider Anti-Pattern
 

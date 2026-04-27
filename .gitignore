@@ -46,3 +46,6 @@ test_auth.swift
 .jules/
 AppStoreScreenshots/auto/
 *.af
+
+# Jules agent state — capital J variant (Jules creates both .Jules/ and .jules/)
+.Jules/
