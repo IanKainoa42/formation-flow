@@ -2094,8 +2094,9 @@ struct FloorGridView: View {
                     let swapFormationID: UUID
                     let swapAthletes: [RenderedAthlete]
 
-                    if hasTransition, let player {
-                        swapFormationID = swapFormationTarget == .start ? startFormationID! : endFormationID!
+                    if hasTransition, let player,
+                       let resolvedSwapID = swapFormationTarget == .start ? startFormationID : endFormationID {
+                        swapFormationID = resolvedSwapID
                         swapAthletes = swapFormationTarget == .start ? player.startAthletes : player.endAthletes
                     } else {
                         swapFormationID = formationID

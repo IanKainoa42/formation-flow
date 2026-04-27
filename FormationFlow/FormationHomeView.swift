@@ -13,6 +13,10 @@ struct RoutineWorkspaceView: View {
     @StateObject private var previewSession = TransitionPreviewSession()
 
     @State private var selectedFormationID: UUID?
+    // Mirrors selectedFormationID but retains its last non-nil value so the detail
+    // pane keeps rendering the active formation when SwiftUI's List clears its
+    // selection binding upon entering edit mode (sidebar EditButton).
+    @State private var displayedFormationID: UUID?
     @State private var compactNavigationPath: [UUID] = []
     @State private var splitViewVisibility: NavigationSplitViewVisibility = .all
     @State private var previewReferenceMode: PreviewReferenceMode = .outOfSelected
@@ -56,8 +60,12 @@ struct RoutineWorkspaceView: View {
         isPhoneLayout && verticalSizeClass == .compact
     }
 
+    private var effectiveFormationID: UUID? {
+        selectedFormationID ?? displayedFormationID
+    }
+
     private var selectedFormationIndex: Int? {
-        store.formationIndex(id: selectedFormationID)
+        store.formationIndex(id: effectiveFormationID)
     }
 
     private var selectedFormation: Formation? {
@@ -137,7 +145,10 @@ struct RoutineWorkspaceView: View {
             previewReferenceMode = smartPickReferenceMode()
             refreshPreviewSession()
         }
-        .onChange(of: selectedFormationID) { _, _ in
+        .onChange(of: selectedFormationID) { _, new in
+            if let new {
+                displayedFormationID = new
+            }
             selectedAthleteIDs = []
             isSwapMode = false
             previewReferenceMode = smartPickReferenceMode()
@@ -483,8 +494,8 @@ struct RoutineWorkspaceView: View {
 
     @ViewBuilder
     private var regularDetailView: some View {
-        if let selectedFormation, let selectedFormationID {
-            detailContent(for: selectedFormation, formationID: selectedFormationID, compact: false)
+        if let selectedFormation, let formationID = effectiveFormationID {
+            detailContent(for: selectedFormation, formationID: formationID, compact: false)
         } else {
             ContentUnavailableView("Select a formation", systemImage: "rectangle.grid.1x2")
         }
@@ -1076,8 +1087,13 @@ struct RoutineWorkspaceView: View {
         let validIDs = Set(formations.map(\.id))
         compactNavigationPath.removeAll { !validIDs.contains($0) }
 
+        if let displayedFormationID, !validIDs.contains(displayedFormationID) {
+            self.displayedFormationID = nil
+        }
+
         guard !formations.isEmpty else {
             selectedFormationID = nil
+            displayedFormationID = nil
             compactNavigationPath.removeAll()
             return
         }
