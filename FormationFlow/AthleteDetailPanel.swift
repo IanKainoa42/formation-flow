@@ -740,7 +740,6 @@ struct SelectedAthleteSidebarView: View {
 
     @State private var labelDraft: String = ""
     @State private var showDeleteConfirmation = false
-    @State private var showClearPathConfirmation = false
 
     private var selectedAthleteID: UUID? {
         selectedAthleteIDs.count == 1 ? selectedAthleteIDs.first : nil
@@ -921,7 +920,7 @@ struct SelectedAthleteSidebarView: View {
                         // Path
                         HStack(spacing: 8) {
                             Button {
-                                showClearPathConfirmation = true
+                                clearPath()
                             } label: {
                                 Label("Straight", systemImage: "line.diagonal")
                                     .frame(maxWidth: .infinity)
@@ -985,18 +984,6 @@ struct SelectedAthleteSidebarView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This will remove them from all \(store.routine.formations.count) formations and their transitions. This cannot be undone.")
-        }
-        .confirmationDialog(
-            "Reset path?",
-            isPresented: $showClearPathConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Reset Path", role: .destructive) {
-                clearPath()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will remove all custom curves and waypoints for this athlete. This cannot be undone.")
         }
     }
 
