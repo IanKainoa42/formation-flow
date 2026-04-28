@@ -23,6 +23,7 @@ Package.resolved
 *.swp
 *~
 *.xcuserstate
+build.log
 
 # Fastlane
 fastlane/AuthKey.json

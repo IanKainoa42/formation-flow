@@ -18,6 +18,10 @@ struct FloorGridView: View {
     @Binding var triggerDeleteAthlete: Bool
     let formationID: UUID
     var onCycleFormation: (() -> Void)?
+    var onCyclePreviousFormation: (() -> Void)?
+    var isFirstFormation: Bool = false
+    var isLastFormation: Bool = false
+    var hideFormationContextBadge: Bool = false
     var onDuplicateAsNext: () -> Void
     var onRenameFormation: (() -> Void)?
     var onDeleteFormation: (() -> Void)?
@@ -1092,7 +1096,11 @@ struct FloorGridView: View {
                                 onPath: { showingInspectorSheet = true },
                                 isSwapMode: isSwapMode,
                                 canSwap: selectedAthleteID != nil,
-                                canEditPath: selectedAthleteID != nil
+                                canEditPath: selectedAthleteID != nil,
+                                onPreviousFormation: { onCyclePreviousFormation?() },
+                                onNextFormation: { onCycleFormation?() },
+                                isFirstFormation: isFirstFormation,
+                                isLastFormation: isLastFormation
                             )
                         }
                     }
@@ -1121,7 +1129,11 @@ struct FloorGridView: View {
                         canEditPath: selectedAthleteID != nil,
                         onAdd: addAthlete,
                         formationLabel: formationContextLabel,
-                        formationColor: currentFormationColor
+                        formationColor: currentFormationColor,
+                        onPreviousFormation: { onCyclePreviousFormation?() },
+                        onNextFormation: { onCycleFormation?() },
+                        isFirstFormation: isFirstFormation,
+                        isLastFormation: isLastFormation
                     )
                     .padding(.leading, 8)
                     .padding(.top, 12)
@@ -1131,7 +1143,7 @@ struct FloorGridView: View {
 
             canvasContent
                 .overlay(alignment: .bottomLeading) {
-                    if !isPhoneLayout {
+                    if !isPhoneLayout && !hideFormationContextBadge {
                         formationContextBadge
                             .padding(.init(top: 0, leading: 12, bottom: 12, trailing: 0))
                     }
@@ -1251,7 +1263,11 @@ struct FloorGridView: View {
                     onPath: { showingInspectorSheet = true },
                     isSwapMode: isSwapMode,
                     canSwap: selectedAthleteID != nil,
-                    canEditPath: selectedAthleteID != nil
+                    canEditPath: selectedAthleteID != nil,
+                    onPreviousFormation: { onCyclePreviousFormation?() },
+                    onNextFormation: { onCycleFormation?() },
+                    isFirstFormation: isFirstFormation,
+                    isLastFormation: isLastFormation
                 )
                 .toolbar {
                     ToolbarItem(placement: .navigationBarTrailing) {

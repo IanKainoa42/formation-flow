@@ -11,34 +11,34 @@ struct RoutinePlaybackView: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            let courtWidth = CourtConstants.width
-            let courtHeight = CourtConstants.height
-            let availableWidth = geometry.size.width - 40  // 20pt padding each side
-            let availableHeight = geometry.size.height - 140  // room for transport bar
-            let cellSize = min(availableWidth / courtWidth, availableHeight / courtHeight)
-            let gridWidth = courtWidth * cellSize
-            let gridHeight = courtHeight * cellSize
-            let offsetX = (geometry.size.width - gridWidth) / 2
-            let offsetY = (geometry.size.height - 140 - gridHeight) / 2 + 20
-
+        VStack(spacing: 0) {
             ZStack {
-                Color.black.ignoresSafeArea()
+                Color.black
 
-                FloorCanvasView(
-                    athletes: player.currentAthletes,
-                    cellSize: cellSize,
-                    offset: CGPoint(x: offsetX, y: offsetY),
-                    hasTransition: true,
-                    startFormationColor: TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: player.currentSegmentIndex),
-                    endFormationColor: TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: player.currentSegmentIndex + 1),
-                    transitionProgress: player.segmentProgress,
-                    useRoleColors: false,
-                    trailPositions: player.showTrail ? player.trailPositions : [:]
-                )
-                .ignoresSafeArea()
+                GeometryReader { geometry in
+                    let courtWidth = CourtConstants.width
+                    let courtHeight = CourtConstants.height
+                    let availableWidth = geometry.size.width - 40
+                    let availableHeight = geometry.size.height - 40
+                    let cellSize = min(availableWidth / courtWidth, availableHeight / courtHeight)
+                    let gridWidth = courtWidth * cellSize
+                    let gridHeight = courtHeight * cellSize
+                    let offsetX = (geometry.size.width - gridWidth) / 2
+                    let offsetY = (geometry.size.height - gridHeight) / 2
 
-                // Close button
+                    FloorCanvasView(
+                        athletes: player.currentAthletes,
+                        cellSize: cellSize,
+                        offset: CGPoint(x: offsetX, y: offsetY),
+                        hasTransition: true,
+                        startFormationColor: TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: player.currentSegmentIndex),
+                        endFormationColor: TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: player.currentSegmentIndex + 1),
+                        transitionProgress: player.segmentProgress,
+                        useRoleColors: false,
+                        trailPositions: player.showTrail ? player.trailPositions : [:]
+                    )
+                }
+
                 VStack {
                     HStack {
                         Button {
@@ -59,50 +59,47 @@ struct RoutinePlaybackView: View {
                     }
                     Spacer()
                 }
-
-                // Transport bar
-                VStack {
-                    Spacer()
-                    routineTransportBar
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 20)
-                }
             }
+
+            routineTransportBar
         }
+        .background(Color.black)
+        .ignoresSafeArea()
         .statusBarHidden()
         .onAppear {
             player.play()
         }
     }
 
-    // MARK: - Transport Bar
+    // MARK: - Transport Bar (thin single row)
 
     private var routineTransportBar: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Formation name
-            HStack {
-                Text(player.currentFormationName)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(.white.opacity(0.12), in: Capsule())
-                    .onTapGesture {
-                        player.jumpToNextSegment()
-                    }
-                    .accessibilityAddTraits(.isButton)
-                    .accessibilityHint("Jumps to the next formation")
-                    .help("Jumps to the next formation")
+        HStack(spacing: 10) {
+            Text(player.currentFormationName)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(.white.opacity(0.12), in: Capsule())
+                .onTapGesture { player.jumpToNextSegment() }
+                .accessibilityAddTraits(.isButton)
+                .accessibilityHint("Jumps to the next formation")
+                .help("Jumps to the next formation")
+                .frame(maxWidth: 160, alignment: .leading)
 
-                Spacer()
-
-                Text("\(player.currentSegmentIndex + 1) / \(player.segmentCount)")
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(.secondary)
+            Button {
+                player.isPlaying ? player.pause() : player.play()
+            } label: {
+                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                    .frame(width: 28, height: 28)
             }
+            .buttonStyle(.borderedProminent)
+            .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
+            .accessibilityValue(player.isPlaying ? "Playing" : "Paused")
+            .help(player.isPlaying ? "Pause the routine playback" : "Play the routine animation")
 
-            // Scrub bar with segment markers
             ZStack(alignment: .leading) {
                 Slider(
                     value: Binding(
@@ -113,84 +110,55 @@ struct RoutinePlaybackView: View {
                 )
                 .accessibilityLabel("Routine progress")
 
-                // Segment marker ticks
                 GeometryReader { geo in
                     ForEach(player.segmentMarkers.indices, id: \.self) { index in
                         let marker = player.segmentMarkers[index]
                         Rectangle()
                             .fill(Color.white.opacity(0.5))
-                            .frame(width: 2, height: 12)
+                            .frame(width: 2, height: 8)
                             .position(x: marker * geo.size.width, y: geo.size.height / 2)
                             .allowsHitTesting(false)
                     }
                 }
             }
-            .frame(height: 36)
+            .layoutPriority(1)
 
-            // Controls row
-            HStack(spacing: 12) {
-                // Play/Pause
-                Button {
-                    player.isPlaying ? player.pause() : player.play()
-                } label: {
-                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .frame(width: 40, height: 40)
-                }
-                .buttonStyle(.borderedProminent)
-                .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
-                .accessibilityValue(player.isPlaying ? "Playing" : "Paused")
-                .accessibilityHint(player.isPlaying ? "Pause the routine playback" : "Play the routine animation")
-                .help(player.isPlaying ? "Pause the routine playback" : "Play the routine animation")
+            Picker("Speed", selection: Binding(
+                get: { player.speed },
+                set: { player.setSpeed($0) }
+            )) {
+                Text("0.5x").tag(CGFloat(1.0))
+                Text("1x").tag(CGFloat(2.0))
+                Text("2x").tag(CGFloat(4.0))
+                Text("4x").tag(CGFloat(8.0))
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 160)
+            .controlSize(.small)
+            .accessibilityLabel("Playback Speed")
 
-                // Reset
+            Menu {
+                Text("\(player.currentSegmentIndex + 1) / \(player.segmentCount)")
+
                 Button(action: player.reset) {
-                    Image(systemName: "backward.end.fill")
-                        .frame(width: 34, height: 34)
+                    Label("Reset to Start", systemImage: "backward.end.fill")
                 }
-                .buttonStyle(.bordered)
-                .accessibilityLabel("Reset playback")
-                .accessibilityHint("Jump back to the start of the routine")
-                .help("Jump back to the start of the routine")
 
-                Spacer()
-
-                // Speed picker
-                Picker("Speed", selection: Binding(
-                    get: { player.speed },
-                    set: { player.setSpeed($0) }
-                )) {
-                    Text("0.5x").tag(CGFloat(1.0))
-                    Text("1x").tag(CGFloat(2.0))
-                    Text("2x").tag(CGFloat(4.0))
-                    Text("4x").tag(CGFloat(8.0))
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 180)
-                .accessibilityLabel("Playback Speed")
-                .accessibilityHint("Adjust the playback speed of the routine animation")
-
-                // Trail toggle
                 Button {
                     player.showTrail.toggle()
                 } label: {
-                    Image(systemName: "sparkles")
-                        .frame(width: 34, height: 34)
+                    Label(
+                        player.showTrail ? "Hide Trails" : "Show Trails",
+                        systemImage: "sparkles"
+                    )
                 }
-                .buttonStyle(.bordered)
-                .tint(player.showTrail ? .orange : .secondary)
-                .accessibilityLabel("Toggle trails")
-                .accessibilityValue(player.showTrail ? "On" : "Off")
-                .accessibilityHint(player.showTrail ? "Hide movement trails" : "Show movement trails for the athletes")
-                .help(player.showTrail ? "Hide movement trails" : "Show movement trails for the athletes")
+            } label: {
+                Image(systemName: "ellipsis.circle").frame(width: 28, height: 28)
             }
+            .accessibilityLabel("More playback options")
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(.white.opacity(0.08))
-        }
-        .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
+        .padding(.vertical, 6)
+        .background(.bar)
     }
 }
