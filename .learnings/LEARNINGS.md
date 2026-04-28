@@ -49,3 +49,21 @@ Corrections, knowledge gaps, and best practices. See `/self-improvement` for for
 - **Category:** best_practice
 - **What happened:** Today's screenshot upload deleted `APP_IPAD_PRO_3GEN_11` and `APP_IPHONE_67` slots in ASC before uploading our 2752×2064 / 2732×2048 / 1320×2868 files. Those legacy slots (iPad Pro 11" 3rd gen, iPhone 6.7") are different device classes from our targets (iPad Pro 13" M4, iPhone 6.9" Pro Max). Without checking ASC web UI afterward, you can't tell whether fastlane mapped the new files to the *current* device classes or silently skipped them.
 - **Rule:** After every `fastlane deliver` screenshot run, open App Store Connect → My Apps → FormationFlow → 1.0.0 → Screenshots tab and visually verify each device class slot received the right files. Do not assume "Successfully uploaded all screenshots" means the slots are correctly populated — it just means no upload errors. fastlane 2.233 may not know about the newest device classes (iPad Pro M4 13", iPhone 6.9").
+
+## 2026-04-28 — ASC API has NO separate iPhone 6.9" / iPad 13" display types
+
+- **Category:** knowledge_gap
+- **What happened:** Tried to upload via ASC API with `screenshotDisplayType: "APP_IPHONE_69"` and `"APP_IPAD_PRO_3GEN_13"` — both returned 409 ENTITY_ERROR.ATTRIBUTE.TYPE: "not a valid value." Apple consolidates the new device dimensions into the existing slots: 1320×2868 iPhone Pro Max content goes into `APP_IPHONE_67`, and 2752×2064 iPad Pro 13" (M4) content goes into `APP_IPAD_PRO_3GEN_129`. ASC accepts both old and new dimensions in the same set, and dispatches to the customer's device based on closest match.
+- **Rule:** When uploading FormationFlow screenshots via ASC API, use only these display types: `APP_IPAD_PRO_3GEN_129` (accepts both 2732×2048 and 2752×2064), `APP_IPHONE_67` (accepts both 1290×2796 and 1320×2868). Use `/tmp/asc_upload_screenshots.py` (saved 2026-04-28 in this session) as the working uploader — it deletes existing sets and re-uploads via signed URL chunks. Verify via `/tmp/verify_screenshots.py` (also saved 2026-04-28) which prints per-set dimension distribution.
+
+## 2026-04-28 — `xcrun altool` actually works (memory said it was broken)
+
+- **Category:** correction
+- **What happened:** Memory's `project_altool_broken_use_transporter.md` and CLAUDE.md/MEMORY.md note "altool is broken on this Mac (missing Defaults.properties); upload via Transporter.app instead." Today, `xcrun altool --upload-app --type ios --file /tmp/FormationFlow.ipa --apiKey 8APDGY74BZ --apiIssuer 7642a25e-...` worked first try: "UPLOAD SUCCEEDED with no errors" using altool 26.30.4 from Xcode (path: `/Applications/Xcode.app/Contents/SharedFrameworks/ContentDelivery.framework/Resources/altool`). The Defaults.properties bug appears to be fixed in current Xcode.
+- **Rule:** Try `xcrun altool` first for IPA uploads — it's faster and headless. Only fall back to Transporter.app if altool fails with the specific Defaults.properties error. The memory note about altool being broken should be removed once verified working across multiple uploads.
+
+## 2026-04-28 — ASC accumulates "mystery" build numbers between local sessions
+
+- **Category:** best_practice
+- **What happened:** Local CURRENT_PROJECT_VERSION was at 160 today. altool rejected upload with "previousBundleVersion: 161" — meaning ASC already had build 161 from somewhere not visible in our local git. This is the SECOND time the local-vs-ASC build counter has drifted (memory: "tried to upload 152, ASC already had 153, had to bump to 154"). Likely sources: Gemini auto-uploads, fastlane lane runs from another machine, or ASC keeping older artifacts.
+- **Rule:** Before uploading any IPA, expect ASC to be 1-3 builds ahead of local. Bump CURRENT_PROJECT_VERSION generously (e.g., +5 buffer) OR be ready to bump-and-retry on first failure. After altool rejects with "previousBundleVersion: N", immediately bump to N+1 and re-sign+re-upload — full re-archive isn't needed; just `plutil -replace CFBundleVersion -string "N+1" Info.plist` inside the existing .app, re-codesign with the entitlements, re-zip, retry altool. Saves 2-3 min vs full archive rebuild.
