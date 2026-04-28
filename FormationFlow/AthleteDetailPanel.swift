@@ -509,6 +509,8 @@ struct SidebarInspectorView: View {
     var onUpgrade: () -> Void = {}
     var onRefreshTransition: () -> Void = {}
 
+    @State private var showingClearPathConfirmation = false
+
     private var selectedAthleteID: UUID? {
         selectedAthleteIDs.count == 1 ? selectedAthleteIDs.first : nil
     }
@@ -605,6 +607,35 @@ struct SidebarInspectorView: View {
                 }
             }
         .background(.thinMaterial)
+        .confirmationDialog(
+            "Clear waypoints?",
+            isPresented: $showingClearPathConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Clear Path", role: .destructive) {
+                guard let startFormationID, let endFormationID else { return }
+                performClearPath(
+                    startFormationID: startFormationID,
+                    endFormationID: endFormationID
+                )
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes all waypoints and hold timings on this path. This cannot be undone.")
+        }
+    }
+
+    private func performClearPath(startFormationID: UUID, endFormationID: UUID) {
+        guard let selectedAthleteID else { return }
+        store.mutateAthleteTransition(
+            from: startFormationID,
+            to: endFormationID,
+            athleteID: selectedAthleteID
+        ) { t in
+            t.pathControlPoint = nil
+            t.pathWaypoints = []
+        }
+        onRefreshTransition()
     }
 
     @ViewBuilder
@@ -635,16 +666,14 @@ struct SidebarInspectorView: View {
                 onRefreshTransition()
             },
             onClearPath: {
-                guard let selectedAthleteID else { return }
-                store.mutateAthleteTransition(
-                    from: startFormationID,
-                    to: endFormationID,
-                    athleteID: selectedAthleteID
-                ) { t in
-                    t.pathControlPoint = nil
-                    t.pathWaypoints = []
+                if (selectedTransition?.pathWaypoints.count ?? 0) > 0 {
+                    showingClearPathConfirmation = true
+                } else {
+                    performClearPath(
+                        startFormationID: startFormationID,
+                        endFormationID: endFormationID
+                    )
                 }
-                onRefreshTransition()
             },
             onEnsureCurve: {
                 guard let selectedAthleteID else { return }
@@ -740,6 +769,7 @@ struct SelectedAthleteSidebarView: View {
 
     @State private var labelDraft: String = ""
     @State private var showDeleteConfirmation = false
+    @State private var showingClearPathConfirmation = false
 
     private var selectedAthleteID: UUID? {
         selectedAthleteIDs.count == 1 ? selectedAthleteIDs.first : nil
@@ -920,7 +950,11 @@ struct SelectedAthleteSidebarView: View {
                         // Path
                         HStack(spacing: 8) {
                             Button {
-                                clearPath()
+                                if transition.pathWaypoints.count > 0 {
+                                    showingClearPathConfirmation = true
+                                } else {
+                                    clearPath()
+                                }
                             } label: {
                                 Label("Straight", systemImage: "line.diagonal")
                                     .frame(maxWidth: .infinity)
@@ -984,6 +1018,16 @@ struct SelectedAthleteSidebarView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This will remove them from all \(store.routine.formations.count) formations and their transitions. This cannot be undone.")
+        }
+        .confirmationDialog(
+            "Clear waypoints?",
+            isPresented: $showingClearPathConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Clear Path", role: .destructive, action: clearPath)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes all waypoints and hold timings on this path. This cannot be undone.")
         }
     }
 

@@ -12,14 +12,14 @@ final class EntitlementManager: ObservableObject {
 
     private var updateTask: Task<Void, Never>?
 
-    /// True for debug builds and TestFlight (sandbox receipt), false for App Store.
+    /// True only for DEBUG builds. TestFlight and App Store both require a real purchase
+    /// — auto-granting Pro from a sandbox receipt would let the App Store reviewer skip the
+    /// paywall entirely (3.1.1 rejection risk) and would also poison the Keychain cache when
+    /// a TestFlight user moves to the App Store version.
     private static var isTestBuild: Bool {
         #if DEBUG
         return true
         #else
-        if let receiptURL = Bundle.main.appStoreReceiptURL {
-            return receiptURL.lastPathComponent == "sandboxReceipt"
-        }
         return false
         #endif
     }
@@ -146,7 +146,9 @@ final class EntitlementManager: ObservableObject {
     private func setIsPro(_ value: Bool) {
         guard isPro != value else { return }
         isPro = value
-        Self.writeIsProToKeychain(value)
+        if !Self.isTestBuild {
+            Self.writeIsProToKeychain(value)
+        }
         Self.logger.log("isPro=\(value, privacy: .private)")
     }
 

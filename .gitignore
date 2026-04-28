@@ -49,3 +49,9 @@ AppStoreScreenshots/auto/
 
 # Jules agent state — capital J variant (Jules creates both .Jules/ and .jules/)
 .Jules/
+
+# Gemini agent state
+.gemini/
+
+# Jules planning artifact (committed in PRs #118, #120 — see CLAUDE.md commit hygiene)
+plan.md

@@ -67,6 +67,7 @@ struct FloorGridView: View {
     @State private var pendingWaypointDeletionID: UUID?
     @State private var endpointDragStartPosition: CGPoint?
     @State private var showingResetAllPathsConfirmation = false
+    @State private var showingResetSinglePathConfirmation = false
     @State private var hoveredHandlePosition: CGPoint?
     @State private var hoveredAthleteID: UUID?
     @State private var focusedPathHandle: CGPoint?
@@ -539,6 +540,18 @@ struct FloorGridView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This removes every custom curve and waypoint and returns all athletes to straight-line travel. This cannot be undone.")
+        }
+        .confirmationDialog(
+            "Clear waypoints?",
+            isPresented: $showingResetSinglePathConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Clear Path", role: .destructive) {
+                performResetSelectedPath()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes all waypoints and hold timings on this path. This cannot be undone.")
         }
         .onReceive(player?.objectWillChange.eraseToAnyPublisher() ?? Empty().eraseToAnyPublisher()) { _ in
             playerTick &+= 1
@@ -2636,17 +2649,27 @@ struct FloorGridView: View {
     }
 
     private func resetSelectedPaths() {
-        if selectedAthleteIDs.count == 1, let athleteID = selectedAthleteIDs.first {
-            guard let startFormationID, let endFormationID else { return }
-            clearTransitionDragState()
-            store.mutateAthleteTransition(from: startFormationID, to: endFormationID, athleteID: athleteID) { t in
-                t.pathControlPoint = nil
-                t.pathWaypoints = []
+        if selectedAthleteIDs.count == 1, selectedAthleteIDs.first != nil {
+            guard startFormationID != nil, endFormationID != nil else { return }
+            if (selectedTransition?.pathWaypoints.count ?? 0) > 0 {
+                showingResetSinglePathConfirmation = true
+            } else {
+                performResetSelectedPath()
             }
-            refreshTransitionFromStore()
         } else {
             showingResetAllPathsConfirmation = true
         }
+    }
+
+    private func performResetSelectedPath() {
+        guard let athleteID = selectedAthleteIDs.first,
+              let startFormationID, let endFormationID else { return }
+        clearTransitionDragState()
+        store.mutateAthleteTransition(from: startFormationID, to: endFormationID, athleteID: athleteID) { t in
+            t.pathControlPoint = nil
+            t.pathWaypoints = []
+        }
+        refreshTransitionFromStore()
     }
 
     private func resetAllPaths() {
