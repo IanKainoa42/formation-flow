@@ -453,13 +453,13 @@ struct RoutineWorkspaceView: View {
         .toolbar {
             ToolbarItemGroup(placement: .navigationBarTrailing) {
                 Button {
-                    showingRoutinePlayback = true
+                    attemptRoutinePlayback()
                 } label: {
-                    Image(systemName: "play.circle")
+                    Image(systemName: entitlementManager.isPro ? "play.circle" : "lock.fill")
                 }
                 .disabled(store.routine.formations.count < 2)
-                .accessibilityLabel("Play routine")
-                .help(store.routine.formations.count < 2 ? "Add at least 2 formations to play the routine" : "Play the full routine")
+                .accessibilityLabel(entitlementManager.isPro ? "Play routine" : "Upgrade to Pro to play routine")
+                .help(playbackHelpText)
 
                 EditButton()
                 Button(action: addFormation) {
@@ -538,15 +538,15 @@ struct RoutineWorkspaceView: View {
                     HStack(spacing: 8) {
                         if store.routine.formations.count >= 2 {
                             Button {
-                                showingRoutinePlayback = true
+                                attemptRoutinePlayback()
                             } label: {
-                                Image(systemName: "play.fill")
+                                Image(systemName: entitlementManager.isPro ? "play.fill" : "lock.fill")
                                     .font(.caption.weight(.semibold))
                                     .foregroundColor(.white)
                                     .padding(8)
                                     .background(.ultraThinMaterial, in: Circle())
                             }
-                            .accessibilityLabel("Play routine")
+                            .accessibilityLabel(entitlementManager.isPro ? "Play routine" : "Upgrade to Pro to play routine")
                         }
 
                         Button {
@@ -956,6 +956,24 @@ struct RoutineWorkspaceView: View {
     }
 
     // MARK: - Actions
+
+    private func attemptRoutinePlayback() {
+        if entitlementManager.isPro {
+            showingRoutinePlayback = true
+        } else {
+            showingUpgradeSheet = true
+        }
+    }
+
+    private var playbackHelpText: String {
+        if store.routine.formations.count < 2 {
+            return "Add at least 2 formations to play the routine"
+        }
+        if !entitlementManager.isPro {
+            return "Upgrade to Pro to play the full routine"
+        }
+        return "Play the full routine"
+    }
 
     private func addFormation() {
         guard canAddFormation else {

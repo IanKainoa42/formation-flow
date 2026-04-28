@@ -6,38 +6,39 @@ struct RoutinePlaybackView: View {
     @StateObject private var player: RoutinePlayer
     @Environment(\.dismiss) private var dismiss
 
+    private static let bottomBarHeight: CGFloat = 56
+
     init(store: RoutineStore) {
         _player = StateObject(wrappedValue: RoutinePlayer(store: store))
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        GeometryReader { geometry in
+            let courtWidth = CourtConstants.width
+            let courtHeight = CourtConstants.height
+            let availableWidth = geometry.size.width - 40
+            let availableHeight = geometry.size.height - Self.bottomBarHeight - 40
+            let cellSize = min(availableWidth / courtWidth, availableHeight / courtHeight)
+            let gridWidth = courtWidth * cellSize
+            let gridHeight = courtHeight * cellSize
+            let offsetX = (geometry.size.width - gridWidth) / 2
+            let offsetY = (geometry.size.height - Self.bottomBarHeight - gridHeight) / 2
+
             ZStack {
-                Color.black
+                Color.black.ignoresSafeArea()
 
-                GeometryReader { geometry in
-                    let courtWidth = CourtConstants.width
-                    let courtHeight = CourtConstants.height
-                    let availableWidth = geometry.size.width - 40
-                    let availableHeight = geometry.size.height - 40
-                    let cellSize = min(availableWidth / courtWidth, availableHeight / courtHeight)
-                    let gridWidth = courtWidth * cellSize
-                    let gridHeight = courtHeight * cellSize
-                    let offsetX = (geometry.size.width - gridWidth) / 2
-                    let offsetY = (geometry.size.height - gridHeight) / 2
-
-                    FloorCanvasView(
-                        athletes: player.currentAthletes,
-                        cellSize: cellSize,
-                        offset: CGPoint(x: offsetX, y: offsetY),
-                        hasTransition: true,
-                        startFormationColor: TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: player.currentSegmentIndex),
-                        endFormationColor: TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: player.currentSegmentIndex + 1),
-                        transitionProgress: player.segmentProgress,
-                        useRoleColors: false,
-                        trailPositions: player.showTrail ? player.trailPositions : [:]
-                    )
-                }
+                FloorCanvasView(
+                    athletes: player.currentAthletes,
+                    cellSize: cellSize,
+                    offset: CGPoint(x: offsetX, y: offsetY),
+                    hasTransition: true,
+                    startFormationColor: TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: player.currentSegmentIndex),
+                    endFormationColor: TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: player.currentSegmentIndex + 1),
+                    transitionProgress: player.segmentProgress,
+                    useRoleColors: false,
+                    trailPositions: player.showTrail ? player.trailPositions : [:]
+                )
+                .ignoresSafeArea()
 
                 VStack {
                     HStack {
@@ -59,12 +60,14 @@ struct RoutinePlaybackView: View {
                     }
                     Spacer()
                 }
-            }
 
-            routineTransportBar
+                VStack(spacing: 0) {
+                    Spacer()
+                    routineTransportBar
+                        .frame(height: Self.bottomBarHeight)
+                }
+            }
         }
-        .background(Color.black)
-        .ignoresSafeArea()
         .statusBarHidden()
         .onAppear {
             player.play()

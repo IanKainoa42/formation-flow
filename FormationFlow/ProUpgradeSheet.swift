@@ -1,4 +1,5 @@
 import OSLog
+import StoreKit
 import SwiftUI
 
 struct ProUpgradeSheet: View {
@@ -9,6 +10,7 @@ struct ProUpgradeSheet: View {
     @State private var purchaseState: PurchaseState = .idle
     @State private var isRestoring = false
     @State private var restoreAlertMessage: String?
+    @State private var product: Product?
 
     enum PurchaseState {
         case idle
@@ -72,14 +74,15 @@ struct ProUpgradeSheet: View {
                             ProgressView()
                                 .progressViewStyle(CircularProgressViewStyle(tint: .white))
                         }
+                        let priceSuffix = product.map { " — \($0.displayPrice)" } ?? ""
                         let buttonText = {
                             if case .loading = purchaseState {
                                 return "Upgrading..."
                             }
                             if case .error(_) = purchaseState {
-                                return "Try Again — $4.99"
+                                return "Try Again\(priceSuffix)"
                             }
-                            return "Upgrade — $4.99"
+                            return "Upgrade\(priceSuffix)"
                         }()
                         Text(buttonText)
                             .font(.headline)
@@ -167,6 +170,14 @@ struct ProUpgradeSheet: View {
             Button("OK", role: .cancel) { restoreAlertMessage = nil }
         } message: { message in
             Text(message)
+        }
+        .task {
+            do {
+                let products = try await Product.products(for: [EntitlementManager.productID])
+                product = products.first
+            } catch {
+                logger.error("Failed to load product: \(error.localizedDescription, privacy: .private)")
+            }
         }
     }
 
