@@ -249,6 +249,8 @@ struct RoutineWorkspaceView: View {
                         .background(.ultraThinMaterial, in: Circle())
                 }
                 .accessibilityLabel("Exit full screen")
+                .accessibilityHint("Restores the standard interface layout")
+                .help("Exit full screen")
                 .padding(.top, 64)
                 .padding(.trailing, 12)
             }
@@ -547,6 +549,8 @@ struct RoutineWorkspaceView: View {
                                     .background(.ultraThinMaterial, in: Circle())
                             }
                             .accessibilityLabel(entitlementManager.isPro ? "Play routine" : "Upgrade to Pro to play routine")
+                            .accessibilityHint(entitlementManager.isPro ? "Play the full routine" : "Upgrade to Pro to play the full routine")
+                            .help(entitlementManager.isPro ? "Play the full routine" : "Upgrade to Pro to play the full routine")
                         }
 
                         Button {
@@ -561,6 +565,8 @@ struct RoutineWorkspaceView: View {
                                 .background(.ultraThinMaterial, in: Circle())
                         }
                         .accessibilityLabel("Enter full screen")
+                        .accessibilityHint("Expands the canvas to fill the screen")
+                        .help("Enter full screen")
                     }
                     .padding(12)
                 }

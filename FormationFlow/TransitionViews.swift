@@ -458,6 +458,7 @@ struct ThinTransitionTransportBar: View {
             .controlSize(.small)
             .disabled(isFirstFormation)
             .accessibilityLabel("Previous formation")
+            .accessibilityHint(isFirstFormation ? "Already at the first formation" : "Go to the previous formation")
             .help(isFirstFormation ? "Already at the first formation" : "Go to the previous formation")
 
             TransportControls.playPauseButton(player: player, size: 30)
@@ -469,6 +470,7 @@ struct ThinTransitionTransportBar: View {
             .controlSize(.small)
             .disabled(isLastFormation)
             .accessibilityLabel("Next formation")
+            .accessibilityHint(isLastFormation ? "Already at the last formation" : "Go to the next formation")
             .help(isLastFormation ? "Already at the last formation" : "Go to the next formation")
 
             TransportControls.progressSlider(player: player)
@@ -506,6 +508,8 @@ struct ThinTransitionTransportBar: View {
                 Image(systemName: "ellipsis.circle").frame(width: 26, height: 26)
             }
             .accessibilityLabel("More transition options")
+            .accessibilityHint("Show more transition options")
+            .help("More transition options")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
