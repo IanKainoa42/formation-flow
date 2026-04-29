@@ -2113,17 +2113,42 @@ struct PathCalculations {
         guard athletes.count > 1 else { return (0, []) }
 
         let minDistanceSquared = minDistance * minDistance
+        let cellSize = max(minDistance, 0.1)
+
+        struct GridCell: Hashable {
+            let x: Int
+            let y: Int
+        }
+
+        var grid: [GridCell: [Int]] = [:]
+        for (index, athlete) in athletes.enumerated() {
+            let cellX = Int(floor(athlete.position.x / cellSize))
+            let cellY = Int(floor(athlete.position.y / cellSize))
+            let cell = GridCell(x: cellX, y: cellY)
+            grid[cell, default: []].append(index)
+        }
+
         var count = 0
         var ids = Set<UUID>()
 
-        for firstIndex in 0..<athletes.count {
-            for secondIndex in (firstIndex + 1)..<athletes.count {
-                if squaredDistance(from: athletes[firstIndex].position, to: athletes[secondIndex].position)
-                    < minDistanceSquared
-                {
-                    count += 1
-                    ids.insert(athletes[firstIndex].id)
-                    ids.insert(athletes[secondIndex].id)
+        for (index, athlete) in athletes.enumerated() {
+            let cellX = Int(floor(athlete.position.x / cellSize))
+            let cellY = Int(floor(athlete.position.y / cellSize))
+
+            for cx in (cellX - 1)...(cellX + 1) {
+                for cy in (cellY - 1)...(cellY + 1) {
+                    let cell = GridCell(x: cx, y: cy)
+                    if let cellIndices = grid[cell] {
+                        for otherIndex in cellIndices {
+                            if otherIndex > index {
+                                if squaredDistance(from: athlete.position, to: athletes[otherIndex].position) < minDistanceSquared {
+                                    count += 1
+                                    ids.insert(athlete.id)
+                                    ids.insert(athletes[otherIndex].id)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -2241,19 +2266,50 @@ struct PathCalculations {
         }
 
         let minDistanceSquared = minDistance * minDistance
-        var collisionIDs = Set<UUID>()
+        let cellSize = max(minDistance, 0.1)
 
-        for firstIndex in 0..<paths.count {
-            for secondIndex in (firstIndex + 1)..<paths.count {
-                // Skip first and last steps — static proximity is already
-                // handled by collisionSummary; only flag mid-transition crossings.
-                for step in 1..<steps {
-                    if squaredDistance(from: sampledPositions[firstIndex][step], to: sampledPositions[secondIndex][step])
-                        < minDistanceSquared
-                    {
-                        collisionIDs.insert(paths[firstIndex].athleteID)
-                        collisionIDs.insert(paths[secondIndex].athleteID)
-                        break
+        struct GridCell: Hashable {
+            let x: Int
+            let y: Int
+        }
+
+        var collisionIDs = Set<UUID>()
+        var seenPairs = Set<Int64>()
+
+        // Skip first and last steps — static proximity is already
+        // handled by collisionSummary; only flag mid-transition crossings.
+        for step in 1..<steps {
+            var grid: [GridCell: [Int]] = [:]
+            for index in 0..<paths.count {
+                let pos = sampledPositions[index][step]
+                let cellX = Int(floor(pos.x / cellSize))
+                let cellY = Int(floor(pos.y / cellSize))
+                let cell = GridCell(x: cellX, y: cellY)
+                grid[cell, default: []].append(index)
+            }
+
+            for index in 0..<paths.count {
+                let pos = sampledPositions[index][step]
+                let cellX = Int(floor(pos.x / cellSize))
+                let cellY = Int(floor(pos.y / cellSize))
+
+                for cx in (cellX - 1)...(cellX + 1) {
+                    for cy in (cellY - 1)...(cellY + 1) {
+                        let cell = GridCell(x: cx, y: cy)
+                        if let cellIndices = grid[cell] {
+                            for otherIndex in cellIndices {
+                                if otherIndex > index {
+                                    let packedKey = Int64(index) << 32 | Int64(otherIndex)
+                                    if !seenPairs.contains(packedKey) {
+                                        if squaredDistance(from: pos, to: sampledPositions[otherIndex][step]) < minDistanceSquared {
+                                            seenPairs.insert(packedKey)
+                                            collisionIDs.insert(paths[index].athleteID)
+                                            collisionIDs.insert(paths[otherIndex].athleteID)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -2347,22 +2403,54 @@ struct PathCalculations {
         }
 
         let minDistanceSquared = minDistance * minDistance
+        let cellSize = max(minDistance, 0.1)
+
+        struct GridCell: Hashable {
+            let x: Int
+            let y: Int
+        }
+
         var collisionIDs = Set<UUID>()
         var markers: [CGPoint] = []
+        var seenPairs = Set<Int64>()
 
-        for firstIndex in 0..<paths.count {
-            for secondIndex in (firstIndex + 1)..<paths.count {
-                for step in 1..<steps {
-                    let a = sampledPositions[firstIndex][step]
-                    let b = sampledPositions[secondIndex][step]
-                    if squaredDistance(from: a, to: b) < minDistanceSquared {
-                        collisionIDs.insert(paths[firstIndex].athleteID)
-                        collisionIDs.insert(paths[secondIndex].athleteID)
-                        let midpoint = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
-                        if !markers.contains(where: { squaredDistance(from: $0, to: midpoint) < 1 }) {
-                            markers.append(midpoint)
+        for step in 1..<steps {
+            var grid: [GridCell: [Int]] = [:]
+            for index in 0..<paths.count {
+                let pos = sampledPositions[index][step]
+                let cellX = Int(floor(pos.x / cellSize))
+                let cellY = Int(floor(pos.y / cellSize))
+                let cell = GridCell(x: cellX, y: cellY)
+                grid[cell, default: []].append(index)
+            }
+
+            for index in 0..<paths.count {
+                let a = sampledPositions[index][step]
+                let cellX = Int(floor(a.x / cellSize))
+                let cellY = Int(floor(a.y / cellSize))
+
+                for cx in (cellX - 1)...(cellX + 1) {
+                    for cy in (cellY - 1)...(cellY + 1) {
+                        let cell = GridCell(x: cx, y: cy)
+                        if let cellIndices = grid[cell] {
+                            for otherIndex in cellIndices {
+                                if otherIndex > index {
+                                    let packedKey = Int64(index) << 32 | Int64(otherIndex)
+                                    if !seenPairs.contains(packedKey) {
+                                        let b = sampledPositions[otherIndex][step]
+                                        if squaredDistance(from: a, to: b) < minDistanceSquared {
+                                            seenPairs.insert(packedKey)
+                                            collisionIDs.insert(paths[index].athleteID)
+                                            collisionIDs.insert(paths[otherIndex].athleteID)
+                                            let midpoint = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
+                                            if !markers.contains(where: { squaredDistance(from: $0, to: midpoint) < 1 }) {
+                                                markers.append(midpoint)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
-                        break
                     }
                 }
             }
