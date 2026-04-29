@@ -85,3 +85,21 @@ Corrections, knowledge gaps, and best practices. See `/self-improvement` for for
 - **Category:** knowledge_gap
 - **What happened:** Rotated iPad Pro 13" sim to landscape via `Device → Rotate Right`. Screenshot still came out 2064×2752 (portrait) — the same dimensions as before rotation. Same on iPhone 17 Pro Max: rotated via menu, simctl returned raw 1320×2868 portrait framebuffer with rotated content embedded. `simctl io <udid> screenshot` always returns the underlying display framebuffer in its native orientation, NOT what the user sees on screen. There is no `--orientation` or `--rotated` flag. Tried `osascript ... keystroke (ASCII 29) using command down` and direct menu clicks — both rotate the iOS UI but neither changes the screenshot output dimensions.
 - **Rule:** For ASC landscape iPad screenshots (need 2752×2064): rotate the sim to landscape (any method), then `xcrun simctl io <udid> screenshot /tmp/raw.png; sips -r -90 /tmp/raw.png` to get the correct 2752×2064 result. iPhone Pro Max ASC shots are portrait-native (1320×2868) so no rotation post-process needed. If a screenshot looks "wrong-rotation" but content is correct, it's a framebuffer-orientation issue — fix with `sips -r -90` (negative degrees), not `sips -r 90` which produces upside-down landscape.
+
+## 2026-04-29 — fastlane deliver "Too many screenshots" warnings during ASC 500 retries are non-fatal
+
+- **Category:** knowledge_gap
+- **What happened:** Replacing the iPad screenshot set via `fastlane deliver --force` (with `overwrite_screenshots: true`). First-pass uploads succeeded for some files, then ASC threw a wave of `Server error got 500` ("Waiting for screenshots to appear before uploading...") for ~20 minutes. On retry, fastlane logged `Too many screenshots found for device 'APP_IPAD_PRO_3GEN_129' in 'en-US', skipping this one (...)` for 3 files, plus `iPadPro13_02_shot.png is missing on App Store Connect`. Looked like a partial failure. Verifying via ASC API afterward showed all 10 iPad shots COMPLETE — the warnings were transient state during ASC's slow indexing.
+- **Rule:** Don't trust fastlane's mid-run "Too many" / "missing on ASC" diagnostics during a retry storm — they reflect ASC's stale read view, not the final committed state. After deliver exits cleanly (`Successfully uploaded screenshots to App Store Connect`), verify the actual set with the ASC API (`/v1/appScreenshotSets/<id>/appScreenshots`) before re-running deliver. A re-run with `overwrite_screenshots: true` would wipe a correct set and risk hitting the 500 storm again.
+
+## 2026-04-29 — Bash tool runs in zsh; arrays default to 1-indexed and break bash-style indexing
+
+- **Category:** correction
+- **What happened:** Wrote `SHOTS=(...)`; `for i in 0 1 2 3 4; do ... ${SHOTS[$i]} ...` expecting 0-indexed access. zsh (the default shell for the Bash tool on this machine) treats `${SHOTS[0]}` as empty (zsh arrays are 1-indexed by default; `KSH_ARRAYS` is not set). Result: empty filename in `cp`, copying wrong files, silently skipping the last shot.
+- **Rule:** Wrap any array-indexed Bash logic in `/bin/bash -c '...'` to force a true bash subshell. Inside heredocs/inline commands that aren't explicitly bash, never use `${arr[$i]}` with a 0-based loop — either use 1-based indexing (`for i in 1 2 3 4 5`), or invoke bash explicitly. The `#!/bin/bash` shebang in a Bash-tool command body is a comment, not a shell switch.
+
+## 2026-04-29 — Working ASC API JWT generation: use Ruby's OpenSSL::PKey::EC, not openssl(1) asn1parse
+
+- **Category:** best_practice
+- **What happened:** Tried generating an ES256 JWT for the App Store Connect API in pure bash using `openssl dgst -sha256 -sign | openssl asn1parse | awk | xxd`. The DER → r||s reconstruction was wrong (lost padding on integers with high bit set). Got `Cannot iterate over null` from jq on the API response — auth had silently failed.
+- **Rule:** For one-shot ASC API queries, use Ruby (already installed via fastlane) with `OpenSSL::PKey::EC` + `Base64.urlsafe_encode64`. The signature reconstruction needs both r and s padded/truncated to exactly 32 bytes from the DER ASN1 INTEGER. Reference snippet saved in this conversation. Don't try to do this in pure bash.
