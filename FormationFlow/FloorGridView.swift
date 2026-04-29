@@ -1629,12 +1629,20 @@ struct FloorGridView: View {
 
                                 Spacer()
                             }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button(role: .destructive) {
+                                    rosterDeleteIDs = [athlete.id]
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
+                        }
+                        .onDelete { offsets in
+                            let athletes = store.routine.roster
+                            rosterDeleteIDs = offsets.map { athletes[$0].id }
                         }
                         .onMove { from, to in
                             store.moveRoster(fromOffsets: from, toOffset: to)
-                        }
-                        .onDelete { offsets in
-                            rosterDeleteIDs = offsets.map { store.routine.roster[$0].id }
                         }
                     }
                 }
@@ -2806,11 +2814,14 @@ struct FloorGridView: View {
     }
 
     private func deleteRosterAthletes() {
-        for id in rosterDeleteIDs {
-            store.deleteAthlete(id: id)
-        }
-        selectedAthleteIDs.subtract(rosterDeleteIDs)
+        let toDelete = rosterDeleteIDs
         rosterDeleteIDs = []
+        DispatchQueue.main.async {
+            for id in toDelete {
+                store.deleteAthlete(id: id)
+            }
+            selectedAthleteIDs.subtract(toDelete)
+        }
     }
 
     private func deleteSelectedAthlete() {

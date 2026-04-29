@@ -2,6 +2,18 @@
 
 Corrections, knowledge gaps, and best practices. See `/self-improvement` for format.
 
+## 2026-04-29 — Multiple `routine.X` mutations in one method storm SwiftUI List's UICollectionView coordinator
+
+- **Category:** correction
+- **What happened:** Roster delete crashed with `_Bug_Detected_In_Client_Of_UICollectionView_Invalid_Number_Of_Items_In_Section`. Two prior fixes did NOT resolve it: (1) replacing `.onDelete` with `.swipeActions`, (2) deferring the deletion via `DispatchQueue.main.async`. Both still crashed. Real root cause: `RoutineStore.deleteAthlete` did `routine.roster.removeAll`, then `routine.formations[i].placements.removeAll` for every formation, then `routine.transitionSpecs[i].athleteTransitions.removeAll` for every spec, then `reconcileTransitionSpecs()` (which re-assigns `routine.transitionSpecs`). Each line mutates `routine` (a computed property over `@Published var workspace`), firing `objectWillChange` per line — N+M+2 notifications in a single call. SwiftUI List's `UICollectionViewListCoordinator` saw an inconsistent diff between count-before and count-after and aborted.
+- **Rule:** When a destructive action mutates multiple sub-collections of a `@Published` value-type model in one method, snapshot first, mutate the local copy, then assign back ONCE. Pattern: `var updated = routine; updated.roster.removeAll{...}; for i { updated.formations[i].placements.removeAll{...} }; routine = updated`. This produces a single `objectWillChange` event so the List coordinator gets one consistent diff. Also avoid calling `reconcileX()` helpers that re-assign `routine` — call non-`@Published` lookup-rebuild helpers (`rebuildFormationLookup`, `rebuildTransitionSpecLookup`, `rebuildRosterLookup`) directly after the single assignment.
+
+## 2026-04-28 — Don't re-ask the user for info they already provided
+
+- **Category:** correction
+- **What happened:** User reported a crash; I asked them to reproduce while I captured a console log. After they corrected my console-capture setup, I asked them again to reproduce. They had already done it. Re-asking forced unnecessary repetition of work.
+- **Rule:** When a user reports a bug, assume they already encountered it. Capture context first (logs, file state, recent changes) and only ask the user to reproduce as a last resort, *after* exhausting code-only diagnosis. If a tool setup misses the original repro window, apply the most-likely fix with explicit "if this doesn't fix it, please repro once with logging on" — don't pre-emptively block on another repro.
+
 ## 2026-03-22 — StoreKit config files must be created via Xcode GUI
 
 - **Category:** best_practice

@@ -381,7 +381,7 @@ struct RoutineWorkspaceView: View {
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
                     EditButton()
                     Button(action: addFormation) {
-                        Image(systemName: canAddFormation ? "plus" : "lock.fill")
+                        LockBadgedToolbarIcon(icon: "plus", locked: !canAddFormation)
                     }
                     .accessibilityLabel(canAddFormation ? "Add formation" : "Upgrade to Pro to add formation")
                 }
@@ -455,7 +455,7 @@ struct RoutineWorkspaceView: View {
                 Button {
                     attemptRoutinePlayback()
                 } label: {
-                    Image(systemName: entitlementManager.isPro ? "play.circle" : "lock.fill")
+                    LockBadgedToolbarIcon(icon: "play.circle", locked: !entitlementManager.isPro)
                 }
                 .disabled(store.routine.formations.count < 2)
                 .accessibilityLabel(entitlementManager.isPro ? "Play routine" : "Upgrade to Pro to play routine")
@@ -463,7 +463,7 @@ struct RoutineWorkspaceView: View {
 
                 EditButton()
                 Button(action: addFormation) {
-                    Image(systemName: canAddFormation ? "plus" : "lock.fill")
+                    LockBadgedToolbarIcon(icon: "plus", locked: !canAddFormation)
                 }
                 .accessibilityLabel(canAddFormation ? "Add formation" : "Upgrade to Pro to add formation")
             }
@@ -682,7 +682,7 @@ struct RoutineWorkspaceView: View {
                         addFormation()
                         showingCompactFormationPicker = false
                     }) {
-                        Image(systemName: canAddFormation ? "plus" : "lock.fill")
+                        LockBadgedToolbarIcon(icon: "plus", locked: !canAddFormation)
                     }
                     .accessibilityLabel(canAddFormation ? "Add formation" : "Upgrade to Pro to add formation")
 
@@ -1153,6 +1153,27 @@ struct RoutineWorkspaceView: View {
         withAnimation(.easeInOut(duration: 0.2)) {
             splitViewVisibility = splitViewVisibility == .detailOnly ? .all : .detailOnly
         }
+    }
+}
+
+// MARK: - Lock Badge
+
+private struct LockBadgedToolbarIcon: View {
+    let icon: String
+    let locked: Bool
+
+    var body: some View {
+        Image(systemName: icon)
+            .overlay(alignment: .bottomTrailing) {
+                if locked {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(2)
+                        .background(.tint, in: Circle())
+                        .offset(x: 5, y: 4)
+                }
+            }
     }
 }
 

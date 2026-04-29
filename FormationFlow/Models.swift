@@ -1627,15 +1627,18 @@ final class RoutineStore: ObservableObject {
     }
 
     func deleteAthlete(id: UUID) {
-        routine.roster.removeAll { $0.id == id }
-        for formationIndex in routine.formations.indices {
-            routine.formations[formationIndex].placements.removeAll { $0.athleteID == id }
+        var updated = routine
+        updated.roster.removeAll { $0.id == id }
+        for formationIndex in updated.formations.indices {
+            updated.formations[formationIndex].placements.removeAll { $0.athleteID == id }
         }
-        for transitionIndex in routine.transitionSpecs.indices {
-            routine.transitionSpecs[transitionIndex].athleteTransitions.removeAll { $0.athleteID == id }
+        for transitionIndex in updated.transitionSpecs.indices {
+            updated.transitionSpecs[transitionIndex].athleteTransitions.removeAll { $0.athleteID == id }
         }
-        reconcileTransitionSpecs()
+        routine = updated
         rebuildRosterLookup()
+        rebuildFormationLookup()
+        rebuildTransitionSpecLookup()
     }
 
     func swapPositions(in formationID: UUID, id1: UUID, id2: UUID) {
