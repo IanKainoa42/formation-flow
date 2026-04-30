@@ -65,13 +65,13 @@ final class EntitlementManager: ObservableObject {
         if status == errSecSuccess {
             let attributesToUpdate: [String: Any] = [
                 kSecValueData as String: valueData,
-                kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+                kSecAttrAccessible as String: kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly
             ]
             SecItemUpdate(query as CFDictionary, attributesToUpdate as CFDictionary)
         } else {
             var newQuery = query
             newQuery[kSecValueData as String] = valueData
-            newQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            newQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly
             SecItemAdd(newQuery as CFDictionary, nil)
         }
     }
