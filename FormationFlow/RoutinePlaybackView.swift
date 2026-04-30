@@ -139,6 +139,7 @@ struct RoutinePlaybackView: View {
             .frame(width: 160)
             .controlSize(.small)
             .accessibilityLabel("Playback Speed")
+            .accessibilityHint("Adjust the playback speed of the routine animation")
 
             Menu {
                 Text("\(player.currentSegmentIndex + 1) / \(player.segmentCount)")
