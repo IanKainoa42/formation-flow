@@ -2,6 +2,18 @@
 
 Corrections, knowledge gaps, and best practices. See `/self-improvement` for format.
 
+## 2026-04-30 — ASC submission flow: legacy endpoint is read-only, use v2 reviewSubmissions
+
+- **Category:** knowledge_gap
+- **What happened:** `POST /v1/appStoreVersionSubmissions` returns 403 `FORBIDDEN_ERROR` with `"The resource 'appStoreVersionSubmissions' does not allow 'CREATE'. Allowed operation is: DELETE"`. Apple migrated submission to the v2 reviewSubmissions flow. Also: a rejected version stays bound to its prior submission (`UNRESOLVED_ISSUES` state) and POSTing a new `reviewSubmissionItems` returns 409 `STATE_ERROR.ITEM_PART_OF_ANOTHER_SUBMISSION`. Cancel the old one first.
+- **Rule:** To submit (or resubmit after rejection) via API:
+  1. If a prior reviewSubmission is in `UNRESOLVED_ISSUES`: `PATCH /v1/reviewSubmissions/{old} {"data":{"type":"reviewSubmissions","id":"{old}","attributes":{"canceled":true}}}` → state goes `CANCELING`, poll until `COMPLETE`.
+  2. `POST /v1/reviewSubmissions` with `{platform:"IOS"}` + app relationship → returns new submission in `READY_FOR_REVIEW`.
+  3. `POST /v1/reviewSubmissionItems` with reviewSubmission + appStoreVersion relationships → adds the version.
+  4. `PATCH /v1/reviewSubmissions/{new} {"attributes":{"submitted":true}}` → state goes `WAITING_FOR_REVIEW` with `submittedDate`. That's submission complete.
+- **Build swap pattern:** `PATCH /v1/appStoreVersions/{vid}/relationships/build` with `{"data":{"type":"builds","id":"{bid}"}}` returns 204 No Content. Works on `PREPARE_FOR_SUBMISSION` versions even with prior rejected build attached.
+- **Age rating:** lives on AppInfo (`/v1/appInfos/{id}/ageRatingDeclaration`), not directly on App or appStoreVersion. ASC auto-creates a default declaration; for a clean coaching/utility app it's already all NONE/false → 4+. No action needed.
+
 ## 2026-04-29 — Multiple `routine.X` mutations in one method storm SwiftUI List's UICollectionView coordinator
 
 - **Category:** correction
