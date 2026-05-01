@@ -2529,19 +2529,23 @@ struct FloorGridView: View {
             .onEnded { value in
                 guard showTransitionPaths, hasTransition else { return }
                 guard let selectedAthleteID, let player else { return }
-                guard let selectedAthlete = player.currentAthletes.first(where: { $0.id == selectedAthleteID })
-                else { return }
 
                 let scaledPoint = CGPoint(
                     x: (value.location.x - offset.x) / cellSize,
                     y: (value.location.y - offset.y) / cellSize
                 )
-                let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize)
 
-                guard
-                    PathCalculations.squaredDistance(from: scaledPoint, to: selectedAthlete.position)
-                        < hitRadiusSquared
+                if nearestPathHandle(at: scaledPoint, cellSize: cellSize) != nil {
+                    resetPathForSelectedAthlete()
+                    return
+                }
+
+                guard let selectedAthlete = player.currentAthletes.first(where: { $0.id == selectedAthleteID })
                 else { return }
+                let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize)
+                guard PathCalculations.squaredDistance(from: scaledPoint, to: selectedAthlete.position) < hitRadiusSquared else {
+                    return
+                }
 
                 addWaypoint()
             }
@@ -2627,16 +2631,25 @@ struct FloorGridView: View {
 
     private func resetSelectedPaths() {
         if selectedAthleteIDs.count == 1, let athleteID = selectedAthleteIDs.first {
-            guard let startFormationID, let endFormationID else { return }
-            clearTransitionDragState()
-            store.mutateAthleteTransition(from: startFormationID, to: endFormationID, athleteID: athleteID) { t in
-                t.pathControlPoint = nil
-                t.pathWaypoints = []
-            }
-            refreshTransitionFromStore()
+            resetPath(for: athleteID)
         } else {
             showingResetAllPathsConfirmation = true
         }
+    }
+
+    private func resetPathForSelectedAthlete() {
+        guard let selectedAthleteID else { return }
+        resetPath(for: selectedAthleteID)
+    }
+
+    private func resetPath(for athleteID: UUID) {
+        guard let startFormationID, let endFormationID else { return }
+        clearTransitionDragState()
+        store.mutateAthleteTransition(from: startFormationID, to: endFormationID, athleteID: athleteID) { t in
+            t.pathControlPoint = nil
+            t.pathWaypoints = []
+        }
+        refreshTransitionFromStore()
     }
 
     private func resetAllPaths() {
