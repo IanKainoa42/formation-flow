@@ -97,6 +97,10 @@ struct FloorGridView: View {
         verticalSizeClass == .compact
     }
 
+    private var isViewTransformed: Bool {
+        zoomScale != 1.0 || canvasPanOffset != .zero
+    }
+
     private var renderedAthletes: [RenderedAthlete] {
         _ = playerTick // force redraw on player updates
         if let player, player.progress > 0 {
@@ -321,6 +325,26 @@ struct FloorGridView: View {
         }
 
         return nil
+    }
+
+    @ViewBuilder
+    private var resetViewFloatingButton: some View {
+        if isViewTransformed {
+            Button(action: resetView) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.counterclockwise")
+                    Text("Reset View")
+                }
+                .font(.subheadline.weight(.medium))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay(Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 0.5))
+            }
+            .buttonStyle(.plain)
+            .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
     }
 
     private var dragActivationDistance: CGFloat {
@@ -984,6 +1008,12 @@ struct FloorGridView: View {
                 .overlay(alignment: isPhoneLayout ? .topLeading : .bottomLeading) {
                     formationContextBadge
                         .padding(isPhoneLayout ? .init(top: isPhoneLandscape ? 4 : 52, leading: 12, bottom: 0, trailing: 0) : .init(top: 0, leading: 12, bottom: 12, trailing: 0))
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    resetViewFloatingButton
+                        .padding(.trailing, 12)
+                        .padding(.bottom, isPhoneLayout ? (isPhoneLandscape ? 12 : 80) : 12)
+                        .animation(.spring(), value: isViewTransformed)
                 }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
