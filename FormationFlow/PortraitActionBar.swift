@@ -70,7 +70,7 @@ struct PortraitActionBar: View {
                 .controlSize(.small)
                 .accessibilityLabel("Roster")
                 .accessibilityHint("Show the athlete roster")
-                .help("Roster")
+                .help("Show the athlete roster")
 
                 Button(action: onShowNotes) {
                     Image(systemName: "note.text")
@@ -79,7 +79,7 @@ struct PortraitActionBar: View {
                 .controlSize(.small)
                 .accessibilityLabel("Notes")
                 .accessibilityHint("Show formation notes")
-                .help("Notes")
+                .help("Show formation notes")
                 .overlay(alignment: .topTrailing) {
                     if hasNotes {
                         Circle()
@@ -123,7 +123,7 @@ struct PortraitActionBar: View {
                 .controlSize(.small)
                 .accessibilityLabel("Share preview")
                 .accessibilityHint("Share transition preview")
-                .help("Share preview")
+                .help("Share transition preview")
             }
         }
         .padding(.horizontal, 8)

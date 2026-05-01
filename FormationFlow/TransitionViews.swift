@@ -426,6 +426,97 @@ struct SidebarTransportView: View {
     }
 }
 
+// MARK: - Thin Transition Transport Bar (single row, sits below the floor)
+
+struct ThinTransitionTransportBar: View {
+    @ObservedObject var player: TransitionPlayer
+    let startFormationName: String
+    let endFormationName: String
+    var onSwap: () -> Void = {}
+    var onPath: () -> Void = {}
+    var isSwapMode: Bool = false
+    var canSwap: Bool = false
+    var canEditPath: Bool = false
+    var onPreviousFormation: () -> Void = {}
+    var onNextFormation: () -> Void = {}
+    var isFirstFormation: Bool = false
+    var isLastFormation: Bool = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text("\(startFormationName) \u{2192} \(endFormationName)")
+                .font(.caption.weight(.semibold))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: 180, alignment: .leading)
+
+            Button(action: onPreviousFormation) {
+                Image(systemName: "chevron.up").frame(width: 26, height: 26)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(isFirstFormation)
+            .accessibilityLabel("Previous formation")
+            .accessibilityHint(isFirstFormation ? "Already at the first formation" : "Go to the previous formation")
+            .help(isFirstFormation ? "Already at the first formation" : "Go to the previous formation")
+
+            TransportControls.playPauseButton(player: player, size: 30)
+
+            Button(action: onNextFormation) {
+                Image(systemName: "chevron.down").frame(width: 26, height: 26)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(isLastFormation)
+            .accessibilityLabel("Next formation")
+            .accessibilityHint(isLastFormation ? "Already at the last formation" : "Go to the next formation")
+            .help(isLastFormation ? "Already at the last formation" : "Go to the next formation")
+
+            TransportControls.progressSlider(player: player)
+                .layoutPriority(1)
+
+            Menu {
+                Button {
+                    player.isLooping.toggle()
+                } label: {
+                    Label(
+                        player.isLooping ? "Stop Looping" : "Loop Playback",
+                        systemImage: player.isLooping ? "repeat.circle.fill" : "repeat"
+                    )
+                }
+
+                Button(action: player.reset) {
+                    Label("Reset to Start", systemImage: "backward.end.fill")
+                }
+
+                Divider()
+
+                Button(action: onSwap) {
+                    Label(
+                        isSwapMode ? "Cancel Swap" : "Swap Position",
+                        systemImage: "arrow.triangle.2.circlepath"
+                    )
+                }
+                .disabled(!canSwap)
+
+                Button(action: onPath) {
+                    Label("Edit Path", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+                }
+                .disabled(!canEditPath)
+            } label: {
+                Image(systemName: "ellipsis.circle").frame(width: 26, height: 26)
+            }
+            .accessibilityLabel("More transition options")
+            .accessibilityHint("Show more transition options")
+            .help("More transition options")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .background(.bar)
+    }
+}
+
 #if canImport(UIKit)
 struct TransitionSharePayload: Identifiable {
     let id = UUID()

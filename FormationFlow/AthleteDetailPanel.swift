@@ -37,24 +37,45 @@ struct AthleteInspectorView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Clear selection")
                 .accessibilityHint("Deselect this athlete")
-                .help("Clear selection")
+                .help("Deselect this athlete")
             }
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Identity")
                     .font(.subheadline.weight(.semibold))
-                TextField("Label", text: $labelDraft)
-                    .textFieldStyle(.roundedBorder)
-                    .onChange(of: labelDraft) { _, newValue in
-                        let clamped = String(newValue.prefix(4))
-                        if clamped != newValue { labelDraft = clamped }
-                        let trimmed = clamped.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !trimmed.isEmpty {
-                            onUpdateLabel(trimmed)
+                if isPro {
+                    TextField("Label", text: $labelDraft)
+                        .textFieldStyle(.roundedBorder)
+                        .onChange(of: labelDraft) { _, newValue in
+                            let clamped = String(newValue.prefix(4))
+                            if clamped != newValue { labelDraft = clamped }
+                            let trimmed = clamped.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !trimmed.isEmpty {
+                                onUpdateLabel(trimmed)
+                            }
                         }
+                        .onAppear { labelDraft = athlete.label }
+                        .onChange(of: athlete.id) { _, _ in labelDraft = athlete.label }
+                } else {
+                    Button(action: onUpgrade) {
+                        HStack {
+                            Text(athlete.label)
+                                .font(.body.monospaced())
+                            Spacer()
+                            Label("Rename (Pro)", systemImage: "lock.fill")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.secondary.opacity(0.3))
+                        )
                     }
-                    .onAppear { labelDraft = athlete.label }
-                    .onChange(of: athlete.id) { _, _ in labelDraft = athlete.label }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Rename athlete (Pro feature)")
+                }
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -261,6 +282,7 @@ struct TransitionInspectorSectionView: View {
     var onUpdateMoveDelay: (CGFloat) -> Void = { _ in }
     var onClearPath: () -> Void = {}
     var onEnsureCurve: () -> Void = {}
+    var onAddWaypoint: () -> Void = {}
     var onToggleWaypointSmooth: (Int) -> Void = { _ in }
     var onDeleteWaypoint: (UUID) -> Void = { _ in }
     var onAdjustWaypointHold: (Int, CGFloat) -> Void = { _, _ in }
@@ -333,6 +355,7 @@ struct TransitionInspectorSectionView: View {
                             .foregroundColor(.secondary)
                     }
                     .accessibilityLabel("Upgrade to Pro to adjust start delay")
+                    .accessibilityHint("Requires a Pro subscription to change the start delay timing")
                     .help("Upgrade to Pro to adjust start delay")
                 }
             }
@@ -356,7 +379,7 @@ struct TransitionInspectorSectionView: View {
                 }
             }
 
-            Text("Double-tap the selected athlete to add a waypoint, then drag the handles.")
+            Text("Tap Waypoint to bend the path, then drag the handles. You can also double-tap the athlete on the floor.")
                 .font(.caption)
                 .foregroundColor(.secondary)
         }
@@ -375,6 +398,16 @@ struct TransitionInspectorSectionView: View {
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.bordered)
+
+        Button(action: onAddWaypoint) {
+            Label(
+                isPro ? "Waypoint" : "Waypoint (Pro)",
+                systemImage: isPro ? "plus.circle" : "lock.fill"
+            )
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .accessibilityHint(isPro ? "Add a waypoint to the path" : "Upgrade to Pro to add waypoints")
     }
 
     // MARK: - Waypoint List
@@ -403,7 +436,8 @@ struct TransitionInspectorSectionView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Delete waypoint")
-                .help("Delete waypoint")
+                .accessibilityHint("Removes this waypoint from the athlete's path")
+                .help("Removes this waypoint from the athlete's path")
             }
 
             HStack {
@@ -486,6 +520,8 @@ struct SidebarInspectorView: View {
     var onUpgrade: () -> Void = {}
     var onRefreshTransition: () -> Void = {}
 
+    @State private var showingClearPathConfirmation = false
+
     private var selectedAthleteID: UUID? {
         selectedAthleteIDs.count == 1 ? selectedAthleteIDs.first : nil
     }
@@ -529,6 +565,8 @@ struct SidebarInspectorView: View {
                         formationCount: store.routine.formations.count,
                         formationName: formation?.name ?? "Formation",
                         compactLayout: isCompactLayout,
+                        isPro: isPro,
+                        onUpgrade: onUpgrade,
                         onUpdateLabel: { newLabel in
                             store.mutateRosterAthlete(id: selectedRosterAthlete.id) { athlete in
                                 athlete.label = newLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -537,6 +575,10 @@ struct SidebarInspectorView: View {
                             }
                         },
                         onUpdateRole: { newRole in
+                            guard isPro else {
+                                onUpgrade()
+                                return
+                            }
                             store.mutateRosterAthlete(id: selectedRosterAthlete.id) { athlete in
                                 athlete.role = newRole
                             }
@@ -576,6 +618,35 @@ struct SidebarInspectorView: View {
                 }
             }
         .background(.thinMaterial)
+        .confirmationDialog(
+            "Clear waypoints?",
+            isPresented: $showingClearPathConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Clear Path", role: .destructive) {
+                guard let startFormationID, let endFormationID else { return }
+                performClearPath(
+                    startFormationID: startFormationID,
+                    endFormationID: endFormationID
+                )
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes all waypoints and hold timings on this path. This cannot be undone.")
+        }
+    }
+
+    private func performClearPath(startFormationID: UUID, endFormationID: UUID) {
+        guard let selectedAthleteID else { return }
+        store.mutateAthleteTransition(
+            from: startFormationID,
+            to: endFormationID,
+            athleteID: selectedAthleteID
+        ) { t in
+            t.pathControlPoint = nil
+            t.pathWaypoints = []
+        }
+        onRefreshTransition()
     }
 
     @ViewBuilder
@@ -606,16 +677,14 @@ struct SidebarInspectorView: View {
                 onRefreshTransition()
             },
             onClearPath: {
-                guard let selectedAthleteID else { return }
-                store.mutateAthleteTransition(
-                    from: startFormationID,
-                    to: endFormationID,
-                    athleteID: selectedAthleteID
-                ) { t in
-                    t.pathControlPoint = nil
-                    t.pathWaypoints = []
+                if (selectedTransition?.pathWaypoints.count ?? 0) > 0 {
+                    showingClearPathConfirmation = true
+                } else {
+                    performClearPath(
+                        startFormationID: startFormationID,
+                        endFormationID: endFormationID
+                    )
                 }
-                onRefreshTransition()
             },
             onEnsureCurve: {
                 guard let selectedAthleteID else { return }
@@ -633,6 +702,39 @@ struct SidebarInspectorView: View {
                         y: (startAthlete.position.y + endAthlete.position.y) / 2
                     )
                     t.pathControlPoint = CGPoint(x: midpoint.x, y: midpoint.y - 6)
+                }
+                onRefreshTransition()
+            },
+            onAddWaypoint: {
+                guard isPro else {
+                    onUpgrade()
+                    return
+                }
+                guard let selectedAthleteID else { return }
+                let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID })
+                let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
+                guard let startAthlete, let endAthlete else { return }
+                store.mutateAthleteTransition(
+                    from: startFormationID,
+                    to: endFormationID,
+                    athleteID: selectedAthleteID
+                ) { t in
+                    if t.pathWaypoints.isEmpty {
+                        let point = t.pathControlPoint
+                            ?? CGPoint(
+                                x: (startAthlete.position.x + endAthlete.position.x) / 2,
+                                y: (startAthlete.position.y + endAthlete.position.y) / 2
+                            )
+                        t.pathWaypoints = [PathWaypoint(position: point, isSmooth: true)]
+                        t.pathControlPoint = nil
+                    } else {
+                        let lastNode = t.pathWaypoints.last?.position ?? startAthlete.position
+                        let point = CGPoint(
+                            x: (lastNode.x + endAthlete.position.x) / 2,
+                            y: (lastNode.y + endAthlete.position.y) / 2
+                        )
+                        t.pathWaypoints.append(PathWaypoint(position: point, isSmooth: true))
+                    }
                 }
                 onRefreshTransition()
             },
@@ -711,7 +813,7 @@ struct SelectedAthleteSidebarView: View {
 
     @State private var labelDraft: String = ""
     @State private var showDeleteConfirmation = false
-    @State private var showClearPathConfirmation = false
+    @State private var showingClearPathConfirmation = false
 
     private var selectedAthleteID: UUID? {
         selectedAthleteIDs.count == 1 ? selectedAthleteIDs.first : nil
@@ -748,21 +850,35 @@ struct SelectedAthleteSidebarView: View {
                 // MARK: Name + Role
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        TextField("Label", text: $labelDraft)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.headline)
-                            .onChange(of: labelDraft) { _, newValue in
-                                let clamped = String(newValue.prefix(4))
-                                if clamped != newValue { labelDraft = clamped }
-                                let trimmed = clamped.trimmingCharacters(in: .whitespacesAndNewlines)
-                                if !trimmed.isEmpty {
-                                    store.mutateRosterAthlete(id: athlete.id) { a in
-                                        a.label = trimmed
+                        if isPro {
+                            TextField("Label", text: $labelDraft)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.headline)
+                                .onChange(of: labelDraft) { _, newValue in
+                                    let clamped = String(newValue.prefix(4))
+                                    if clamped != newValue { labelDraft = clamped }
+                                    let trimmed = clamped.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    if !trimmed.isEmpty {
+                                        store.mutateRosterAthlete(id: athlete.id) { a in
+                                            a.label = trimmed
+                                        }
                                     }
                                 }
+                                .onAppear { labelDraft = athlete.label }
+                                .onChange(of: athlete.id) { _, _ in labelDraft = athlete.label }
+                        } else {
+                            Button(action: onUpgrade) {
+                                HStack(spacing: 6) {
+                                    Text(athlete.label)
+                                        .font(.headline.monospaced())
+                                    Image(systemName: "lock.fill")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
-                            .onAppear { labelDraft = athlete.label }
-                            .onChange(of: athlete.id) { _, _ in labelDraft = athlete.label }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Rename athlete (Pro feature)")
+                        }
 
                         Spacer()
 
@@ -774,7 +890,7 @@ struct SelectedAthleteSidebarView: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel("Clear selection")
                         .accessibilityHint("Deselect this athlete")
-                        .help("Clear selection")
+                        .help("Deselect this athlete")
                     }
 
                     AthleteRolePicker(
@@ -869,22 +985,56 @@ struct SelectedAthleteSidebarView: View {
                                             .foregroundColor(.secondary)
                                     }
                                     .accessibilityLabel("Upgrade to Pro to adjust start delay")
+                                    .accessibilityHint("Requires a Pro subscription to change the start delay timing")
                                     .help("Upgrade to Pro to adjust start delay")
                                 }
                             }
                         }
 
                         // Path
-                        HStack(spacing: 8) {
-                            Button {
-                                showClearPathConfirmation = true
-                            } label: {
-                                Label("Straight", systemImage: "line.diagonal")
-                                    .frame(maxWidth: .infinity)
+                        VStack(spacing: 8) {
+                            HStack(spacing: 8) {
+                                Button {
+                                    if transition.pathWaypoints.count > 0 {
+                                        showingClearPathConfirmation = true
+                                    } else {
+                                        clearPath()
+                                    }
+                                } label: {
+                                    Label("Straight", systemImage: "line.diagonal")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.bordered)
+
+                                Button {
+                                    guard let selectedAthleteID, let startFormationID, let endFormationID else { return }
+                                    let startAthlete = player.startAthletes.first { $0.id == selectedAthleteID }
+                                    let endAthlete = player.endAthletes.first { $0.id == selectedAthleteID }
+                                    guard let startAthlete, let endAthlete else { return }
+                                    store.mutateAthleteTransition(
+                                        from: startFormationID, to: endFormationID,
+                                        athleteID: selectedAthleteID
+                                    ) { t in
+                                        guard t.pathControlPoint == nil && t.pathWaypoints.isEmpty else { return }
+                                        let midpoint = CGPoint(
+                                            x: (startAthlete.position.x + endAthlete.position.x) / 2,
+                                            y: (startAthlete.position.y + endAthlete.position.y) / 2
+                                        )
+                                        t.pathControlPoint = CGPoint(x: midpoint.x, y: midpoint.y - 6)
+                                    }
+                                    onRefreshTransition()
+                                } label: {
+                                    Label("Curve", systemImage: "scribble")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.bordered)
                             }
-                            .buttonStyle(.bordered)
 
                             Button {
+                                guard isPro else {
+                                    onUpgrade()
+                                    return
+                                }
                                 guard let selectedAthleteID, let startFormationID, let endFormationID else { return }
                                 let startAthlete = player.startAthletes.first { $0.id == selectedAthleteID }
                                 let endAthlete = player.endAthletes.first { $0.id == selectedAthleteID }
@@ -893,19 +1043,38 @@ struct SelectedAthleteSidebarView: View {
                                     from: startFormationID, to: endFormationID,
                                     athleteID: selectedAthleteID
                                 ) { t in
-                                    guard t.pathControlPoint == nil && t.pathWaypoints.isEmpty else { return }
-                                    let midpoint = CGPoint(
-                                        x: (startAthlete.position.x + endAthlete.position.x) / 2,
-                                        y: (startAthlete.position.y + endAthlete.position.y) / 2
-                                    )
-                                    t.pathControlPoint = CGPoint(x: midpoint.x, y: midpoint.y - 6)
+                                    if t.pathWaypoints.isEmpty {
+                                        let point = t.pathControlPoint
+                                            ?? CGPoint(
+                                                x: (startAthlete.position.x + endAthlete.position.x) / 2,
+                                                y: (startAthlete.position.y + endAthlete.position.y) / 2
+                                            )
+                                        t.pathWaypoints = [PathWaypoint(position: point, isSmooth: true)]
+                                        t.pathControlPoint = nil
+                                    } else {
+                                        let lastNode = t.pathWaypoints.last?.position ?? startAthlete.position
+                                        let point = CGPoint(
+                                            x: (lastNode.x + endAthlete.position.x) / 2,
+                                            y: (lastNode.y + endAthlete.position.y) / 2
+                                        )
+                                        t.pathWaypoints.append(PathWaypoint(position: point, isSmooth: true))
+                                    }
                                 }
                                 onRefreshTransition()
                             } label: {
-                                Label("Curve", systemImage: "scribble")
-                                    .frame(maxWidth: .infinity)
+                                Label(
+                                    isPro ? "Add Waypoint" : "Add Waypoint (Pro)",
+                                    systemImage: isPro ? "plus.circle" : "lock.fill"
+                                )
+                                .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.bordered)
+                            .accessibilityHint(isPro ? "Add a waypoint to bend the path" : "Upgrade to Pro to add waypoints")
+
+                            Text("Drag the waypoint handles on the floor to shape the curve.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
                     .padding(16)
@@ -943,16 +1112,14 @@ struct SelectedAthleteSidebarView: View {
             Text("This will remove them from all \(store.routine.formations.count) formations and their transitions. This cannot be undone.")
         }
         .confirmationDialog(
-            "Reset path?",
-            isPresented: $showClearPathConfirmation,
+            "Clear waypoints?",
+            isPresented: $showingClearPathConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Reset Path", role: .destructive) {
-                clearPath()
-            }
+            Button("Clear Path", role: .destructive, action: clearPath)
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will remove all custom curves and waypoints for this athlete. This cannot be undone.")
+            Text("This removes all waypoints and hold timings on this path. This cannot be undone.")
         }
     }
 

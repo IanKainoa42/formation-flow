@@ -13,6 +13,10 @@ struct RoutineWorkspaceView: View {
     @StateObject private var previewSession = TransitionPreviewSession()
 
     @State private var selectedFormationID: UUID?
+    // Mirrors selectedFormationID but retains its last non-nil value so the detail
+    // pane keeps rendering the active formation when SwiftUI's List clears its
+    // selection binding upon entering edit mode (sidebar EditButton).
+    @State private var displayedFormationID: UUID?
     @State private var compactNavigationPath: [UUID] = []
     @State private var splitViewVisibility: NavigationSplitViewVisibility = .all
     @State private var previewReferenceMode: PreviewReferenceMode = .outOfSelected
@@ -30,9 +34,8 @@ struct RoutineWorkspaceView: View {
     @State private var isSwapMode = false
     @State private var triggerDeleteAthlete = false
     @State private var isIPadPortrait = false
-    @State private var showingFormationDeleteConfirmation = false
-    @State private var formationsToDelete: [UUID] = []
     @State private var showingRoutineDeleteConfirmation = false
+    @State private var sidebarEditMode: EditMode = .inactive
 
     private var isCompactLayout: Bool {
         let isPhone: Bool
@@ -56,8 +59,12 @@ struct RoutineWorkspaceView: View {
         isPhoneLayout && verticalSizeClass == .compact
     }
 
+    private var effectiveFormationID: UUID? {
+        selectedFormationID ?? displayedFormationID
+    }
+
     private var selectedFormationIndex: Int? {
-        store.formationIndex(id: selectedFormationID)
+        store.formationIndex(id: effectiveFormationID)
     }
 
     private var selectedFormation: Formation? {
@@ -137,7 +144,10 @@ struct RoutineWorkspaceView: View {
             previewReferenceMode = smartPickReferenceMode()
             refreshPreviewSession()
         }
-        .onChange(of: selectedFormationID) { _, _ in
+        .onChange(of: selectedFormationID) { _, new in
+            if let new {
+                displayedFormationID = new
+            }
             selectedAthleteIDs = []
             isSwapMode = false
             previewReferenceMode = smartPickReferenceMode()
@@ -154,20 +164,6 @@ struct RoutineWorkspaceView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This clears the roster, formations, notes, and transition data, then starts over with one empty formation.")
-        }
-        .confirmationDialog(
-            formationsToDelete.count > 1 ? "Delete \(formationsToDelete.count) formations?" : "Delete formation?",
-            isPresented: $showingFormationDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Delete", role: .destructive) {
-                deleteFormations(ids: formationsToDelete)
-            }
-            Button("Cancel", role: .cancel) {
-                formationsToDelete = []
-            }
-        } message: {
-            Text("This will remove the selected formations and their transitions. This cannot be undone.")
         }
         .confirmationDialog(
             "Delete Routine?",
@@ -223,20 +219,24 @@ struct RoutineWorkspaceView: View {
     // MARK: - Full Screen Floor
 
     private func fullScreenFloor(formationID: UUID) -> some View {
-        FloorGridView(
-            store: store,
-            selectedAthleteIDs: $selectedAthleteIDs,
-            isSwapMode: $isSwapMode,
-            triggerDeleteAthlete: $triggerDeleteAthlete,
-            formationID: formationID,
-            onCycleFormation: cycleToNextFormation,
-            onDuplicateAsNext: duplicateSelectedFormation,
-            player: previewSession.player,
-            startFormationID: previewTransitionPair?.start.id,
-            endFormationID: previewTransitionPair?.end.id
-        )
-        .overlay(alignment: .topLeading) {
-            HStack(spacing: 10) {
+        VStack(spacing: 0) {
+            FloorGridView(
+                store: store,
+                selectedAthleteIDs: $selectedAthleteIDs,
+                isSwapMode: $isSwapMode,
+                triggerDeleteAthlete: $triggerDeleteAthlete,
+                formationID: formationID,
+                onCycleFormation: cycleToNextFormation,
+                onCyclePreviousFormation: stepToPreviousFormation,
+                isFirstFormation: isFirstFormation,
+                isLastFormation: isLastFormation,
+                hideFormationContextBadge: true,
+                onDuplicateAsNext: duplicateSelectedFormation,
+                player: previewSession.player,
+                startFormationID: previewTransitionPair?.start.id,
+                endFormationID: previewTransitionPair?.end.id
+            )
+            .overlay(alignment: .topTrailing) {
                 Button {
                     withAnimation(.easeInOut(duration: 0.25)) {
                         isFullScreen = false
@@ -249,35 +249,27 @@ struct RoutineWorkspaceView: View {
                         .background(.ultraThinMaterial, in: Circle())
                 }
                 .accessibilityLabel("Exit full screen")
-
-                if store.routine.formations.count >= 2 {
-                    Button {
-                        showingRoutinePlayback = true
-                    } label: {
-                        Image(systemName: "play.fill")
-                            .font(.body.weight(.semibold))
-                            .foregroundColor(.white)
-                            .padding(10)
-                            .background(.ultraThinMaterial, in: Circle())
-                    }
-                    .accessibilityLabel("Play routine")
-                }
+                .accessibilityHint("Restores the standard interface layout")
+                .help("Exit full screen")
+                .padding(.top, 64)
+                .padding(.trailing, 12)
             }
-            .padding(16)
-        }
-        .overlay(alignment: .bottom) {
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
             if let previewTransitionPair, let player = previewSession.player {
-                CompactTransitionPlaybackOverlayView(
+                ThinTransitionTransportBar(
                     player: player,
                     startFormationName: previewTransitionPair.start.name,
                     endFormationName: previewTransitionPair.end.name,
                     onSwap: { isSwapMode.toggle() },
                     isSwapMode: isSwapMode,
                     canSwap: selectedAthleteIDs.count == 1,
-                    canEditPath: selectedAthleteIDs.count == 1
+                    canEditPath: selectedAthleteIDs.count == 1,
+                    onPreviousFormation: stepToPreviousFormation,
+                    onNextFormation: stepToNextFormation,
+                    isFirstFormation: isFirstFormation,
+                    isLastFormation: isLastFormation
                 )
-                .padding(.horizontal, 20)
-                .padding(.bottom, 20)
             }
         }
         .environmentObject(entitlementManager)
@@ -389,21 +381,18 @@ struct RoutineWorkspaceView: View {
         .toolbar {
             if selectedAthleteIDs.isEmpty {
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
-                    Button {
-                        showingRoutinePlayback = true
-                    } label: {
-                        Image(systemName: "play.circle")
-                    }
-                    .disabled(store.routine.formations.count < 2)
-                    .accessibilityLabel("Play routine")
-                    .help(store.routine.formations.count < 2 ? "Add at least 2 formations to play the routine" : "Play the full routine")
-
                     EditButton()
                     Button(action: addFormation) {
-                        Image(systemName: canAddFormation ? "plus" : "lock.fill")
+                        LockBadgedToolbarIcon(icon: "plus", locked: !canAddFormation)
                     }
                     .accessibilityLabel(canAddFormation ? "Add formation" : "Upgrade to Pro to add formation")
                 }
+            }
+        }
+        .environment(\.editMode, $sidebarEditMode)
+        .onChange(of: sidebarEditMode) { _, newValue in
+            if newValue == .inactive, selectedFormationID == nil, let displayedFormationID {
+                selectedFormationID = displayedFormationID
             }
         }
     }
@@ -447,7 +436,11 @@ struct RoutineWorkspaceView: View {
                     onSwap: { isSwapMode.toggle() },
                     isSwapMode: isSwapMode,
                     canSwap: selectedAthleteIDs.count == 1,
-                    canEditPath: selectedAthleteIDs.count == 1
+                    canEditPath: selectedAthleteIDs.count == 1,
+                    onPreviousFormation: stepToPreviousFormation,
+                    onNextFormation: stepToNextFormation,
+                    isFirstFormation: isFirstFormation,
+                    isLastFormation: isLastFormation
                 )
                 .padding(16)
                 .background(.thinMaterial)
@@ -462,17 +455,17 @@ struct RoutineWorkspaceView: View {
         .toolbar {
             ToolbarItemGroup(placement: .navigationBarTrailing) {
                 Button {
-                    showingRoutinePlayback = true
+                    attemptRoutinePlayback()
                 } label: {
-                    Image(systemName: "play.circle")
+                    LockBadgedToolbarIcon(icon: "play.circle", locked: !entitlementManager.isPro)
                 }
                 .disabled(store.routine.formations.count < 2)
-                .accessibilityLabel("Play routine")
-                .help(store.routine.formations.count < 2 ? "Add at least 2 formations to play the routine" : "Play the full routine")
+                .accessibilityLabel(entitlementManager.isPro ? "Play routine" : "Upgrade to Pro to play routine")
+                .help(playbackHelpText)
 
                 EditButton()
                 Button(action: addFormation) {
-                    Image(systemName: canAddFormation ? "plus" : "lock.fill")
+                    LockBadgedToolbarIcon(icon: "plus", locked: !canAddFormation)
                 }
                 .accessibilityLabel(canAddFormation ? "Add formation" : "Upgrade to Pro to add formation")
             }
@@ -483,8 +476,8 @@ struct RoutineWorkspaceView: View {
 
     @ViewBuilder
     private var regularDetailView: some View {
-        if let selectedFormation, let selectedFormationID {
-            detailContent(for: selectedFormation, formationID: selectedFormationID, compact: false)
+        if let selectedFormation, let formationID = effectiveFormationID {
+            detailContent(for: selectedFormation, formationID: formationID, compact: false)
         } else {
             ContentUnavailableView("Select a formation", systemImage: "rectangle.grid.1x2")
         }
@@ -511,6 +504,9 @@ struct RoutineWorkspaceView: View {
             triggerDeleteAthlete: $triggerDeleteAthlete,
             formationID: formationID,
             onCycleFormation: cycleToNextFormation,
+            onCyclePreviousFormation: stepToPreviousFormation,
+            isFirstFormation: isFirstFormation,
+            isLastFormation: isLastFormation,
             onDuplicateAsNext: duplicateSelectedFormation,
             onRenameFormation: { beginRenaming(formation) },
             onDeleteFormation: { requestFormationDeletion([formationID]) },
@@ -544,15 +540,17 @@ struct RoutineWorkspaceView: View {
                     HStack(spacing: 8) {
                         if store.routine.formations.count >= 2 {
                             Button {
-                                showingRoutinePlayback = true
+                                attemptRoutinePlayback()
                             } label: {
-                                Image(systemName: "play.fill")
+                                Image(systemName: entitlementManager.isPro ? "play.fill" : "lock.fill")
                                     .font(.caption.weight(.semibold))
                                     .foregroundColor(.white)
                                     .padding(8)
                                     .background(.ultraThinMaterial, in: Circle())
                             }
-                            .accessibilityLabel("Play routine")
+                            .accessibilityLabel(entitlementManager.isPro ? "Play routine" : "Upgrade to Pro to play routine")
+                            .accessibilityHint(entitlementManager.isPro ? "Play the full routine" : "Upgrade to Pro to play the full routine")
+                            .help(entitlementManager.isPro ? "Play the full routine" : "Upgrade to Pro to play the full routine")
                         }
 
                         Button {
@@ -567,6 +565,8 @@ struct RoutineWorkspaceView: View {
                                 .background(.ultraThinMaterial, in: Circle())
                         }
                         .accessibilityLabel("Enter full screen")
+                        .accessibilityHint("Expands the canvas to fill the screen")
+                        .help("Enter full screen")
                     }
                     .padding(12)
                 }
@@ -579,7 +579,11 @@ struct RoutineWorkspaceView: View {
                             onSwap: { isSwapMode.toggle() },
                             isSwapMode: isSwapMode,
                             canSwap: selectedAthleteIDs.count == 1,
-                            canEditPath: selectedAthleteIDs.count == 1
+                            canEditPath: selectedAthleteIDs.count == 1,
+                            onPreviousFormation: stepToPreviousFormation,
+                            onNextFormation: stepToNextFormation,
+                            isFirstFormation: isFirstFormation,
+                            isLastFormation: isLastFormation
                         )
                         .padding(.horizontal, 20)
                         .padding(.vertical, 12)
@@ -684,7 +688,7 @@ struct RoutineWorkspaceView: View {
                         addFormation()
                         showingCompactFormationPicker = false
                     }) {
-                        Image(systemName: canAddFormation ? "plus" : "lock.fill")
+                        LockBadgedToolbarIcon(icon: "plus", locked: !canAddFormation)
                     }
                     .accessibilityLabel(canAddFormation ? "Add formation" : "Upgrade to Pro to add formation")
 
@@ -700,7 +704,7 @@ struct RoutineWorkspaceView: View {
 
     @ViewBuilder
     private func formationRow(for formation: Formation, showsDisclosure: Bool = false) -> some View {
-        let index = store.routine.formations.firstIndex(where: { $0.id == formation.id }) ?? 0
+        let index = store.formationIndex(id: formation.id) ?? 0
         let color = TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: index)
         HStack(spacing: 12) {
             FormationListThumbnailView(athletes: store.renderedAthletes(for: formation), color: color)
@@ -888,7 +892,7 @@ struct RoutineWorkspaceView: View {
                 Button {
                     duplicateCurrentRoutine()
                 } label: {
-                    Label(canAddFormation ? "Duplicate Routine" : "Duplicate Routine (Pro)", systemImage: canAddFormation ? "plus.square.on.square" : "lock.fill")
+                    Label(entitlementManager.isPro ? "Duplicate Routine" : "Duplicate Routine (Pro)", systemImage: entitlementManager.isPro ? "plus.square.on.square" : "lock.fill")
                 }
 
                 Button(role: .destructive) {
@@ -904,7 +908,7 @@ struct RoutineWorkspaceView: View {
                 Button {
                     createNewRoutine()
                 } label: {
-                    Label(canAddFormation ? "New Routine" : "New Routine (Pro)", systemImage: canAddFormation ? "plus" : "lock.fill")
+                    Label(entitlementManager.isPro ? "New Routine" : "New Routine (Pro)", systemImage: entitlementManager.isPro ? "plus" : "lock.fill")
                 }
             }
         } label: {
@@ -934,7 +938,7 @@ struct RoutineWorkspaceView: View {
     }
 
     private func duplicateCurrentRoutine() {
-        guard canAddFormation else {
+        guard entitlementManager.isPro else {
             showingUpgradeSheet = true
             return
         }
@@ -944,7 +948,7 @@ struct RoutineWorkspaceView: View {
     }
 
     private func createNewRoutine() {
-        guard canAddFormation else {
+        guard entitlementManager.isPro else {
             showingUpgradeSheet = true
             return
         }
@@ -958,6 +962,24 @@ struct RoutineWorkspaceView: View {
     }
 
     // MARK: - Actions
+
+    private func attemptRoutinePlayback() {
+        if entitlementManager.isPro {
+            showingRoutinePlayback = true
+        } else {
+            showingUpgradeSheet = true
+        }
+    }
+
+    private var playbackHelpText: String {
+        if store.routine.formations.count < 2 {
+            return "Add at least 2 formations to play the routine"
+        }
+        if !entitlementManager.isPro {
+            return "Upgrade to Pro to play the full routine"
+        }
+        return "Play the full routine"
+    }
 
     private func addFormation() {
         guard canAddFormation else {
@@ -985,14 +1007,35 @@ struct RoutineWorkspaceView: View {
     private func cycleToNextFormation() {
         let formations = store.routine.formations
         guard formations.count > 1 else { return }
-        let currentIndex = formations.firstIndex(where: { $0.id == selectedFormationID }) ?? 0
+        let currentIndex = store.formationIndex(id: selectedFormationID) ?? 0
         let nextIndex = (currentIndex + 1) % formations.count
         selectedFormationID = formations[nextIndex].id
     }
 
+    private func stepToPreviousFormation() {
+        let formations = store.routine.formations
+        guard let currentIndex = store.formationIndex(id: selectedFormationID), currentIndex > 0 else { return }
+        selectedFormationID = formations[currentIndex - 1].id
+    }
+
+    private func stepToNextFormation() {
+        let formations = store.routine.formations
+        guard let currentIndex = store.formationIndex(id: selectedFormationID), currentIndex < formations.count - 1 else { return }
+        selectedFormationID = formations[currentIndex + 1].id
+    }
+
+    private var isFirstFormation: Bool {
+        (store.formationIndex(id: selectedFormationID) ?? 0) <= 0
+    }
+
+    private var isLastFormation: Bool {
+        let formations = store.routine.formations
+        guard let idx = store.formationIndex(id: selectedFormationID), !formations.isEmpty else { return true }
+        return idx >= formations.count - 1
+    }
+
     private func requestFormationDeletion(_ formationIDs: [UUID]) {
-        formationsToDelete = formationIDs
-        showingFormationDeleteConfirmation = true
+        deleteFormations(ids: formationIDs)
     }
 
     private func deleteSelectedFormation() {
@@ -1076,8 +1119,13 @@ struct RoutineWorkspaceView: View {
         let validIDs = Set(formations.map(\.id))
         compactNavigationPath.removeAll { !validIDs.contains($0) }
 
+        if let displayedFormationID, !validIDs.contains(displayedFormationID) {
+            self.displayedFormationID = nil
+        }
+
         guard !formations.isEmpty else {
             selectedFormationID = nil
+            displayedFormationID = nil
             compactNavigationPath.removeAll()
             return
         }
@@ -1111,6 +1159,27 @@ struct RoutineWorkspaceView: View {
         withAnimation(.easeInOut(duration: 0.2)) {
             splitViewVisibility = splitViewVisibility == .detailOnly ? .all : .detailOnly
         }
+    }
+}
+
+// MARK: - Lock Badge
+
+private struct LockBadgedToolbarIcon: View {
+    let icon: String
+    let locked: Bool
+
+    var body: some View {
+        Image(systemName: icon)
+            .overlay(alignment: .bottomTrailing) {
+                if locked {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(2)
+                        .background(.tint, in: Circle())
+                        .offset(x: 5, y: 4)
+                }
+            }
     }
 }
 

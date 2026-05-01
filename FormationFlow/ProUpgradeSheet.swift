@@ -1,4 +1,5 @@
 import OSLog
+import StoreKit
 import SwiftUI
 
 struct ProUpgradeSheet: View {
@@ -8,6 +9,8 @@ struct ProUpgradeSheet: View {
 
     @State private var purchaseState: PurchaseState = .idle
     @State private var isRestoring = false
+    @State private var restoreAlertMessage: String?
+    @State private var product: Product?
 
     enum PurchaseState {
         case idle
@@ -18,6 +21,20 @@ struct ProUpgradeSheet: View {
 
     var body: some View {
         VStack(spacing: 24) {
+            HStack {
+                Spacer()
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                        .symbolRenderingMode(.hierarchical)
+                }
+                .accessibilityLabel("Close")
+                .help("Close")
+            }
+
             Spacer()
 
             Image(systemName: "star.circle.fill")
@@ -32,7 +49,7 @@ struct ProUpgradeSheet: View {
                 featureRow("Athlete roles & colors")
                 featureRow("Timing controls")
                 featureRow("Advanced path waypoints")
-                featureRow("Multiple routines (soon)")
+                featureRow("Multiple routines")
             }
             .padding(.horizontal, 32)
 
@@ -57,14 +74,15 @@ struct ProUpgradeSheet: View {
                             ProgressView()
                                 .progressViewStyle(CircularProgressViewStyle(tint: .white))
                         }
+                        let priceSuffix = product.map { " — \($0.displayPrice)" } ?? ""
                         let buttonText = {
                             if case .loading = purchaseState {
                                 return "Upgrading..."
                             }
                             if case .error(_) = purchaseState {
-                                return "Try Again — $4.99"
+                                return "Try Again\(priceSuffix)"
                             }
-                            return "Upgrade — $4.99"
+                            return "Upgrade\(priceSuffix)"
                         }()
                         Text(buttonText)
                             .font(.headline)
@@ -106,7 +124,11 @@ struct ProUpgradeSheet: View {
                     isRestoring = true
                     await entitlementManager.restore()
                     isRestoring = false
-                    if entitlementManager.isPro { dismiss() }
+                    if entitlementManager.isPro {
+                        dismiss()
+                    } else {
+                        restoreAlertMessage = "No prior purchases were found on this Apple ID."
+                    }
                 }
             } label: {
                 HStack(spacing: 6) {
@@ -137,6 +159,26 @@ struct ProUpgradeSheet: View {
         .onChange(of: entitlementManager.isPro) { _, isPro in
             if isPro { dismiss() }
         }
+        .alert(
+            "Restore Purchases",
+            isPresented: Binding(
+                get: { restoreAlertMessage != nil },
+                set: { if !$0 { restoreAlertMessage = nil } }
+            ),
+            presenting: restoreAlertMessage
+        ) { _ in
+            Button("OK", role: .cancel) { restoreAlertMessage = nil }
+        } message: { message in
+            Text(message)
+        }
+        .task {
+            do {
+                let products = try await Product.products(for: [EntitlementManager.productID])
+                product = products.first
+            } catch {
+                logger.error("Failed to load product: \(error.localizedDescription, privacy: .private)")
+            }
+        }
     }
 
     private func featureRow(_ text: String) -> some View {
@@ -160,7 +202,9 @@ struct ProUpgradeSheet: View {
             }
         } catch {
             logger.error("Purchase failed: \(error.localizedDescription, privacy: .private)")
-            purchaseState = .error("Something went wrong. Please try again.")
+            let message = (error as? LocalizedError)?.errorDescription
+                ?? "Something went wrong. Please try again."
+            purchaseState = .error(message)
         }
     }
 }

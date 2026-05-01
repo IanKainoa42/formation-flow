@@ -42,7 +42,7 @@ BUILD FULL ROUTINES
 Create multiple formations within a single routine. Reorder formations, duplicate them, and preview the entire sequence.
 
 FREE TO START
-Create up to 3 formations with Base athletes — no purchase required. Upgrade to FormationFlow Pro to unlock unlimited formations, all athlete roles, and full routine playback.
+Create up to 2 formations with Base athletes — no purchase required. Upgrade to FormationFlow Pro to unlock unlimited formations, all athlete roles, and full routine playback.
 
 WORKS OFFLINE
 No account required. No internet needed. Your data stays on your device — always private, always available.
