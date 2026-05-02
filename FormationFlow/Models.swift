@@ -8,7 +8,7 @@ import SwiftUI
 enum CourtConstants {
     static let width: CGFloat = 72
     static let height: CGFloat = 56
-    static let collisionDistance: CGFloat = 2.0
+    static let collisionDistance: CGFloat = 1.5
     static let hitRadiusSquared: CGFloat = 9.0
 }
 
@@ -332,18 +332,59 @@ struct Formation: Codable, Identifiable, Equatable, Hashable {
     var id: UUID
     var name: String
     var notes: String
+    var formattedNotesRTF: Data?
+    var notesDrawingData: Data?
     var placements: [FormationPlacement]
 
     init(
         id: UUID = UUID(),
         name: String = "Untitled Formation",
         notes: String = "",
+        formattedNotesRTF: Data? = nil,
+        notesDrawingData: Data? = nil,
         placements: [FormationPlacement] = []
     ) {
         self.id = id
         self.name = name
         self.notes = notes
+        self.formattedNotesRTF = formattedNotesRTF
+        self.notesDrawingData = notesDrawingData
         self.placements = placements
+    }
+
+    var hasCoachCardContent: Bool {
+        !notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            formattedNotesRTF != nil ||
+            notesDrawingData != nil
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case notes
+        case formattedNotesRTF
+        case notesDrawingData
+        case placements
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Untitled Formation"
+        notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
+        formattedNotesRTF = try container.decodeIfPresent(Data.self, forKey: .formattedNotesRTF)
+        notesDrawingData = try container.decodeIfPresent(Data.self, forKey: .notesDrawingData)
+        placements = try container.decodeIfPresent([FormationPlacement].self, forKey: .placements) ?? []
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(notes, forKey: .notes)
+        try container.encodeIfPresent(formattedNotesRTF, forKey: .formattedNotesRTF)
+        try container.encodeIfPresent(notesDrawingData, forKey: .notesDrawingData)
+        try container.encode(placements, forKey: .placements)
     }
 
     func placementIndex(for athleteID: UUID) -> Int? {
@@ -438,10 +479,11 @@ struct TransitionSpec: Codable, Identifiable, Equatable, Hashable {
     }
 
     mutating func synchronize(athleteIDs: [UUID]) {
-        let lookup = Dictionary(
-            athleteTransitions.map { ($0.athleteID, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
+        let lookup = athleteTransitions.reduce(into: [UUID: AthleteTransition]()) { result, transition in
+            if result[transition.athleteID] == nil {
+                result[transition.athleteID] = transition
+            }
+        }
         athleteTransitions = athleteIDs.map { athleteID in
             lookup[athleteID] ?? AthleteTransition(athleteID: athleteID)
         }
@@ -482,6 +524,7 @@ struct TransitionPathRenderItem: Identifiable, Equatable, Hashable {
     let controlPoint: CGPoint?
     let waypoints: [PathWaypoint]
     let moveDelay: CGFloat
+    let nodes: [CGPoint]
 
     var id: UUID { athleteID }
 
@@ -499,6 +542,7 @@ struct TransitionPathRenderItem: Identifiable, Equatable, Hashable {
         self.controlPoint = controlPoint
         self.waypoints = waypoints
         self.moveDelay = moveDelay
+        self.nodes = PathCalculations.waypointNodes(from: startPosition, to: endPosition, waypoints: waypoints)
     }
 }
 
@@ -544,7 +588,7 @@ struct TransitionEndpointMarkerRenderItem: Identifiable, Equatable, Hashable {
     }
 
     static let rainbowColors: [Color] = [
-        .red, .orange, .yellow, .green, .cyan, .blue, .indigo, .purple
+        .pink, .orange, .yellow, Color(red: 0.6, green: 0.9, blue: 0.2), .cyan, .blue, .purple
     ]
 
     static func rainbowColor(forIndex index: Int) -> Color {
@@ -629,13 +673,17 @@ enum AlignmentSnapEngine {
         }
         let candidates = alignmentGuideCandidates(otherAthletePositions: otherAthletePositions)
         let verticalMatch = bestSnapMatch(
-            currentValues: movingPositions.map(\.x),
-            candidates: candidates.filter { $0.orientation == .vertical },
+            movingPositions: movingPositions,
+            valueExtractor: \.x,
+            candidates: candidates,
+            targetOrientation: .vertical,
             threshold: threshold
         )
         let horizontalMatch = bestSnapMatch(
-            currentValues: movingPositions.map(\.y),
-            candidates: candidates.filter { $0.orientation == .horizontal },
+            movingPositions: movingPositions,
+            valueExtractor: \.y,
+            candidates: candidates,
+            targetOrientation: .horizontal,
             threshold: threshold
         )
         let adjustedTranslation = CGPoint(
@@ -667,29 +715,38 @@ enum AlignmentSnapEngine {
             contentsOf: courtGuideCandidates(length: CourtConstants.height, orientation: .horizontal)
         )
 
-        let xValues = Array(Set(otherAthletePositions.map { round($0.x) }))
-        let yValues = Array(Set(otherAthletePositions.map { round($0.y) }))
+        var seenX = Set<CGFloat>()
+        var seenY = Set<CGFloat>()
 
-        candidates.append(
-            contentsOf: xValues.map {
-                SnapGuideCandidate(
-                    orientation: .vertical,
-                    value: $0,
-                    emphasis: .strong,
-                    priority: 130
+        // ⚡ Bolt Performance Optimization:
+        // By replacing `Array(Set(otherAthletePositions.map { ... }))` with a single loop
+        // and using `Set.insert(_:).inserted`, we eliminate multiple O(N) intermediate
+        // heap allocations (map -> Set -> Array) during high-frequency drag alignment evaluations.
+        // Expected impact: Removes memory overhead per evaluation tick on large arrays.
+        for position in otherAthletePositions {
+            let x = round(position.x)
+            if seenX.insert(x).inserted {
+                candidates.append(
+                    SnapGuideCandidate(
+                        orientation: .vertical,
+                        value: x,
+                        emphasis: .strong,
+                        priority: 130
+                    )
                 )
             }
-        )
-        candidates.append(
-            contentsOf: yValues.map {
-                SnapGuideCandidate(
-                    orientation: .horizontal,
-                    value: $0,
-                    emphasis: .strong,
-                    priority: 130
+            let y = round(position.y)
+            if seenY.insert(y).inserted {
+                candidates.append(
+                    SnapGuideCandidate(
+                        orientation: .horizontal,
+                        value: y,
+                        emphasis: .strong,
+                        priority: 130
+                    )
                 )
             }
-        )
+        }
 
         return candidates
     }
@@ -719,30 +776,35 @@ enum AlignmentSnapEngine {
         )
 
         // Panel center guides at the midpoint of each 8ft panel (4, 12, 20, ...)
-        let panelCenters = stride(from: CGFloat(4), to: length, by: 8)
-            .filter { abs($0 - center) > 0.5 }
-        candidates.append(
-            contentsOf: panelCenters.map {
-                SnapGuideCandidate(
-                    orientation: orientation,
-                    value: $0,
-                    emphasis: .subtle,
-                    priority: 100
-                )
-            }
-        )
+        // ⚡ Bolt Performance Optimization:
+        // Combined `.filter` and `.map` into a single `.compactMap` call.
+        // Expected impact: Eliminates one O(N) array allocation.
+        let panelCenterCandidates = stride(from: CGFloat(4), to: length, by: 8).compactMap { panelCenter -> SnapGuideCandidate? in
+            guard abs(panelCenter - center) > 0.5 else { return nil }
+            return SnapGuideCandidate(
+                orientation: orientation,
+                value: panelCenter,
+                emphasis: .subtle,
+                priority: 100
+            )
+        }
+        candidates.append(contentsOf: panelCenterCandidates)
 
         return candidates
     }
 
     private static func bestSnapMatch(
-        currentValues: [CGFloat],
+        movingPositions: [CGPoint],
+        valueExtractor: KeyPath<CGPoint, CGFloat>,
         candidates: [SnapGuideCandidate],
+        targetOrientation: AlignmentGuideOrientation,
         threshold: CGFloat
     ) -> SnapMatch? {
-        currentValues
-            .flatMap { currentValue in
-                candidates.compactMap { candidate -> SnapMatch? in
+        movingPositions
+            .flatMap { position in
+                let currentValue = position[keyPath: valueExtractor]
+                return candidates.compactMap { candidate -> SnapMatch? in
+                    guard candidate.orientation == targetOrientation else { return nil }
                     let delta = candidate.value - currentValue
                     guard abs(delta) <= threshold else { return nil }
                     return SnapMatch(
@@ -828,25 +890,30 @@ enum AlignmentSnapEngine {
             }
         }
 
-        return matches
-            .sorted {
-                if $0.alignedCount != $1.alignedCount {
-                    return $0.alignedCount > $1.alignedCount
-                }
-                if $0.stationaryCount != $1.stationaryCount {
-                    return $0.stationaryCount > $1.stationaryCount
-                }
-                if abs($0.averageDistance - $1.averageDistance) > 0.001 {
-                    return $0.averageDistance < $1.averageDistance
-                }
-                return $0.segmentLength > $1.segmentLength
+        let sortedMatches = matches.sorted {
+            if $0.alignedCount != $1.alignedCount {
+                return $0.alignedCount > $1.alignedCount
             }
-            .reduce(into: [LinearGuideMatch]()) { result, match in
-                guard !result.contains(where: { $0.membershipKey == match.membershipKey }) else { return }
-                result.append(match)
+            if $0.stationaryCount != $1.stationaryCount {
+                return $0.stationaryCount > $1.stationaryCount
             }
-            .prefix(3)
-            .map(\.guide)
+            if abs($0.averageDistance - $1.averageDistance) > 0.001 {
+                return $0.averageDistance < $1.averageDistance
+            }
+            return $0.segmentLength > $1.segmentLength
+        }
+
+        var uniqueGuides: [AlignmentGuideRenderItem] = []
+        var seenMemberships = Set<LinearGuideMembershipKey>()
+
+        for match in sortedMatches {
+            if seenMemberships.insert(match.membershipKey).inserted {
+                uniqueGuides.append(match.guide)
+                if uniqueGuides.count >= 3 { break }
+            }
+        }
+
+        return uniqueGuides
     }
 
     private static func guideSegment(
@@ -895,14 +962,49 @@ enum AlignmentSnapEngine {
     }
 
     private static func deduplicatedIntersections(_ points: [CGPoint]) -> [CGPoint] {
-        points.reduce(into: [CGPoint]()) { result, point in
-            let alreadyIncluded = result.contains {
-                hypot($0.x - point.x, $0.y - point.y) < 0.05
+        // ⚡ Bolt Performance Optimization:
+        // Replaced O(N^2) `.reduce` with `.contains` scan using a spatial hash grid.
+        // This reduces complexity to O(N) by only checking points in adjacent grid cells.
+        // Expected impact: Significant reduction in time complexity for proximity checks.
+        struct GridCell: Hashable {
+            let x: Int
+            let y: Int
+        }
+        let tolerance: CGFloat = 0.05
+        let toleranceSq = tolerance * tolerance
+        var grid: [GridCell: [CGPoint]] = [:]
+        var result: [CGPoint] = []
+
+        for point in points {
+            let cellX = Int(floor(point.x / tolerance))
+            let cellY = Int(floor(point.y / tolerance))
+
+            var alreadyIncluded = false
+            for cx in (cellX - 1)...(cellX + 1) {
+                for cy in (cellY - 1)...(cellY + 1) {
+                    let cell = GridCell(x: cx, y: cy)
+                    if let cellPoints = grid[cell] {
+                        for p in cellPoints {
+                            let dx = p.x - point.x
+                            let dy = p.y - point.y
+                            if dx * dx + dy * dy < toleranceSq {
+                                alreadyIncluded = true
+                                break
+                            }
+                        }
+                    }
+                    if alreadyIncluded { break }
+                }
+                if alreadyIncluded { break }
             }
+
             if !alreadyIncluded {
                 result.append(point)
+                let cell = GridCell(x: cellX, y: cellY)
+                grid[cell, default: []].append(point)
             }
         }
+        return result
     }
 
     private struct SnapGuideCandidate {
@@ -1014,9 +1116,9 @@ enum RoutineMetrics {
             .joined(separator: " ")
 
         if metadataSummary.isEmpty {
-            logger.log("metric=\(event.rawValue, privacy: .public)")
+            logger.log("metric=\(event.rawValue, privacy: .private)")
         } else {
-            logger.log("metric=\(event.rawValue, privacy: .public) \(metadataSummary, privacy: .private)")
+            logger.log("metric=\(event.rawValue, privacy: .private) \(metadataSummary, privacy: .private)")
         }
     }
 
@@ -1062,6 +1164,24 @@ enum RoutineMetrics {
 
 // MARK: - Persistence
 
+struct RoutineWorkspace: Codable, Equatable, Hashable {
+    var routines: [Routine]
+    var activeRoutineID: UUID
+
+    init(routines: [Routine], activeRoutineID: UUID) {
+        self.routines = routines
+        self.activeRoutineID = activeRoutineID
+    }
+
+    static func initial() -> RoutineWorkspace {
+        let initialRoutine = Routine.initial()
+        return RoutineWorkspace(
+            routines: [initialRoutine],
+            activeRoutineID: initialRoutine.id
+        )
+    }
+}
+
 @MainActor
 final class RoutineStore: ObservableObject {
     private static let logger = Logger(subsystem: "FormationFlow", category: "Persistence")
@@ -1071,21 +1191,38 @@ final class RoutineStore: ObservableObject {
         let toID: UUID
     }
 
-    @Published var routine: Routine {
+    @Published var workspace: RoutineWorkspace {
         didSet {
             guard !isLoading else { return }
             debouncedSave()
         }
     }
 
+    var routine: Routine {
+        get {
+            workspace.routines.first(where: { $0.id == workspace.activeRoutineID }) ?? workspace.routines[0]
+        }
+        set {
+            if let index = workspace.routines.firstIndex(where: { $0.id == newValue.id }) {
+                workspace.routines[index] = newValue
+            } else {
+                workspace.routines.append(newValue)
+            }
+        }
+    }
+
     private let storageKey = "routine.v1"
+    private let workspaceStorageKey = "workspace.v1"
     private var isLoading = false
     private var pendingSave: DispatchWorkItem?
     private var rosterLookup: [UUID: RosterAthlete] = [:]
+    private var formationIndexLookup: [UUID: Int] = [:]
+    private var transitionSpecIndexLookup: [TransitionEdge: Int] = [:]
 
     init() {
-        self.routine = Routine.initial()
+        self.workspace = RoutineWorkspace.initial()
         load()
+        rebuildTransitionSpecLookup()
     }
 
     private var fileURL: URL {
@@ -1093,41 +1230,62 @@ final class RoutineStore: ObservableObject {
         return paths[0].appendingPathComponent("\(storageKey).json")
     }
 
+    private var workspaceFileURL: URL {
+        let paths = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+        return paths[0].appendingPathComponent("\(workspaceStorageKey).json")
+    }
+
     func load() {
         isLoading = true
         defer { isLoading = false }
 
+        // Try loading new workspace format
+        if let data = try? Data(contentsOf: workspaceFileURL),
+           let decoded = try? JSONDecoder().decode(RoutineWorkspace.self, from: data) {
+            workspace = decoded
+            reconcileRoutineShape()
+            rebuildTransitionSpecLookup()
+            return
+        }
+
+        // Migration from old routine file
         if let data = try? Data(contentsOf: fileURL),
            let decoded = try? JSONDecoder().decode(Routine.self, from: data) {
-            routine = decoded
+            workspace = RoutineWorkspace(routines: [decoded], activeRoutineID: decoded.id)
             reconcileRoutineShape()
+            rebuildTransitionSpecLookup()
+            if save() {
+                try? FileManager.default.removeItem(at: fileURL) // Clean up
+            }
             return
         }
 
         // Migration from UserDefaults
         if let data = UserDefaults.standard.data(forKey: storageKey),
            let decoded = try? JSONDecoder().decode(Routine.self, from: data) {
-            routine = decoded
+            workspace = RoutineWorkspace(routines: [decoded], activeRoutineID: decoded.id)
             reconcileRoutineShape()
-            if save() { // Save to new fileURL
+            rebuildTransitionSpecLookup()
+            if save() { // Save to new workspaceFileURL
                 UserDefaults.standard.removeObject(forKey: storageKey) // Clean up
             }
             return
         }
 
-        routine = Routine.initial()
+        workspace = RoutineWorkspace.initial()
         reconcileRoutineShape()
+        rebuildTransitionSpecLookup()
         save()
     }
 
     @discardableResult
     func save() -> Bool {
-        guard let data = try? JSONEncoder().encode(routine) else { return false }
+        guard let data = try? JSONEncoder().encode(workspace) else { return false }
         do {
-            try data.write(to: fileURL, options: [.atomic, .completeFileProtection])
+            try data.write(to: workspaceFileURL, options: [.atomic, .completeFileProtection])
             return true
         } catch {
-            Self.logger.error("Failed to save routine: \(error.localizedDescription, privacy: .private)")
+            Self.logger.error("Failed to save workspace: \(error.localizedDescription, privacy: .private)")
             return false
         }
     }
@@ -1153,9 +1311,101 @@ final class RoutineStore: ObservableObject {
         saveNow()
     }
 
+    // MARK: - Routine Management
+
+    func switchRoutine(id: UUID) {
+        guard workspace.routines.contains(where: { $0.id == id }) else { return }
+        workspace.activeRoutineID = id
+        reconcileRoutineShape()
+    }
+
+    func addRoutine() -> UUID {
+        var newRoutine = Routine.initial()
+        newRoutine.name = nextRoutineName()
+        workspace.routines.append(newRoutine)
+        workspace.activeRoutineID = newRoutine.id
+        reconcileRoutineShape()
+        return newRoutine.id
+    }
+
+    func duplicateRoutine(id: UUID) -> UUID? {
+        guard let sourceIndex = workspace.routines.firstIndex(where: { $0.id == id }) else { return nil }
+        var duplicated = workspace.routines[sourceIndex]
+        duplicated.id = UUID()
+        duplicated.name = nextRoutineName()
+
+        // Give new UUIDs to formations to avoid sharing IDs across routines
+        let idMap = duplicated.formations.reduce(into: [UUID: UUID]()) { result, formation in
+            result[formation.id] = UUID()
+        }
+        for i in duplicated.formations.indices {
+            if let newID = idMap[duplicated.formations[i].id] {
+                duplicated.formations[i].id = newID
+            }
+        }
+        for i in duplicated.transitionSpecs.indices {
+            if let newFromID = idMap[duplicated.transitionSpecs[i].fromFormationID] {
+                duplicated.transitionSpecs[i].fromFormationID = newFromID
+            }
+            if let newToID = idMap[duplicated.transitionSpecs[i].toFormationID] {
+                duplicated.transitionSpecs[i].toFormationID = newToID
+            }
+        }
+
+        workspace.routines.insert(duplicated, at: sourceIndex + 1)
+        workspace.activeRoutineID = duplicated.id
+        reconcileRoutineShape()
+        return duplicated.id
+    }
+
+    func deleteRoutine(id: UUID) {
+        guard workspace.routines.count > 1 else { return }
+        if let index = workspace.routines.firstIndex(where: { $0.id == id }) {
+            workspace.routines.remove(at: index)
+            if workspace.activeRoutineID == id {
+                workspace.activeRoutineID = workspace.routines.first?.id ?? UUID()
+            }
+            reconcileRoutineShape()
+        }
+    }
+
+    func renameRoutine(id: UUID, newName: String) {
+        if let index = workspace.routines.firstIndex(where: { $0.id == id }) {
+            workspace.routines[index].name = newName
+        }
+    }
+
+    private func nextRoutineName() -> String {
+        // ⚡ Bolt: Eliminate intermediate array allocation in Set init
+        let existing = workspace.routines.reduce(into: Set<String>()) { $0.insert($1.name) }
+        var index = workspace.routines.count + 1
+        var candidate = "Routine \(index)"
+        while existing.contains(candidate) {
+            index += 1
+            candidate = "Routine \(index)"
+        }
+        return candidate
+    }
+
+    // MARK: - Formation Management
+
     func formationIndex(id: UUID?) -> Int? {
         guard let id else { return nil }
+        if let index = formationIndexLookup[id],
+           index < routine.formations.count,
+           routine.formations[index].id == id {
+            return index
+        }
         return routine.formations.firstIndex(where: { $0.id == id })
+    }
+
+    func formation(id: UUID) -> Formation? {
+        guard let index = formationIndexLookup[id],
+              index < routine.formations.count,
+              routine.formations[index].id == id else {
+            return routine.formations.first(where: { $0.id == id })
+        }
+        return routine.formations[index]
     }
 
     func rosterIndex(id: UUID) -> Int? {
@@ -1163,7 +1413,15 @@ final class RoutineStore: ObservableObject {
     }
 
     func transitionSpecIndex(from fromID: UUID, to toID: UUID) -> Int? {
-        routine.transitionSpecs.firstIndex {
+        let edge = TransitionEdge(fromID: fromID, toID: toID)
+        if let index = transitionSpecIndexLookup[edge],
+           index < routine.transitionSpecs.count,
+           routine.transitionSpecs[index].fromFormationID == fromID,
+           routine.transitionSpecs[index].toFormationID == toID {
+            return index
+        }
+
+        return routine.transitionSpecs.firstIndex {
             $0.fromFormationID == fromID && $0.toFormationID == toID
         }
     }
@@ -1205,14 +1463,16 @@ final class RoutineStore: ObservableObject {
         else { return [] }
 
         let spec = transitionSpec(for: fromID, to: toID)
-        let endLookup = Dictionary(
-            routine.formations[toIndex].placements.map { ($0.athleteID, $0.position) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        let transitionLookup = Dictionary(
-            spec.athleteTransitions.map { ($0.athleteID, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
+        let endLookup = routine.formations[toIndex].placements.reduce(into: [UUID: CGPoint]()) { result, placement in
+            if result[placement.athleteID] == nil {
+                result[placement.athleteID] = placement.position
+            }
+        }
+        let transitionLookup = spec.athleteTransitions.reduce(into: [UUID: AthleteTransition]()) { result, transition in
+            if result[transition.athleteID] == nil {
+                result[transition.athleteID] = transition
+            }
+        }
 
         return routine.formations[fromIndex].placements.compactMap { placement in
             guard let endPosition = endLookup[placement.athleteID] else { return nil }
@@ -1229,18 +1489,27 @@ final class RoutineStore: ObservableObject {
     }
 
     func addFormation(after formationID: UUID?) -> UUID {
+        let insertionIndex: Int
+        let sourceFormation: Formation?
+
+        if let formationID, let currentIndex = formationIndex(id: formationID) {
+            insertionIndex = currentIndex + 1
+            sourceFormation = routine.formations[currentIndex]
+        } else {
+            insertionIndex = routine.formations.count
+            sourceFormation = routine.formations.last
+        }
+
         let newFormation = Formation(
             name: nextFormationName(),
-            placements: routine.roster.enumerated().map { index, athlete in
-                FormationPlacement(athleteID: athlete.id, position: FormationTemplates.defaultSpawnPosition(for: index))
-            }
+            notes: sourceFormation?.notes ?? "",
+            placements: sourceFormation?.placements
+                ?? routine.roster.enumerated().map { index, athlete in
+                    FormationPlacement(athleteID: athlete.id, position: FormationTemplates.defaultSpawnPosition(for: index))
+                }
         )
 
-        if let currentIndex = formationIndex(id: formationID) {
-            routine.formations.insert(newFormation, at: currentIndex + 1)
-        } else {
-            routine.formations.append(newFormation)
-        }
+        routine.formations.insert(newFormation, at: insertionIndex)
         reconcileTransitionSpecs()
         return newFormation.id
     }
@@ -1346,10 +1615,11 @@ final class RoutineStore: ObservableObject {
         let orderedIDs = routine.roster.map(\.id)
 
         for formationIndex in routine.formations.indices {
-            var placementLookup = Dictionary(
-                routine.formations[formationIndex].placements.map { ($0.athleteID, $0) },
-                uniquingKeysWith: { first, _ in first }
-            )
+            var placementLookup = routine.formations[formationIndex].placements.reduce(into: [UUID: FormationPlacement]()) { result, placement in
+                if result[placement.athleteID] == nil {
+                    result[placement.athleteID] = placement
+                }
+            }
             routine.formations[formationIndex].placements = orderedIDs.compactMap { placementLookup.removeValue(forKey: $0) }
         }
 
@@ -1357,15 +1627,18 @@ final class RoutineStore: ObservableObject {
     }
 
     func deleteAthlete(id: UUID) {
-        routine.roster.removeAll { $0.id == id }
-        for formationIndex in routine.formations.indices {
-            routine.formations[formationIndex].placements.removeAll { $0.athleteID == id }
+        var updated = routine
+        updated.roster.removeAll { $0.id == id }
+        for formationIndex in updated.formations.indices {
+            updated.formations[formationIndex].placements.removeAll { $0.athleteID == id }
         }
-        for transitionIndex in routine.transitionSpecs.indices {
-            routine.transitionSpecs[transitionIndex].athleteTransitions.removeAll { $0.athleteID == id }
+        for transitionIndex in updated.transitionSpecs.indices {
+            updated.transitionSpecs[transitionIndex].athleteTransitions.removeAll { $0.athleteID == id }
         }
-        reconcileTransitionSpecs()
+        routine = updated
         rebuildRosterLookup()
+        rebuildFormationLookup()
+        rebuildTransitionSpecLookup()
     }
 
     func swapPositions(in formationID: UUID, id1: UUID, id2: UUID) {
@@ -1420,18 +1693,35 @@ final class RoutineStore: ObservableObject {
     }
 
     private func nextRosterLabel() -> String {
-        let existing = Set(routine.roster.map(\.label))
+        // ⚡ Bolt: Eliminate intermediate array allocation in Set init
+        let existing = routine.roster.reduce(into: Set<String>()) { $0.insert($1.label) }
         var index = routine.roster.count + 1
-        var candidate = String(format: "%02d", index)
+        let alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+        func generateLabel(for idx: Int) -> String {
+            let zeroBasedIdx = idx - 1
+            let groupIndex = zeroBasedIdx / 5
+            let positionIndex = (zeroBasedIdx % 5) + 1
+
+            if groupIndex < alphabet.count {
+                let letterIndex = alphabet.index(alphabet.startIndex, offsetBy: groupIndex)
+                return "\(alphabet[letterIndex])\(positionIndex)"
+            } else {
+                return String(format: "%02d", idx)
+            }
+        }
+
+        var candidate = generateLabel(for: index)
         while existing.contains(candidate) {
             index += 1
-            candidate = String(format: "%02d", index)
+            candidate = generateLabel(for: index)
         }
         return candidate
     }
 
     private func nextFormationName() -> String {
-        let existing = Set(routine.formations.map(\.name))
+        // ⚡ Bolt: Eliminate intermediate array allocation in Set init
+        let existing = routine.formations.reduce(into: Set<String>()) { $0.insert($1.name) }
         var index = routine.formations.count + 1
         var candidate = "Formation \(index)"
         while existing.contains(candidate) {
@@ -1442,7 +1732,11 @@ final class RoutineStore: ObservableObject {
     }
 
     private func rebuildRosterLookup() {
-        rosterLookup = Dictionary(routine.roster.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        rosterLookup = routine.roster.reduce(into: [UUID: RosterAthlete]()) { result, athlete in
+            if result[athlete.id] == nil {
+                result[athlete.id] = athlete
+            }
+        }
     }
 
     private func reconcileRoutineShape() {
@@ -1452,10 +1746,11 @@ final class RoutineStore: ObservableObject {
 
         let rosterIDs = routine.roster.map(\.id)
         for index in routine.formations.indices {
-            var placementLookup = Dictionary(
-                routine.formations[index].placements.map { ($0.athleteID, $0) },
-                uniquingKeysWith: { first, _ in first }
-            )
+            var placementLookup = routine.formations[index].placements.reduce(into: [UUID: FormationPlacement]()) { result, placement in
+                if result[placement.athleteID] == nil {
+                    result[placement.athleteID] = placement
+                }
+            }
             routine.formations[index].placements = rosterIDs.enumerated().map { offset, athleteID in
                 placementLookup.removeValue(forKey: athleteID)
                     ?? FormationPlacement(
@@ -1469,13 +1764,23 @@ final class RoutineStore: ObservableObject {
         rebuildRosterLookup()
     }
 
+    private func rebuildFormationLookup() {
+        formationIndexLookup = routine.formations.enumerated().reduce(into: [UUID: Int]()) { result, element in
+            if result[element.element.id] == nil {
+                result[element.element.id] = element.offset
+            }
+        }
+    }
+
     private func reconcileTransitionSpecs() {
-        let existing = Dictionary(
-            routine.transitionSpecs.map {
-                (TransitionEdge(fromID: $0.fromFormationID, toID: $0.toFormationID), $0)
-            },
-            uniquingKeysWith: { first, _ in first }
-        )
+        rebuildFormationLookup()
+
+        let existing = routine.transitionSpecs.reduce(into: [TransitionEdge: TransitionSpec]()) { result, spec in
+            let edge = TransitionEdge(fromID: spec.fromFormationID, toID: spec.toFormationID)
+            if result[edge] == nil {
+                result[edge] = spec
+            }
+        }
 
         routine.transitionSpecs = routine.formations.indices.dropLast().map { index in
             let fromFormation = routine.formations[index]
@@ -1492,6 +1797,16 @@ final class RoutineStore: ObservableObject {
             spec.toFormationID = toFormation.id
             spec.synchronize(athleteIDs: fromFormation.placements.map(\.athleteID))
             return spec
+        }
+        rebuildTransitionSpecLookup()
+    }
+
+    private func rebuildTransitionSpecLookup() {
+        transitionSpecIndexLookup = routine.transitionSpecs.enumerated().reduce(into: [TransitionEdge: Int]()) { result, element in
+            let edge = TransitionEdge(fromID: element.element.fromFormationID, toID: element.element.toFormationID)
+            if result[edge] == nil {
+                result[edge] = element.offset
+            }
         }
     }
 }
@@ -1653,7 +1968,25 @@ struct PathCalculations {
         let nodes = waypointNodes(from: start, to: end, waypoints: waypoints)
         let lengths = segmentLengths(nodes)
         let totalLength = lengths.reduce(0, +)
-        guard totalLength > 0 else { return start }
+        return interpolateWaypointPath(
+            nodes: nodes,
+            lengths: lengths,
+            totalLength: totalLength,
+            waypoints: waypoints,
+            progress: progress
+        )
+    }
+
+    static func interpolateWaypointPath(
+        nodes: [CGPoint],
+        lengths: [CGFloat],
+        totalLength: CGFloat,
+        waypoints: [PathWaypoint],
+        progress: CGFloat
+    ) -> CGPoint {
+        guard totalLength > 0, let _ = nodes.first, let end = nodes.last else {
+            return nodes.first ?? CGPoint(x: 0, y: 0)
+        }
 
         let targetDistance = progress * totalLength
         var accumulated: CGFloat = 0
@@ -1783,17 +2116,42 @@ struct PathCalculations {
         guard athletes.count > 1 else { return (0, []) }
 
         let minDistanceSquared = minDistance * minDistance
+        let cellSize = max(minDistance, 0.1)
+
+        struct GridCell: Hashable {
+            let x: Int
+            let y: Int
+        }
+
+        var grid: [GridCell: [Int]] = [:]
+        for (index, athlete) in athletes.enumerated() {
+            let cellX = Int(floor(athlete.position.x / cellSize))
+            let cellY = Int(floor(athlete.position.y / cellSize))
+            let cell = GridCell(x: cellX, y: cellY)
+            grid[cell, default: []].append(index)
+        }
+
         var count = 0
         var ids = Set<UUID>()
 
-        for firstIndex in 0..<athletes.count {
-            for secondIndex in (firstIndex + 1)..<athletes.count {
-                if squaredDistance(from: athletes[firstIndex].position, to: athletes[secondIndex].position)
-                    < minDistanceSquared
-                {
-                    count += 1
-                    ids.insert(athletes[firstIndex].id)
-                    ids.insert(athletes[secondIndex].id)
+        for (index, athlete) in athletes.enumerated() {
+            let cellX = Int(floor(athlete.position.x / cellSize))
+            let cellY = Int(floor(athlete.position.y / cellSize))
+
+            for cx in (cellX - 1)...(cellX + 1) {
+                for cy in (cellY - 1)...(cellY + 1) {
+                    let cell = GridCell(x: cx, y: cy)
+                    if let cellIndices = grid[cell] {
+                        for otherIndex in cellIndices {
+                            if otherIndex > index {
+                                if squaredDistance(from: athlete.position, to: athletes[otherIndex].position) < minDistanceSquared {
+                                    count += 1
+                                    ids.insert(athlete.id)
+                                    ids.insert(athletes[otherIndex].id)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1816,6 +2174,10 @@ struct PathCalculations {
             let travel: CGFloat
             let hold: CGFloat
             let effectiveTime: CGFloat
+            let thresholds: [CGFloat]
+            let nodes: [CGPoint]
+            let lengths: [CGFloat]
+            let totalLength: CGFloat
         }
 
         let timings: [AthleteTiming] = paths.map { item in
@@ -1827,16 +2189,32 @@ struct PathCalculations {
             )
             let travel = travelDistance(from: item.startPosition, to: item.endPosition, transition: transition)
             let hold = item.waypoints.reduce(CGFloat(0)) { $0 + $1.holdCounts }
+            let thresholds = !item.waypoints.isEmpty
+                ? waypointProgressThresholds(
+                    from: item.startPosition,
+                    to: item.endPosition,
+                    waypoints: item.waypoints
+                )
+                : []
+
+            let nodes = waypointNodes(from: item.startPosition, to: item.endPosition, waypoints: item.waypoints)
+            let lengths = segmentLengths(nodes)
+            let totalLength = lengths.reduce(0, +)
+
             return AthleteTiming(
                 item: item,
                 transition: transition,
                 travel: travel,
                 hold: hold,
-                effectiveTime: travel + hold
+                effectiveTime: travel + hold,
+                thresholds: thresholds,
+                nodes: nodes,
+                lengths: lengths,
+                totalLength: totalLength
             )
         }
 
-        let maxEffectiveTime = timings.map(\.effectiveTime).max() ?? 1
+        let maxEffectiveTime = timings.max(by: { $0.effectiveTime < $1.effectiveTime })?.effectiveTime ?? 1
         let effectiveCounts = max(counts, 0.5)
 
         // Sample each athlete's position at each time step
@@ -1851,16 +2229,11 @@ struct PathCalculations {
 
                 let effectiveProgress: CGFloat
                 if !timing.item.waypoints.isEmpty && timing.hold > 0 {
-                    let thresholds = waypointProgressThresholds(
-                        from: timing.item.startPosition,
-                        to: timing.item.endPosition,
-                        waypoints: timing.item.waypoints
-                    )
                     let moveDuration = durationFraction * effectiveCounts * (timing.travel / max(timing.effectiveTime, 0.001))
                     effectiveProgress = holdAdjustedPathProgress(
                         wallProgress: athleteProgress,
                         waypoints: timing.item.waypoints,
-                        thresholds: thresholds,
+                        thresholds: timing.thresholds,
                         moveDuration: moveDuration,
                         totalHoldTime: timing.hold
                     )
@@ -1871,8 +2244,9 @@ struct PathCalculations {
                 let position: CGPoint
                 if !timing.item.waypoints.isEmpty {
                     position = interpolateWaypointPath(
-                        from: timing.item.startPosition,
-                        to: timing.item.endPosition,
+                        nodes: timing.nodes,
+                        lengths: timing.lengths,
+                        totalLength: timing.totalLength,
                         waypoints: timing.item.waypoints,
                         progress: effectiveProgress
                     )
@@ -1895,23 +2269,197 @@ struct PathCalculations {
         }
 
         let minDistanceSquared = minDistance * minDistance
-        var collisionIDs = Set<UUID>()
+        let cellSize = max(minDistance, 0.1)
 
-        for firstIndex in 0..<paths.count {
-            for secondIndex in (firstIndex + 1)..<paths.count {
-                for step in 0...steps {
-                    if squaredDistance(from: sampledPositions[firstIndex][step], to: sampledPositions[secondIndex][step])
-                        < minDistanceSquared
-                    {
-                        collisionIDs.insert(paths[firstIndex].athleteID)
-                        collisionIDs.insert(paths[secondIndex].athleteID)
-                        break
+        struct GridCell: Hashable {
+            let x: Int
+            let y: Int
+        }
+
+        var collisionIDs = Set<UUID>()
+        var seenPairs = Set<Int64>()
+
+        // Skip first and last steps — static proximity is already
+        // handled by collisionSummary; only flag mid-transition crossings.
+        for step in 1..<steps {
+            var grid: [GridCell: [Int]] = [:]
+            for index in 0..<paths.count {
+                let pos = sampledPositions[index][step]
+                let cellX = Int(floor(pos.x / cellSize))
+                let cellY = Int(floor(pos.y / cellSize))
+                let cell = GridCell(x: cellX, y: cellY)
+                grid[cell, default: []].append(index)
+            }
+
+            for index in 0..<paths.count {
+                let pos = sampledPositions[index][step]
+                let cellX = Int(floor(pos.x / cellSize))
+                let cellY = Int(floor(pos.y / cellSize))
+
+                for cx in (cellX - 1)...(cellX + 1) {
+                    for cy in (cellY - 1)...(cellY + 1) {
+                        let cell = GridCell(x: cx, y: cy)
+                        if let cellIndices = grid[cell] {
+                            for otherIndex in cellIndices {
+                                if otherIndex > index {
+                                    let packedKey = Int64(index) << 32 | Int64(otherIndex)
+                                    if !seenPairs.contains(packedKey) {
+                                        if squaredDistance(from: pos, to: sampledPositions[otherIndex][step]) < minDistanceSquared {
+                                            seenPairs.insert(packedKey)
+                                            collisionIDs.insert(paths[index].athleteID)
+                                            collisionIDs.insert(paths[otherIndex].athleteID)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
 
         return collisionIDs
+    }
+
+    static func findPathCollisionMarkers(
+        paths: [TransitionPathRenderItem],
+        counts: CGFloat = 8,
+        steps: Int = 60,
+        minDistance: CGFloat = CourtConstants.collisionDistance
+    ) -> (ids: Set<UUID>, markers: [CGPoint]) {
+        guard paths.count > 1 else { return ([], []) }
+
+        let timings: [(travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat, thresholds: [CGFloat], nodes: [CGPoint], lengths: [CGFloat], totalLength: CGFloat, item: TransitionPathRenderItem)] = paths.map { item in
+            let transition = AthleteTransition(
+                athleteID: item.athleteID,
+                moveDelay: item.moveDelay,
+                pathControlPoint: item.controlPoint,
+                pathWaypoints: item.waypoints
+            )
+            let travel = travelDistance(from: item.startPosition, to: item.endPosition, transition: transition)
+            let hold = item.waypoints.reduce(CGFloat(0)) { $0 + $1.holdCounts }
+            let thresholds = !item.waypoints.isEmpty
+                ? waypointProgressThresholds(
+                    from: item.startPosition,
+                    to: item.endPosition,
+                    waypoints: item.waypoints
+                )
+                : []
+            let nodes = waypointNodes(from: item.startPosition, to: item.endPosition, waypoints: item.waypoints)
+            let lengths = segmentLengths(nodes)
+            let totalLength = lengths.reduce(0, +)
+            return (travel, hold, travel + hold, thresholds, nodes, lengths, totalLength, item)
+        }
+
+        let maxEffectiveTime = timings.max(by: { $0.effectiveTime < $1.effectiveTime })?.effectiveTime ?? 1
+        let effectiveCounts = max(counts, 0.5)
+
+        let sampledPositions: [[CGPoint]] = timings.map { timing in
+            var positions: [CGPoint] = []
+            positions.reserveCapacity(steps + 1)
+            for step in 0...steps {
+                let progress = CGFloat(step) / CGFloat(steps)
+                let durationFraction = maxEffectiveTime > 0 ? timing.effectiveTime / maxEffectiveTime : 1
+                let timingOffset = min(0.99, timing.item.moveDelay / effectiveCounts)
+                let adjustedProgress = max(0, progress - timingOffset) / (1.0 - timingOffset)
+                let athleteProgress = durationFraction > 0 ? min(1.0, adjustedProgress / durationFraction) : 1.0
+
+                let effectiveProgress: CGFloat
+                if !timing.item.waypoints.isEmpty && timing.hold > 0 {
+                    let moveDuration = durationFraction * effectiveCounts * (timing.travel / max(timing.effectiveTime, 0.001))
+                    effectiveProgress = holdAdjustedPathProgress(
+                        wallProgress: athleteProgress,
+                        waypoints: timing.item.waypoints,
+                        thresholds: timing.thresholds,
+                        moveDuration: moveDuration,
+                        totalHoldTime: timing.hold
+                    )
+                } else {
+                    effectiveProgress = athleteProgress
+                }
+
+                let position: CGPoint
+                if !timing.item.waypoints.isEmpty {
+                    position = interpolateWaypointPath(
+                        nodes: timing.nodes,
+                        lengths: timing.lengths,
+                        totalLength: timing.totalLength,
+                        waypoints: timing.item.waypoints,
+                        progress: effectiveProgress
+                    )
+                } else if let controlPoint = timing.item.controlPoint {
+                    position = quadraticBezierPoint(
+                        from: timing.item.startPosition,
+                        control: controlPoint,
+                        to: timing.item.endPosition,
+                        t: athleteProgress
+                    )
+                } else {
+                    position = CGPoint(
+                        x: timing.item.startPosition.x + (timing.item.endPosition.x - timing.item.startPosition.x) * athleteProgress,
+                        y: timing.item.startPosition.y + (timing.item.endPosition.y - timing.item.startPosition.y) * athleteProgress
+                    )
+                }
+                positions.append(position)
+            }
+            return positions
+        }
+
+        let minDistanceSquared = minDistance * minDistance
+        let cellSize = max(minDistance, 0.1)
+
+        struct GridCell: Hashable {
+            let x: Int
+            let y: Int
+        }
+
+        var collisionIDs = Set<UUID>()
+        var markers: [CGPoint] = []
+        var seenPairs = Set<Int64>()
+
+        for step in 1..<steps {
+            var grid: [GridCell: [Int]] = [:]
+            for index in 0..<paths.count {
+                let pos = sampledPositions[index][step]
+                let cellX = Int(floor(pos.x / cellSize))
+                let cellY = Int(floor(pos.y / cellSize))
+                let cell = GridCell(x: cellX, y: cellY)
+                grid[cell, default: []].append(index)
+            }
+
+            for index in 0..<paths.count {
+                let a = sampledPositions[index][step]
+                let cellX = Int(floor(a.x / cellSize))
+                let cellY = Int(floor(a.y / cellSize))
+
+                for cx in (cellX - 1)...(cellX + 1) {
+                    for cy in (cellY - 1)...(cellY + 1) {
+                        let cell = GridCell(x: cx, y: cy)
+                        if let cellIndices = grid[cell] {
+                            for otherIndex in cellIndices {
+                                if otherIndex > index {
+                                    let packedKey = Int64(index) << 32 | Int64(otherIndex)
+                                    if !seenPairs.contains(packedKey) {
+                                        let b = sampledPositions[otherIndex][step]
+                                        if squaredDistance(from: a, to: b) < minDistanceSquared {
+                                            seenPairs.insert(packedKey)
+                                            collisionIDs.insert(paths[index].athleteID)
+                                            collisionIDs.insert(paths[otherIndex].athleteID)
+                                            let midpoint = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
+                                            if !markers.contains(where: { squaredDistance(from: $0, to: midpoint) < 1 }) {
+                                                markers.append(midpoint)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return (collisionIDs, markers)
     }
 }
 
@@ -1925,16 +2473,18 @@ final class TransitionPlayer: ObservableObject {
     @Published var currentAthletes: [RenderedAthlete]
     @Published var speed: CGFloat = 2.0
     @Published var startAthletes: [RenderedAthlete] {
-        didSet { updateTimingCache() }
+        didSet { guard !isBatchRefreshing else { return }; updateTimingCache() }
     }
     @Published var endAthletes: [RenderedAthlete] {
         didSet {
+            guard !isBatchRefreshing else { return }
             updateEndLookup()
             updateTimingCache()
         }
     }
     @Published var transitionSpec: TransitionSpec {
         didSet {
+            guard !isBatchRefreshing else { return }
             updateTransitionLookup()
             updateTimingCache()
         }
@@ -1943,7 +2493,7 @@ final class TransitionPlayer: ObservableObject {
     var onComplete: (() -> Void)?
 
     var duration: TimeInterval {
-        didSet { transitionSpec.duration = duration }
+        didSet { guard !isBatchRefreshing else { return }; transitionSpec.duration = duration }
     }
 
     var counts: TimeInterval {
@@ -1955,10 +2505,16 @@ final class TransitionPlayer: ObservableObject {
     private var transitionLookup: [UUID: AthleteTransition] = [:]
 
     // ⚡ Bolt: Cache timing calculations outside the animation loop to avoid O(N) operations per frame.
-    private var timingCache: [UUID: (endAthlete: RenderedAthlete, transition: AthleteTransition, travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat, thresholds: [CGFloat])] = [:]
+    private var timingCache: [UUID: (endAthlete: RenderedAthlete, transition: AthleteTransition, travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat, thresholds: [CGFloat], nodes: [CGPoint], lengths: [CGFloat], totalLength: CGFloat)] = [:]
     private var maxEffectiveTime: CGFloat = 1
 
+    // ⚡ Bolt: Cache path generation and spatial collisions outside the animation loop
+    private(set) var cachedTransitionPaths: [TransitionPathRenderItem] = []
+    private(set) var cachedPathCollisionIDs: Set<UUID> = []
+    private(set) var cachedPathCollisionMarkers: [CGPoint] = []
+
     private var animationTimer: AnimationTimer?
+    private var idleResetTask: Task<Void, Never>?
 
     init(
         startAthletes: [RenderedAthlete],
@@ -1976,18 +2532,23 @@ final class TransitionPlayer: ObservableObject {
     }
 
     private func updateEndLookup() {
-        endLookup = Dictionary(endAthletes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        endLookup = endAthletes.reduce(into: [UUID: RenderedAthlete]()) { result, athlete in
+            if result[athlete.id] == nil {
+                result[athlete.id] = athlete
+            }
+        }
     }
 
     private func updateTransitionLookup() {
-        transitionLookup = Dictionary(
-            transitionSpec.athleteTransitions.map { ($0.athleteID, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
+        transitionLookup = transitionSpec.athleteTransitions.reduce(into: [UUID: AthleteTransition]()) { result, transition in
+            if result[transition.athleteID] == nil {
+                result[transition.athleteID] = transition
+            }
+        }
     }
 
     private func updateTimingCache() {
-        var newTimingCache: [UUID: (endAthlete: RenderedAthlete, transition: AthleteTransition, travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat, thresholds: [CGFloat])] = [:]
+        var newTimingCache: [UUID: (endAthlete: RenderedAthlete, transition: AthleteTransition, travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat, thresholds: [CGFloat], nodes: [CGPoint], lengths: [CGFloat], totalLength: CGFloat)] = [:]
         newTimingCache.reserveCapacity(startAthletes.count)
 
         let newMaxEffectiveTime = startAthletes.compactMap { athlete -> CGFloat? in
@@ -2008,33 +2569,69 @@ final class TransitionPlayer: ObservableObject {
                 )
                 : []
 
-            newTimingCache[athlete.id] = (endAthlete, transition, travel, hold, effectiveTime, thresholds)
+            let nodes = PathCalculations.waypointNodes(from: athlete.position, to: endAthlete.position, waypoints: transition.pathWaypoints)
+            let lengths = PathCalculations.segmentLengths(nodes)
+            let totalLength = lengths.reduce(0, +)
+
+            newTimingCache[athlete.id] = (endAthlete, transition, travel, hold, effectiveTime, thresholds, nodes, lengths, totalLength)
             return effectiveTime
         }.max() ?? 1
 
         self.timingCache = newTimingCache
         self.maxEffectiveTime = newMaxEffectiveTime
+
+        updatePathCaches()
+    }
+
+    private func updatePathCaches() {
+        cachedTransitionPaths = startAthletes.compactMap { athlete in
+            guard let cached = timingCache[athlete.id] else { return nil }
+            return TransitionPathRenderItem(
+                athleteID: athlete.id,
+                startPosition: athlete.position,
+                endPosition: cached.endAthlete.position,
+                controlPoint: cached.transition.pathControlPoint,
+                waypoints: cached.transition.pathWaypoints,
+                moveDelay: cached.transition.moveDelay
+            )
+        }
+
+        let collisions = PathCalculations.findPathCollisionMarkers(
+            paths: cachedTransitionPaths,
+            counts: CGFloat(counts)
+        )
+        cachedPathCollisionIDs = collisions.ids
+        cachedPathCollisionMarkers = collisions.markers
     }
 
     deinit {
         animationTimer?.invalidate()
     }
 
+    private var isBatchRefreshing = false
+
     func refresh(
         startAthletes: [RenderedAthlete],
         endAthletes: [RenderedAthlete],
         transitionSpec: TransitionSpec
     ) {
+        // Batch property updates to avoid cascading didSet → updateTimingCache()
+        // which previously ran findPathCollisionIDs 3-4 times per refresh.
+        isBatchRefreshing = true
         self.startAthletes = startAthletes
         self.endAthletes = endAthletes
         self.transitionSpec = transitionSpec
         duration = transitionSpec.duration
-        // updateTimingCache is called via property observers
+        isBatchRefreshing = false
+        updateEndLookup()
+        updateTransitionLookup()
+        updateTimingCache()
         updateAthletesForProgress()
     }
 
     func play() {
         guard !isPlaying else { return }
+        cancelIdleReset()
         if progress >= 1.0 { progress = 0 }
         isPlaying = true
         animationTimer = AnimationTimer { [weak self] in
@@ -2046,17 +2643,40 @@ final class TransitionPlayer: ObservableObject {
         isPlaying = false
         animationTimer?.invalidate()
         animationTimer = nil
+        scheduleIdleReset()
     }
 
     func reset() {
+        cancelIdleReset()
         pause()
         progress = 0
         updateAthletesForProgress()
     }
 
     func seek(to newProgress: CGFloat) {
+        cancelIdleReset()
         progress = max(0, min(1, newProgress))
         updateAthletesForProgress()
+        if !isPlaying { scheduleIdleReset() }
+    }
+
+    private func scheduleIdleReset() {
+        cancelIdleReset()
+        guard progress > 0 else { return }
+        idleResetTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+            self?.seek(to: 0)
+        }
+    }
+
+    private func cancelIdleReset() {
+        idleResetTask?.cancel()
+        idleResetTask = nil
+    }
+
+    func setSpeed(_ newSpeed: CGFloat) {
+        speed = newSpeed
     }
 
     private func update() {
@@ -2108,8 +2728,9 @@ final class TransitionPlayer: ObservableObject {
             let nextPosition: CGPoint
             if !transition.pathWaypoints.isEmpty {
                 nextPosition = PathCalculations.interpolateWaypointPath(
-                    from: athlete.position,
-                    to: endAthlete.position,
+                    nodes: cached.nodes,
+                    lengths: cached.lengths,
+                    totalLength: cached.totalLength,
                     waypoints: transition.pathWaypoints,
                     progress: effectiveProgress
                 )
@@ -2155,11 +2776,15 @@ final class TransitionPreviewSession: ObservableObject {
                 transitionSpec: transitionSpec
             )
         } else {
-            self.player = TransitionPlayer(
+            let newPlayer = TransitionPlayer(
                 startAthletes: startAthletes,
                 endAthletes: endAthletes,
                 transitionSpec: transitionSpec
             )
+            newPlayer.onComplete = { [weak newPlayer] in
+                newPlayer?.seek(to: 0)
+            }
+            self.player = newPlayer
         }
 
         self.startFormationID = startFormationID
@@ -2286,13 +2911,15 @@ final class RoutinePlayer: ObservableObject {
         let segIndex = segmentIndex(for: clamped)
         let localProgress = localProgress(for: clamped, inSegment: segIndex)
 
-        currentSegmentIndex = segIndex
-        if segIndex < segments.count {
-            currentFormationName = segments[segIndex].formationName
+        if currentSegmentIndex != segIndex || player == nil {
+            currentSegmentIndex = segIndex
+            if segIndex < segments.count {
+                currentFormationName = segments[segIndex].formationName
+            }
+            trailPositions = [:]
+            loadSegment(at: segIndex)
         }
 
-        trailPositions = [:]
-        loadSegment(at: segIndex)
         player?.seek(to: localProgress)
     }
 
@@ -2327,12 +2954,14 @@ final class RoutinePlayer: ObservableObject {
         currentFormationName = seg.formationName
 
         if let player {
-            player.refresh(
-                startAthletes: seg.startAthletes,
-                endAthletes: seg.endAthletes,
-                transitionSpec: seg.spec
-            )
-            player.seek(to: 0)
+            if player.transitionSpec.id != seg.spec.id {
+                player.refresh(
+                    startAthletes: seg.startAthletes,
+                    endAthletes: seg.endAthletes,
+                    transitionSpec: seg.spec
+                )
+                player.seek(to: 0)
+            }
             player.speed = speed
         } else {
             let newPlayer = TransitionPlayer(

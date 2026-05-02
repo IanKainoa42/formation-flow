@@ -1,0 +1,32 @@
+FormationFlow - iPad Pro 13" Screenshots
+App Store Captions (Optional - for better context)
+
+Screenshot 1: Formation Editor
+"Create stunning cheerleading formations with an intuitive visual editor. Drag athletes onto the court and see them color-coded by role."
+
+Screenshot 2: Transition Player
+"Watch your formations come to life with smooth transitions. Preview how your athletes move from one formation to the next."
+
+Screenshot 3: Multiple Formations
+"Organize your entire routine with multiple formations. Switch between them instantly with our formation browser."
+
+Screenshot 4: Roster Management
+"Manage your entire team roster. Assign athletes to roles and keep track of everyone in your squad."
+
+Screenshot 5: Inspector Panel
+"Customize every detail. The inspector panel lets you fine-tune individual athlete positions and properties."
+
+Screenshot 6: Add & Edit Athletes
+"Build your team step by step. Add athletes and assign them specific roles: Base, Flyer, Spotter, Backspot, Tumbler, or Stunt Group."
+
+Screenshot 7: Court Customization
+"Flexible layouts for any venue. Choose from preset court sizes or create custom dimensions for your specific needs."
+
+Screenshot 8: Transition Paths
+"Master precision movements. Edit athlete paths with waypoints for exact choreography control."
+
+Screenshot 9: Playback Controls
+"Adjust timing to perfection. Control playback speed and navigate frame-by-frame through your transitions."
+
+Screenshot 10: Routine Organization
+"Keep everything organized. Group formations by section and reorder them as your routine evolves."

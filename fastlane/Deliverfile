@@ -1,0 +1,9 @@
+app_identifier "com.ianrichardson.formationflow"
+team_id "WC46K49VFA"
+screenshots_path "fastlane/screenshots"
+overwrite_screenshots true
+skip_binary_upload true
+skip_metadata true
+submit_for_review false
+force true
+run_precheck_before_submit false

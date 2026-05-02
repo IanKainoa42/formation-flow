@@ -38,6 +38,7 @@ enum TransportControls {
         }
         .buttonStyle(.bordered)
         .accessibilityLabel("Reset transition")
+        .accessibilityHint("Jump back to the start of the transition")
         .help("Jump back to the start of the transition")
     }
 
@@ -51,6 +52,8 @@ enum TransportControls {
         }
         .buttonStyle(.borderedProminent)
         .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
+        .accessibilityValue(player.isPlaying ? "Playing" : "Paused")
+        .accessibilityHint(player.isPlaying ? "Pause the transition preview" : "Play the transition animation")
         .help(player.isPlaying ? "Pause the transition preview" : "Play the transition animation")
     }
 
@@ -66,6 +69,7 @@ enum TransportControls {
         .tint(player.isLooping ? .accentColor : .secondary)
         .accessibilityLabel("Toggle loop")
         .accessibilityValue(player.isLooping ? "On" : "Off")
+        .accessibilityHint(player.isLooping ? "Stop looping — play once and stop" : "Loop — repeat the transition continuously")
         .help(player.isLooping ? "Stop looping — play once and stop" : "Loop — repeat the transition continuously")
     }
 
@@ -91,26 +95,57 @@ enum TransportControls {
     }
 
     @ViewBuilder
-    static func swapButton(isActive: Bool, size: CGFloat = 34, action: @escaping () -> Void) -> some View {
+    static func swapButton(isActive: Bool, size: CGFloat = 34, disabled: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: "arrow.triangle.2.circlepath")
                 .frame(width: size, height: size)
         }
         .buttonStyle(.bordered)
+        .disabled(disabled)
         .tint(isActive ? .blue : .secondary)
         .accessibilityLabel(isActive ? "Cancel Swap" : "Swap Position")
         .accessibilityValue(isActive ? "Active" : "Inactive")
-        .help(isActive ? "Cancel the swap operation" : "Swap start or end positions between two athletes")
+        .accessibilityHint(isActive ? "Cancel the swap operation" : "Swap start or end positions between two athletes")
+        .help(disabled ? "Add athletes to swap their positions" : isActive ? "Cancel the swap operation" : "Swap start or end positions between two athletes")
     }
 
     @ViewBuilder
-    static func pathButton(size: CGFloat = 34, action: @escaping () -> Void) -> some View {
+    static func pathButton(size: CGFloat = 34, disabled: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
                 .frame(width: size, height: size)
         }
         .buttonStyle(.bordered)
+        .disabled(disabled)
         .accessibilityLabel("Edit Path")
+        .accessibilityHint("Open the inspector to adjust the path curve and hold duration")
+        .help(disabled ? "Select a transition to edit its path" : "Edit movement path and timing")
+    }
+
+    @ViewBuilder
+    static func previousFormationButton(size: CGFloat = 34, disabled: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "chevron.up")
+                .frame(width: size, height: size)
+        }
+        .buttonStyle(.bordered)
+        .disabled(disabled)
+        .accessibilityLabel("Previous formation")
+        .accessibilityHint(disabled ? "Already at the first formation" : "Go to the previous formation")
+        .help(disabled ? "Already at the first formation" : "Go to the previous formation")
+    }
+
+    @ViewBuilder
+    static func nextFormationButton(size: CGFloat = 34, disabled: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "chevron.down")
+                .frame(width: size, height: size)
+        }
+        .buttonStyle(.bordered)
+        .disabled(disabled)
+        .accessibilityLabel("Next formation")
+        .accessibilityHint(disabled ? "Already at the last formation" : "Go to the next formation")
+        .help(disabled ? "Already at the last formation" : "Go to the next formation")
     }
 }
 
@@ -125,6 +160,10 @@ struct TransitionTransportSidebarView: View {
     var isSwapMode: Bool = false
     var canSwap: Bool = false
     var canEditPath: Bool = false
+    var onPreviousFormation: () -> Void = {}
+    var onNextFormation: () -> Void = {}
+    var isFirstFormation: Bool = false
+    var isLastFormation: Bool = false
 
     var body: some View {
         ScrollView {
@@ -151,6 +190,8 @@ struct TransitionTransportSidebarView: View {
     private var transportControls: some View {
         VStack(spacing: 12) {
             HStack(spacing: 16) {
+                TransportControls.previousFormationButton(disabled: isFirstFormation, action: onPreviousFormation)
+                TransportControls.nextFormationButton(disabled: isLastFormation, action: onNextFormation)
                 TransportControls.resetButton(player: player)
                 TransportControls.playPauseButton(player: player)
                 TransportControls.loopButton(player: player)
@@ -158,15 +199,26 @@ struct TransitionTransportSidebarView: View {
 
             TransportControls.progressSlider(player: player)
             TransportControls.progressText(player: player)
+
+            Picker("Speed", selection: Binding(
+                get: { player.speed },
+                set: { player.setSpeed($0) }
+            )) {
+                Text("0.5x").tag(CGFloat(1.0))
+                Text("1x").tag(CGFloat(2.0))
+                Text("2x").tag(CGFloat(4.0))
+                Text("4x").tag(CGFloat(8.0))
+            }
+            .pickerStyle(.segmented)
+            .accessibilityLabel("Playback Speed")
+            .accessibilityHint("Adjust the playback speed of the transition animation")
         }
     }
 
     private var actionButtons: some View {
         HStack(spacing: 12) {
-            TransportControls.swapButton(isActive: isSwapMode, action: onSwap)
-                .disabled(!canSwap)
-            TransportControls.pathButton(action: onPath)
-                .disabled(!canEditPath)
+            TransportControls.swapButton(isActive: isSwapMode, disabled: !canSwap, action: onSwap)
+            TransportControls.pathButton(disabled: !canEditPath, action: onPath)
         }
     }
 }
@@ -180,33 +232,40 @@ struct CompactTransitionPlaybackOverlayView: View {
     var isSwapMode: Bool = false
     var canSwap: Bool = false
     var canEditPath: Bool = false
+    var onPreviousFormation: () -> Void = {}
+    var onNextFormation: () -> Void = {}
+    var isFirstFormation: Bool = false
+    var isLastFormation: Bool = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("\(startFormationName) \u{2192} \(endFormationName)")
-                .font(.caption.weight(.semibold))
-                .foregroundColor(.secondary)
-                .lineLimit(1)
+        VStack(spacing: 10) {
+            HStack(spacing: 8) {
+                Text("\(startFormationName) \u{2192} \(endFormationName)")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                Spacer()
+                TransportControls.loopButton(player: player, size: 30)
+                TransportControls.swapButton(isActive: isSwapMode, size: 30, disabled: !canSwap, action: onSwap)
+                TransportControls.pathButton(size: 30, disabled: !canEditPath, action: onPath)
+            }
 
             HStack(spacing: 10) {
-                TransportControls.resetButton(player: player, size: 28)
-                TransportControls.playPauseButton(player: player, size: 32)
+                TransportControls.previousFormationButton(size: 34, disabled: isFirstFormation, action: onPreviousFormation)
+                TransportControls.resetButton(player: player, size: 34)
+                TransportControls.playPauseButton(player: player, size: 40)
                 TransportControls.progressSlider(player: player)
-                TransportControls.loopButton(player: player, size: 28)
-                TransportControls.swapButton(isActive: isSwapMode, size: 28, action: onSwap)
-                    .disabled(!canSwap)
-                TransportControls.pathButton(size: 28, action: onPath)
-                    .disabled(!canEditPath)
+                TransportControls.nextFormationButton(size: 34, disabled: isLastFormation, action: onNextFormation)
             }
         }
-        .padding(12)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .strokeBorder(.white.opacity(0.08))
         }
         .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
-        .controlSize(.small)
     }
 }
 
@@ -220,28 +279,62 @@ struct CompactTransitionPlaybackRailView: View {
     var isSwapMode: Bool = false
     var canSwap: Bool = false
     var canEditPath: Bool = false
+    var onAdd: (() -> Void)? = nil
+    var formationLabel: String? = nil
+    var formationColor: Color = .accentColor
+    var onPreviousFormation: () -> Void = {}
+    var onNextFormation: () -> Void = {}
+    var isFirstFormation: Bool = false
+    var isLastFormation: Bool = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
+            // Formation context (replaces the canvas overlay that was covering the floor)
+            if let formationLabel {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(formationColor)
+                        .frame(width: 7, height: 7)
+                    Text(formationLabel)
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                }
+            }
+
             Text("\(startFormationName) \u{2192} \(endFormationName)")
-                .font(.caption.weight(.semibold))
+                .font(.caption)
                 .foregroundColor(.secondary)
                 .lineLimit(2)
 
+            // Add athlete button
+            if let onAdd {
+                Button(action: onAdd) {
+                    Label("Add", systemImage: "plus.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+
+            Divider()
+
             HStack(spacing: 8) {
+                TransportControls.previousFormationButton(size: 28, disabled: isFirstFormation, action: onPreviousFormation)
+                TransportControls.nextFormationButton(size: 28, disabled: isLastFormation, action: onNextFormation)
                 TransportControls.resetButton(player: player, size: 30)
                 TransportControls.playPauseButton(player: player, size: 36)
                 TransportControls.loopButton(player: player, size: 30)
             }
 
+            // Swap and path buttons fill the full row width
             HStack(spacing: 8) {
-                TransportControls.swapButton(isActive: isSwapMode, size: 30, action: onSwap)
-                    .disabled(!canSwap)
-                TransportControls.pathButton(size: 30, action: onPath)
-                    .disabled(!canEditPath)
+                TransportControls.swapButton(isActive: isSwapMode, size: 30, disabled: !canSwap, action: onSwap)
+                    .frame(maxWidth: .infinity)
+                TransportControls.pathButton(size: 30, disabled: !canEditPath, action: onPath)
+                    .frame(maxWidth: .infinity)
             }
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
                     Text("Progress")
                         .font(.caption.weight(.semibold))
@@ -288,28 +381,139 @@ struct SidebarTransportView: View {
     var isSwapMode: Bool = false
     var canSwap: Bool = false
     var canEditPath: Bool = false
+    var onPreviousFormation: () -> Void = {}
+    var onNextFormation: () -> Void = {}
+    var isFirstFormation: Bool = false
+    var isLastFormation: Bool = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             Text("\(startFormationName) \u{2192} \(endFormationName)")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
 
-            HStack(spacing: 16) {
-                TransportControls.resetButton(player: player)
-                TransportControls.playPauseButton(player: player)
-                TransportControls.loopButton(player: player)
+            // Row 1: nav + play
+            HStack(spacing: 8) {
+                TransportControls.previousFormationButton(size: 28, disabled: isFirstFormation, action: onPreviousFormation)
+                TransportControls.nextFormationButton(size: 28, disabled: isLastFormation, action: onNextFormation)
+                TransportControls.resetButton(player: player, size: 28)
+                TransportControls.playPauseButton(player: player, size: 28)
+                TransportControls.loopButton(player: player, size: 28)
             }
 
             TransportControls.progressSlider(player: player)
 
-            HStack(spacing: 12) {
-                TransportControls.swapButton(isActive: isSwapMode, action: onSwap)
-                    .disabled(!canSwap)
-                TransportControls.pathButton(action: onPath)
-                    .disabled(!canEditPath)
+            Picker("Speed", selection: Binding(
+                get: { player.speed },
+                set: { player.setSpeed($0) }
+            )) {
+                Text("0.5x").tag(CGFloat(1.0))
+                Text("1x").tag(CGFloat(2.0))
+                Text("2x").tag(CGFloat(4.0))
+                Text("4x").tag(CGFloat(8.0))
+            }
+            .pickerStyle(.segmented)
+            .accessibilityLabel("Playback Speed")
+            .accessibilityHint("Adjust the playback speed of the transition animation")
+
+            HStack(spacing: 8) {
+                TransportControls.swapButton(isActive: isSwapMode, size: 28, disabled: !canSwap, action: onSwap)
+                TransportControls.pathButton(size: 28, disabled: !canEditPath, action: onPath)
             }
         }
+    }
+}
+
+// MARK: - Thin Transition Transport Bar (single row, sits below the floor)
+
+struct ThinTransitionTransportBar: View {
+    @ObservedObject var player: TransitionPlayer
+    let startFormationName: String
+    let endFormationName: String
+    var onSwap: () -> Void = {}
+    var onPath: () -> Void = {}
+    var isSwapMode: Bool = false
+    var canSwap: Bool = false
+    var canEditPath: Bool = false
+    var onPreviousFormation: () -> Void = {}
+    var onNextFormation: () -> Void = {}
+    var isFirstFormation: Bool = false
+    var isLastFormation: Bool = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text("\(startFormationName) \u{2192} \(endFormationName)")
+                .font(.caption.weight(.semibold))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: 180, alignment: .leading)
+
+            Button(action: onPreviousFormation) {
+                Image(systemName: "chevron.up").frame(width: 26, height: 26)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(isFirstFormation)
+            .accessibilityLabel("Previous formation")
+            .accessibilityHint(isFirstFormation ? "Already at the first formation" : "Go to the previous formation")
+            .help(isFirstFormation ? "Already at the first formation" : "Go to the previous formation")
+
+            TransportControls.playPauseButton(player: player, size: 30)
+
+            Button(action: onNextFormation) {
+                Image(systemName: "chevron.down").frame(width: 26, height: 26)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(isLastFormation)
+            .accessibilityLabel("Next formation")
+            .accessibilityHint(isLastFormation ? "Already at the last formation" : "Go to the next formation")
+            .help(isLastFormation ? "Already at the last formation" : "Go to the next formation")
+
+            TransportControls.progressSlider(player: player)
+                .layoutPriority(1)
+
+            Menu {
+                Button {
+                    player.isLooping.toggle()
+                } label: {
+                    Label(
+                        player.isLooping ? "Stop Looping" : "Loop Playback",
+                        systemImage: player.isLooping ? "repeat.circle.fill" : "repeat"
+                    )
+                }
+
+                Button(action: player.reset) {
+                    Label("Reset to Start", systemImage: "backward.end.fill")
+                }
+
+                Divider()
+
+                Button(action: onSwap) {
+                    Label(
+                        isSwapMode ? "Cancel Swap" : "Swap Position",
+                        systemImage: "arrow.triangle.2.circlepath"
+                    )
+                }
+                .disabled(!canSwap)
+
+                Button(action: onPath) {
+                    Label("Edit Path", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+                }
+                .disabled(!canEditPath)
+            } label: {
+                Image(systemName: "ellipsis.circle").frame(width: 26, height: 26)
+            }
+            .accessibilityLabel("More transition options")
+            .accessibilityHint("Show more transition options")
+            .help("More transition options")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .background(.bar)
     }
 }
 
@@ -350,6 +554,7 @@ struct TransitionShareCardView: View {
     let endpointMarkers: [TransitionEndpointMarkerRenderItem]
     let collisionIDs: Set<UUID>
     let pathCollisionIDs: Set<UUID>
+    let pathCollisionMarkerPositions: [CGPoint]
     let startFormationColor: Color
     let endFormationColor: Color
     let transitionProgress: CGFloat
@@ -394,6 +599,7 @@ struct TransitionShareCardView: View {
                     endpointMarkers: endpointMarkers,
                     collisionIDs: collisionIDs,
                     pathCollisionIDs: pathCollisionIDs,
+                    pathCollisionMarkerPositions: pathCollisionMarkerPositions,
                     cellSize: cellSize,
                     offset: offset,
                     hasTransition: true,

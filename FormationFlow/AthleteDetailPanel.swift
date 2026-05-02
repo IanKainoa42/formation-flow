@@ -36,23 +36,46 @@ struct AthleteInspectorView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Clear selection")
+                .accessibilityHint("Deselect this athlete")
+                .help("Deselect this athlete")
             }
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Identity")
                     .font(.subheadline.weight(.semibold))
-                TextField("Label", text: $labelDraft)
-                    .textFieldStyle(.roundedBorder)
-                    .onChange(of: labelDraft) { _, newValue in
-                        let clamped = String(newValue.prefix(4))
-                        if clamped != newValue { labelDraft = clamped }
-                        let trimmed = clamped.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !trimmed.isEmpty {
-                            onUpdateLabel(trimmed)
+                if isPro {
+                    TextField("Label", text: $labelDraft)
+                        .textFieldStyle(.roundedBorder)
+                        .onChange(of: labelDraft) { _, newValue in
+                            let clamped = String(newValue.prefix(4))
+                            if clamped != newValue { labelDraft = clamped }
+                            let trimmed = clamped.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !trimmed.isEmpty {
+                                onUpdateLabel(trimmed)
+                            }
                         }
+                        .onAppear { labelDraft = athlete.label }
+                        .onChange(of: athlete.id) { _, _ in labelDraft = athlete.label }
+                } else {
+                    Button(action: onUpgrade) {
+                        HStack {
+                            Text(athlete.label)
+                                .font(.body.monospaced())
+                            Spacer()
+                            Label("Rename (Pro)", systemImage: "lock.fill")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.secondary.opacity(0.3))
+                        )
                     }
-                    .onAppear { labelDraft = athlete.label }
-                    .onChange(of: athlete.id) { _, _ in labelDraft = athlete.label }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Rename athlete (Pro feature)")
+                }
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -247,6 +270,239 @@ struct AthleteRoleMarkerShape: Shape {
     }
 }
 
+// MARK: - Transition Inspector Section
+
+struct TransitionInspectorSectionView: View {
+    let transition: AthleteTransition
+    @ObservedObject var player: TransitionPlayer
+    let startFormationName: String
+    let endFormationName: String
+    var compactLayout: Bool = false
+    var isPro: Bool = true
+    var onUpdateMoveDelay: (CGFloat) -> Void = { _ in }
+    var onClearPath: () -> Void = {}
+    var onEnsureCurve: () -> Void = {}
+    var onAddWaypoint: () -> Void = {}
+    var onToggleWaypointSmooth: (Int) -> Void = { _ in }
+    var onDeleteWaypoint: (UUID) -> Void = { _ in }
+    var onAdjustWaypointHold: (Int, CGFloat) -> Void = { _, _ in }
+    var onResetAllPaths: () -> Void = {}
+    var onUpgrade: () -> Void = {}
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: compactLayout ? 14 : 16) {
+            header
+            moveDelaySection
+            pathControlsSection
+
+            if !transition.pathWaypoints.isEmpty {
+                waypointListSection
+            }
+        }
+        .padding(compactLayout ? 16 : 20)
+    }
+
+    // MARK: - Header
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Transition")
+                    .font(.headline)
+                Spacer()
+                Button(role: .destructive, action: onResetAllPaths) {
+                    Label("Reset All", systemImage: "arrow.uturn.backward.circle")
+                        .font(.caption)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!hasCustomPaths)
+                .help(!hasCustomPaths ? "No custom paths to reset" : "Reset all paths to default")
+            }
+            Text("\(startFormationName) \u{2192} \(endFormationName)")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private var hasCustomPaths: Bool {
+        player.transitionSpec.athleteTransitions.contains {
+            $0.pathControlPoint != nil || !$0.pathWaypoints.isEmpty
+        }
+    }
+
+    // MARK: - Move Delay
+
+    private var moveDelaySection: some View {
+        VStack(alignment: .leading, spacing: compactLayout ? 6 : 8) {
+            Text("Start Delay")
+                .font(.subheadline.weight(.semibold))
+            if isPro {
+                Slider(
+                    value: Binding(
+                        get: { transition.moveDelayCounts },
+                        set: { onUpdateMoveDelay($0) }
+                    ),
+                    in: 0...CGFloat(player.counts),
+                    step: 0.5
+                )
+                .accessibilityLabel("Start Delay")
+            } else {
+                HStack {
+                    Slider(value: .constant(0), in: 0...CGFloat(player.counts))
+                        .disabled(true)
+                    Button(action: onUpgrade) {
+                        Image(systemName: "lock.fill")
+                            .foregroundColor(.secondary)
+                    }
+                    .accessibilityLabel("Upgrade to Pro to adjust start delay")
+                    .accessibilityHint("Requires a Pro subscription to change the start delay timing")
+                    .help("Upgrade to Pro to adjust start delay")
+                }
+            }
+            Text(TransitionCountFormatting.label(transition.moveDelayCounts))
+                .font(.system(.body, design: .monospaced))
+                .foregroundColor(.secondary)
+        }
+    }
+
+    // MARK: - Path Controls
+
+    private var pathControlsSection: some View {
+        VStack(alignment: .leading, spacing: compactLayout ? 8 : 10) {
+            Text("Path")
+                .font(.subheadline.weight(.semibold))
+            Group {
+                if compactLayout {
+                    VStack(spacing: 8) { pathButtons }
+                } else {
+                    HStack(spacing: 10) { pathButtons }
+                }
+            }
+
+            Text("Tap Waypoint to bend the path, then drag the handles. You can also double-tap the athlete on the floor.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var pathButtons: some View {
+        Button(action: onClearPath) {
+            Label("Straight", systemImage: "line.diagonal")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+
+        Button(action: onEnsureCurve) {
+            Label("Curve", systemImage: "scribble")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+
+        Button(action: onAddWaypoint) {
+            Label(
+                isPro ? "Waypoint" : "Waypoint (Pro)",
+                systemImage: isPro ? "plus.circle" : "lock.fill"
+            )
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .accessibilityHint(isPro ? "Add a waypoint to the path" : "Upgrade to Pro to add waypoints")
+    }
+
+    // MARK: - Waypoint List
+
+    private var waypointListSection: some View {
+        VStack(alignment: .leading, spacing: compactLayout ? 8 : 10) {
+            Text("Waypoints")
+                .font(.subheadline.weight(.semibold))
+            ForEach(Array(transition.pathWaypoints.enumerated()), id: \.element.id) { waypointIndex, waypoint in
+                waypointCard(waypointIndex: waypointIndex, waypoint: waypoint)
+            }
+        }
+    }
+
+    private func waypointCard(waypointIndex: Int, waypoint: PathWaypoint) -> some View {
+        VStack(alignment: .leading, spacing: compactLayout ? 6 : 8) {
+            HStack {
+                Text("Waypoint \(waypointIndex + 1)")
+                    .font(.body.weight(.medium))
+                Spacer()
+                Button(role: .destructive) {
+                    onDeleteWaypoint(waypoint.id)
+                } label: {
+                    Image(systemName: "trash")
+                        .foregroundColor(.red)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Delete waypoint")
+                .accessibilityHint("Removes this waypoint from the athlete's path")
+                .help("Removes this waypoint from the athlete's path")
+            }
+
+            HStack {
+                Text(waypoint.isSmooth ? "Smooth" : "Sharp")
+                Spacer()
+                Button(waypoint.isSmooth ? "Make Sharp" : "Make Smooth") {
+                    if isPro {
+                        onToggleWaypointSmooth(waypointIndex)
+                    } else {
+                        onUpgrade()
+                    }
+                }
+                .buttonStyle(.bordered)
+            }
+
+            if compactLayout {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Hold")
+                        Spacer()
+                        Text(TransitionCountFormatting.label(waypoint.holdCounts))
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+
+                    HStack(spacing: 8) {
+                        Button("- 0.5") {
+                            onAdjustWaypointHold(waypointIndex, -0.5)
+                        }
+                        .buttonStyle(.bordered)
+                        .frame(maxWidth: .infinity)
+
+                        Button("+ 0.5") {
+                            onAdjustWaypointHold(waypointIndex, 0.5)
+                        }
+                        .buttonStyle(.bordered)
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+            } else {
+                HStack {
+                    Text("Hold")
+                    Spacer()
+                    Button("- 0.5") {
+                        onAdjustWaypointHold(waypointIndex, -0.5)
+                    }
+                    .buttonStyle(.bordered)
+
+                    Text(TransitionCountFormatting.label(waypoint.holdCounts))
+                        .font(.system(.body, design: .monospaced))
+                        .frame(width: 84)
+
+                    Button("+ 0.5") {
+                        onAdjustWaypointHold(waypointIndex, 0.5)
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+        }
+        .padding(compactLayout ? 12 : 14)
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+}
+
 // MARK: - Sidebar Inspector (Reusable)
 
 struct SidebarInspectorView: View {
@@ -255,6 +511,16 @@ struct SidebarInspectorView: View {
     @Binding var selectedAthleteIDs: Set<UUID>
     var isCompactLayout: Bool = false
     var onDeleteAthlete: () -> Void = {}
+
+    // Optional transition data — when present, shows timing controls
+    var player: TransitionPlayer?
+    var startFormationID: UUID?
+    var endFormationID: UUID?
+    var isPro: Bool = true
+    var onUpgrade: () -> Void = {}
+    var onRefreshTransition: () -> Void = {}
+
+    @State private var showingClearPathConfirmation = false
 
     private var selectedAthleteID: UUID? {
         selectedAthleteIDs.count == 1 ? selectedAthleteIDs.first : nil
@@ -275,16 +541,32 @@ struct SidebarInspectorView: View {
         return formation.placements.first(where: { $0.athleteID == selectedAthleteID })
     }
 
+    private var selectedTransition: AthleteTransition? {
+        guard let selectedAthleteID, let player else { return nil }
+        return player.transitionSpec.athleteTransition(for: selectedAthleteID)
+    }
+
+    private var startFormationName: String? {
+        guard let startFormationID, let idx = store.formationIndex(id: startFormationID) else { return nil }
+        return store.routine.formations[idx].name
+    }
+
+    private var endFormationName: String? {
+        guard let endFormationID, let idx = store.formationIndex(id: endFormationID) else { return nil }
+        return store.routine.formations[idx].name
+    }
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                if let selectedRosterAthlete, let selectedPlacement {
-                    AthleteInspectorView(
+        VStack(alignment: .leading, spacing: 0) {
+            if let selectedRosterAthlete, let selectedPlacement {
+                AthleteInspectorView(
                         athlete: selectedRosterAthlete,
                         position: selectedPlacement.position,
                         formationCount: store.routine.formations.count,
                         formationName: formation?.name ?? "Formation",
                         compactLayout: isCompactLayout,
+                        isPro: isPro,
+                        onUpgrade: onUpgrade,
                         onUpdateLabel: { newLabel in
                             store.mutateRosterAthlete(id: selectedRosterAthlete.id) { athlete in
                                 athlete.label = newLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -293,6 +575,10 @@ struct SidebarInspectorView: View {
                             }
                         },
                         onUpdateRole: { newRole in
+                            guard isPro else {
+                                onUpgrade()
+                                return
+                            }
                             store.mutateRosterAthlete(id: selectedRosterAthlete.id) { athlete in
                                 athlete.role = newRole
                             }
@@ -302,6 +588,21 @@ struct SidebarInspectorView: View {
                             selectedAthleteIDs = []
                         }
                     )
+
+                    if let selectedTransition, let player,
+                       let startFormationID, let endFormationID,
+                       let startFormationName, let endFormationName
+                    {
+                        Divider()
+                        transitionSection(
+                            transition: selectedTransition,
+                            player: player,
+                            startFormationID: startFormationID,
+                            endFormationID: endFormationID,
+                            startFormationName: startFormationName,
+                            endFormationName: endFormationName
+                        )
+                    }
                 } else if selectedAthleteIDs.count > 1 {
                     MultiSelectionInspectorView(
                         count: selectedAthleteIDs.count,
@@ -316,7 +617,521 @@ struct SidebarInspectorView: View {
                     )
                 }
             }
+        .background(.thinMaterial)
+        .confirmationDialog(
+            "Clear waypoints?",
+            isPresented: $showingClearPathConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Clear Path", role: .destructive) {
+                guard let startFormationID, let endFormationID else { return }
+                performClearPath(
+                    startFormationID: startFormationID,
+                    endFormationID: endFormationID
+                )
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes all waypoints and hold timings on this path. This cannot be undone.")
+        }
+    }
+
+    private func performClearPath(startFormationID: UUID, endFormationID: UUID) {
+        guard let selectedAthleteID else { return }
+        store.mutateAthleteTransition(
+            from: startFormationID,
+            to: endFormationID,
+            athleteID: selectedAthleteID
+        ) { t in
+            t.pathControlPoint = nil
+            t.pathWaypoints = []
+        }
+        onRefreshTransition()
+    }
+
+    @ViewBuilder
+    private func transitionSection(
+        transition: AthleteTransition,
+        player: TransitionPlayer,
+        startFormationID: UUID,
+        endFormationID: UUID,
+        startFormationName: String,
+        endFormationName: String
+    ) -> some View {
+        TransitionInspectorSectionView(
+            transition: transition,
+            player: player,
+            startFormationName: startFormationName,
+            endFormationName: endFormationName,
+            compactLayout: isCompactLayout,
+            isPro: isPro,
+            onUpdateMoveDelay: { newValue in
+                guard let selectedAthleteID else { return }
+                store.mutateAthleteTransition(
+                    from: startFormationID,
+                    to: endFormationID,
+                    athleteID: selectedAthleteID
+                ) { t in
+                    t.moveDelayCounts = min(CGFloat(player.counts), max(0, newValue))
+                }
+                onRefreshTransition()
+            },
+            onClearPath: {
+                if (selectedTransition?.pathWaypoints.count ?? 0) > 0 {
+                    showingClearPathConfirmation = true
+                } else {
+                    performClearPath(
+                        startFormationID: startFormationID,
+                        endFormationID: endFormationID
+                    )
+                }
+            },
+            onEnsureCurve: {
+                guard let selectedAthleteID else { return }
+                let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID })
+                let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
+                guard let startAthlete, let endAthlete else { return }
+                store.mutateAthleteTransition(
+                    from: startFormationID,
+                    to: endFormationID,
+                    athleteID: selectedAthleteID
+                ) { t in
+                    guard t.pathControlPoint == nil && t.pathWaypoints.isEmpty else { return }
+                    let midpoint = CGPoint(
+                        x: (startAthlete.position.x + endAthlete.position.x) / 2,
+                        y: (startAthlete.position.y + endAthlete.position.y) / 2
+                    )
+                    t.pathControlPoint = CGPoint(x: midpoint.x, y: midpoint.y - 6)
+                }
+                onRefreshTransition()
+            },
+            onAddWaypoint: {
+                guard isPro else {
+                    onUpgrade()
+                    return
+                }
+                guard let selectedAthleteID else { return }
+                let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID })
+                let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
+                guard let startAthlete, let endAthlete else { return }
+                store.mutateAthleteTransition(
+                    from: startFormationID,
+                    to: endFormationID,
+                    athleteID: selectedAthleteID
+                ) { t in
+                    if t.pathWaypoints.isEmpty {
+                        let point = t.pathControlPoint
+                            ?? CGPoint(
+                                x: (startAthlete.position.x + endAthlete.position.x) / 2,
+                                y: (startAthlete.position.y + endAthlete.position.y) / 2
+                            )
+                        t.pathWaypoints = [PathWaypoint(position: point, isSmooth: true)]
+                        t.pathControlPoint = nil
+                    } else {
+                        let lastNode = t.pathWaypoints.last?.position ?? startAthlete.position
+                        let point = CGPoint(
+                            x: (lastNode.x + endAthlete.position.x) / 2,
+                            y: (lastNode.y + endAthlete.position.y) / 2
+                        )
+                        t.pathWaypoints.append(PathWaypoint(position: point, isSmooth: true))
+                    }
+                }
+                onRefreshTransition()
+            },
+            onToggleWaypointSmooth: { waypointIndex in
+                guard let selectedAthleteID else { return }
+                store.mutateAthleteTransition(
+                    from: startFormationID,
+                    to: endFormationID,
+                    athleteID: selectedAthleteID
+                ) { t in
+                    t.pathWaypoints[waypointIndex].isSmooth.toggle()
+                }
+                onRefreshTransition()
+            },
+            onDeleteWaypoint: { waypointID in
+                guard let selectedAthleteID else { return }
+                store.mutateAthleteTransition(
+                    from: startFormationID,
+                    to: endFormationID,
+                    athleteID: selectedAthleteID
+                ) { t in
+                    t.pathWaypoints.removeAll(where: { $0.id == waypointID })
+                }
+                onRefreshTransition()
+            },
+            onAdjustWaypointHold: { waypointIndex, delta in
+                guard isPro else {
+                    onUpgrade()
+                    return
+                }
+                guard let selectedAthleteID else { return }
+                store.mutateAthleteTransition(
+                    from: startFormationID,
+                    to: endFormationID,
+                    athleteID: selectedAthleteID
+                ) { t in
+                    let updatedValue = t.pathWaypoints[waypointIndex].holdCounts + delta
+                    t.pathWaypoints[waypointIndex].holdCounts = min(
+                        CGFloat(player.counts),
+                        max(0, updatedValue)
+                    )
+                }
+                onRefreshTransition()
+            },
+            onResetAllPaths: {
+                store.mutateTransitionSpec(from: startFormationID, to: endFormationID) { spec in
+                    for index in spec.athleteTransitions.indices {
+                        spec.athleteTransitions[index].pathControlPoint = nil
+                        spec.athleteTransitions[index].pathWaypoints = []
+                    }
+                }
+                onRefreshTransition()
+            },
+            onUpgrade: onUpgrade
+        )
+    }
+}
+
+// MARK: - Selected Athlete Sidebar (Composed)
+
+struct SelectedAthleteSidebarView: View {
+    @ObservedObject var store: RoutineStore
+    let formationID: UUID
+    @Binding var selectedAthleteIDs: Set<UUID>
+    var onDeleteAthlete: () -> Void = {}
+
+    @ObservedObject var player: TransitionPlayer
+    var startFormationID: UUID?
+    var endFormationID: UUID?
+    var isPro: Bool = true
+    var onUpgrade: () -> Void = {}
+    var onRefreshTransition: () -> Void = {}
+
+    var onSwap: () -> Void = {}
+    var isSwapMode: Bool = false
+
+    @State private var labelDraft: String = ""
+    @State private var showDeleteConfirmation = false
+    @State private var showingClearPathConfirmation = false
+
+    private var selectedAthleteID: UUID? {
+        selectedAthleteIDs.count == 1 ? selectedAthleteIDs.first : nil
+    }
+
+    private var athlete: RosterAthlete? {
+        guard let selectedAthleteID else { return nil }
+        return store.routine.roster.first { $0.id == selectedAthleteID }
+    }
+
+    private var formation: Formation? {
+        guard let idx = store.formationIndex(id: formationID) else { return nil }
+        return store.routine.formations[idx]
+    }
+
+    private var transition: AthleteTransition? {
+        guard let selectedAthleteID else { return nil }
+        return player.transitionSpec.athleteTransition(for: selectedAthleteID)
+    }
+
+    private var startFormationName: String {
+        guard let startFormationID, let idx = store.formationIndex(id: startFormationID) else { return "" }
+        return store.routine.formations[idx].name
+    }
+
+    private var endFormationName: String {
+        guard let endFormationID, let idx = store.formationIndex(id: endFormationID) else { return "" }
+        return store.routine.formations[idx].name
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let athlete {
+                // MARK: Name + Role
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        if isPro {
+                            TextField("Label", text: $labelDraft)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.headline)
+                                .onChange(of: labelDraft) { _, newValue in
+                                    let clamped = String(newValue.prefix(4))
+                                    if clamped != newValue { labelDraft = clamped }
+                                    let trimmed = clamped.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    if !trimmed.isEmpty {
+                                        store.mutateRosterAthlete(id: athlete.id) { a in
+                                            a.label = trimmed
+                                        }
+                                    }
+                                }
+                                .onAppear { labelDraft = athlete.label }
+                                .onChange(of: athlete.id) { _, _ in labelDraft = athlete.label }
+                        } else {
+                            Button(action: onUpgrade) {
+                                HStack(spacing: 6) {
+                                    Text(athlete.label)
+                                        .font(.headline.monospaced())
+                                    Image(systemName: "lock.fill")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Rename athlete (Pro feature)")
+                        }
+
+                        Spacer()
+
+                        Button(action: { selectedAthleteIDs = [] }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.title3)
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Clear selection")
+                        .accessibilityHint("Deselect this athlete")
+                        .help("Deselect this athlete")
+                    }
+
+                    AthleteRolePicker(
+                        selectedRole: athlete.role,
+                        compactLayout: true,
+                        isPro: isPro,
+                        onUpgrade: onUpgrade,
+                        onSelect: { newRole in
+                            store.mutateRosterAthlete(id: athlete.id) { a in
+                                a.role = newRole
+                            }
+                        }
+                    )
+                }
+                .padding(16)
+
+                Divider()
+
+                // MARK: Transport
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("\(startFormationName) \u{2192} \(endFormationName)")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+
+                    HStack(spacing: 8) {
+                        TransportControls.resetButton(player: player, size: 28)
+                        TransportControls.playPauseButton(player: player, size: 28)
+                        TransportControls.loopButton(player: player, size: 28)
+                        Spacer()
+                        TransportControls.swapButton(isActive: isSwapMode, size: 28, disabled: false, action: onSwap)
+                    }
+
+                    TransportControls.progressSlider(player: player)
+
+                    Picker("Speed", selection: Binding(
+                        get: { player.speed },
+                        set: { player.setSpeed($0) }
+                    )) {
+                        Text("0.5x").tag(CGFloat(1.0))
+                        Text("1x").tag(CGFloat(2.0))
+                        Text("2x").tag(CGFloat(4.0))
+                        Text("4x").tag(CGFloat(8.0))
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityLabel("Playback Speed")
+                    .accessibilityHint("Adjust the playback speed of the transition animation")
+                }
+                .padding(16)
+
+                // MARK: Timing + Path
+                if let transition {
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        // Start Delay
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("Start Delay")
+                                    .font(.subheadline.weight(.semibold))
+                                Spacer()
+                                Text(TransitionCountFormatting.label(transition.moveDelayCounts))
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
+                            if isPro {
+                                Slider(
+                                    value: Binding(
+                                        get: { transition.moveDelayCounts },
+                                        set: { newValue in
+                                            guard let selectedAthleteID, let startFormationID, let endFormationID else { return }
+                                            store.mutateAthleteTransition(
+                                                from: startFormationID, to: endFormationID,
+                                                athleteID: selectedAthleteID
+                                            ) { t in
+                                                t.moveDelayCounts = min(CGFloat(player.counts), max(0, newValue))
+                                            }
+                                            onRefreshTransition()
+                                        }
+                                    ),
+                                    in: 0...CGFloat(player.counts),
+                                    step: 0.5
+                                )
+                                .accessibilityLabel("Start Delay")
+                            } else {
+                                HStack {
+                                    Slider(value: .constant(0), in: 0...CGFloat(player.counts))
+                                        .disabled(true)
+                                    Button(action: onUpgrade) {
+                                        Image(systemName: "lock.fill")
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .accessibilityLabel("Upgrade to Pro to adjust start delay")
+                                    .accessibilityHint("Requires a Pro subscription to change the start delay timing")
+                                    .help("Upgrade to Pro to adjust start delay")
+                                }
+                            }
+                        }
+
+                        // Path
+                        VStack(spacing: 8) {
+                            HStack(spacing: 8) {
+                                Button {
+                                    if transition.pathWaypoints.count > 0 {
+                                        showingClearPathConfirmation = true
+                                    } else {
+                                        clearPath()
+                                    }
+                                } label: {
+                                    Label("Straight", systemImage: "line.diagonal")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.bordered)
+
+                                Button {
+                                    guard let selectedAthleteID, let startFormationID, let endFormationID else { return }
+                                    let startAthlete = player.startAthletes.first { $0.id == selectedAthleteID }
+                                    let endAthlete = player.endAthletes.first { $0.id == selectedAthleteID }
+                                    guard let startAthlete, let endAthlete else { return }
+                                    store.mutateAthleteTransition(
+                                        from: startFormationID, to: endFormationID,
+                                        athleteID: selectedAthleteID
+                                    ) { t in
+                                        guard t.pathControlPoint == nil && t.pathWaypoints.isEmpty else { return }
+                                        let midpoint = CGPoint(
+                                            x: (startAthlete.position.x + endAthlete.position.x) / 2,
+                                            y: (startAthlete.position.y + endAthlete.position.y) / 2
+                                        )
+                                        t.pathControlPoint = CGPoint(x: midpoint.x, y: midpoint.y - 6)
+                                    }
+                                    onRefreshTransition()
+                                } label: {
+                                    Label("Curve", systemImage: "scribble")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.bordered)
+                            }
+
+                            Button {
+                                guard isPro else {
+                                    onUpgrade()
+                                    return
+                                }
+                                guard let selectedAthleteID, let startFormationID, let endFormationID else { return }
+                                let startAthlete = player.startAthletes.first { $0.id == selectedAthleteID }
+                                let endAthlete = player.endAthletes.first { $0.id == selectedAthleteID }
+                                guard let startAthlete, let endAthlete else { return }
+                                store.mutateAthleteTransition(
+                                    from: startFormationID, to: endFormationID,
+                                    athleteID: selectedAthleteID
+                                ) { t in
+                                    if t.pathWaypoints.isEmpty {
+                                        let point = t.pathControlPoint
+                                            ?? CGPoint(
+                                                x: (startAthlete.position.x + endAthlete.position.x) / 2,
+                                                y: (startAthlete.position.y + endAthlete.position.y) / 2
+                                            )
+                                        t.pathWaypoints = [PathWaypoint(position: point, isSmooth: true)]
+                                        t.pathControlPoint = nil
+                                    } else {
+                                        let lastNode = t.pathWaypoints.last?.position ?? startAthlete.position
+                                        let point = CGPoint(
+                                            x: (lastNode.x + endAthlete.position.x) / 2,
+                                            y: (lastNode.y + endAthlete.position.y) / 2
+                                        )
+                                        t.pathWaypoints.append(PathWaypoint(position: point, isSmooth: true))
+                                    }
+                                }
+                                onRefreshTransition()
+                            } label: {
+                                Label(
+                                    isPro ? "Add Waypoint" : "Add Waypoint (Pro)",
+                                    systemImage: isPro ? "plus.circle" : "lock.fill"
+                                )
+                                .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                            .accessibilityHint(isPro ? "Add a waypoint to bend the path" : "Upgrade to Pro to add waypoints")
+
+                            Text("Drag the waypoint handles on the floor to shape the curve.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    .padding(16)
+                }
+
+                Spacer()
+
+                // MARK: Delete (bottom)
+                Divider()
+                Button(role: .destructive) {
+                    showDeleteConfirmation = true
+                } label: {
+                    Label("Delete Athlete", systemImage: "trash")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .padding(16)
+            } else if selectedAthleteIDs.count > 1 {
+                MultiSelectionInspectorView(
+                    count: selectedAthleteIDs.count,
+                    compactLayout: true,
+                    onClearSelection: { selectedAthleteIDs = [] }
+                )
+            }
         }
         .background(.thinMaterial)
+        .confirmationDialog(
+            "Delete \(athlete?.label ?? "athlete")?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Athlete", role: .destructive, action: onDeleteAthlete)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will remove them from all \(store.routine.formations.count) formations and their transitions. This cannot be undone.")
+        }
+        .confirmationDialog(
+            "Clear waypoints?",
+            isPresented: $showingClearPathConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Clear Path", role: .destructive, action: clearPath)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes all waypoints and hold timings on this path. This cannot be undone.")
+        }
+    }
+
+    private func clearPath() {
+        guard let selectedAthleteID, let startFormationID, let endFormationID else { return }
+        store.mutateAthleteTransition(
+            from: startFormationID, to: endFormationID,
+            athleteID: selectedAthleteID
+        ) { t in
+            t.pathControlPoint = nil
+            t.pathWaypoints = []
+        }
+        onRefreshTransition()
     }
 }

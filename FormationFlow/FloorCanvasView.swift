@@ -8,6 +8,89 @@ import AppKit
 
 // MARK: - Floor Canvas View
 
+struct FloorSelectionLasso {
+    private(set) var points: [CGPoint]
+
+    init(startPoint: CGPoint) {
+        points = [startPoint]
+    }
+
+    var bounds: CGRect {
+        guard let firstPoint = points.first else { return .null }
+
+        var minX = firstPoint.x
+        var maxX = firstPoint.x
+        var minY = firstPoint.y
+        var maxY = firstPoint.y
+
+        for point in points.dropFirst() {
+            minX = min(minX, point.x)
+            maxX = max(maxX, point.x)
+            minY = min(minY, point.y)
+            maxY = max(maxY, point.y)
+        }
+
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+
+    var isTapCandidate: Bool {
+        let selectionBounds = bounds
+        return selectionBounds.width < 5 && selectionBounds.height < 5
+    }
+
+    mutating func append(_ point: CGPoint, minimumDistance: CGFloat = 6) {
+        guard let lastPoint = points.last else {
+            points = [point]
+            return
+        }
+
+        // ⚡ Bolt Performance Optimization:
+        // Use squared distance (dx*dx + dy*dy) to avoid expensive square root (hypot) in proximity checks.
+        let dx = point.x - lastPoint.x
+        let dy = point.y - lastPoint.y
+        guard dx * dx + dy * dy >= minimumDistance * minimumDistance else { return }
+        points.append(point)
+    }
+
+    func contains(_ point: CGPoint) -> Bool {
+        guard points.count >= 3 else { return false }
+
+        var containsPoint = false
+        var previousPoint = points[points.count - 1]
+
+        for currentPoint in points {
+            let denominator = previousPoint.y - currentPoint.y
+            let intersects = ((currentPoint.y > point.y) != (previousPoint.y > point.y))
+                && (point.x < (previousPoint.x - currentPoint.x) * (point.y - currentPoint.y)
+                    / (denominator == 0 ? CGFloat.leastNonzeroMagnitude : denominator)
+                    + currentPoint.x)
+            if intersects {
+                containsPoint.toggle()
+            }
+            previousPoint = currentPoint
+        }
+
+        return containsPoint
+    }
+
+    func canvasPath(offset: CGPoint) -> Path {
+        guard let firstPoint = points.first else { return Path() }
+
+        var path = Path()
+        path.move(to: CGPoint(x: firstPoint.x - offset.x, y: firstPoint.y - offset.y))
+
+        for point in points.dropFirst() {
+            path.addLine(to: CGPoint(x: point.x - offset.x, y: point.y - offset.y))
+        }
+
+        if points.count >= 3 {
+            path.closeSubpath()
+        }
+
+        return path
+    }
+}
+
 struct FloorCanvasView: View {
     let athletes: [RenderedAthlete]
     var selectedAthleteIDs: Set<UUID> = []
@@ -16,10 +99,13 @@ struct FloorCanvasView: View {
     var alignmentGuides: [AlignmentGuideRenderItem] = []
     var collisionIDs: Set<UUID> = []
     var pathCollisionIDs: Set<UUID> = []
+    var pathCollisionMarkerPositions: [CGPoint] = []
+    var blinkingResolvedIDs: Set<UUID> = []
+    var blinkPhase: Int = 0
     var cellSize: CGFloat = 12
     var offset: CGPoint = .zero
     var swapSourceID: UUID? = nil
-    var selectionRect: CGRect? = nil
+    var selectionLasso: FloorSelectionLasso? = nil
     var focusedEndpoint: PreviewEditableEndpoint? = nil
     var hasTransition: Bool = false
     var startFormationColor: Color = .clear
@@ -28,10 +114,21 @@ struct FloorCanvasView: View {
     var formationColor: Color = .white
     var useRoleColors: Bool = false
     var ghostAthletes: [RenderedAthlete] = []
+    var ghostColor: Color = .white
+    var ghostNextAthletes: [RenderedAthlete] = []
+    var ghostNextColor: Color = .white
     var trailPositions: [UUID: [CGPoint]] = [:]
+    var ghostTransitionPaths: [TransitionPathRenderItem] = []
+    var ghostPrevPaths: [TransitionPathRenderItem] = []
+    var ghostNextPaths: [TransitionPathRenderItem] = []
     var hoveredHandlePosition: CGPoint? = nil
     var hoveredAthleteID: UUID? = nil
+    var hoveredPathAthleteID: UUID? = nil
     var focusedPathHandle: CGPoint? = nil
+
+    /// Scale factor so athlete markers stay proportional to the floor.
+    /// Reference cellSize of 12 matches the original fixed-pixel radii.
+    private var markerScale: CGFloat { cellSize / 12.0 }
 
     var body: some View {
         mainCanvas
@@ -48,27 +145,25 @@ struct FloorCanvasView: View {
             var context = context
             context.translateBy(x: offset.x, y: offset.y)
             drawGrid(in: &context)
+            drawGhostPrevPaths(in: &context)
             drawGhostAthletes(in: &context)
+            drawGhostNextPaths(in: &context)
+            drawGhostNextAthletes(in: &context)
+            drawGhostTransitionPaths(in: &context)
             drawTrails(in: &context)
             drawAlignmentGuides(in: &context)
             drawTransitionPaths(in: &context)
+            drawPathCollisionMarkers(in: &context)
             drawEndpointMarkers(in: &context)
             drawAthletes(in: &context)
 
-            if let selectionRect {
-                let adjustedRect = CGRect(
-                    x: selectionRect.origin.x - offset.x,
-                    y: selectionRect.origin.y - offset.y,
-                    width: selectionRect.width,
-                    height: selectionRect.height
-                )
-                var path = Path()
-                path.addRect(adjustedRect)
-                context.fill(path, with: .color(.orange.opacity(0.1)))
+            if let selectionLasso {
+                let path = selectionLasso.canvasPath(offset: offset)
+                context.fill(path, with: .color(formationColor.opacity(0.1)))
                 context.stroke(
                     path,
-                    with: .color(.orange.opacity(0.45)),
-                    style: StrokeStyle(lineWidth: 1.5, dash: [6, 3])
+                    with: .color(formationColor.opacity(0.45)),
+                    style: StrokeStyle(lineWidth: 1.5, lineJoin: .round, dash: [6, 3])
                 )
             }
         }
@@ -89,6 +184,47 @@ struct FloorCanvasView: View {
                 )
             }
         }
+    }
+
+
+    private func drawPathCollisionMarkers(in context: inout GraphicsContext) {
+        guard !pathCollisionMarkerPositions.isEmpty else { return }
+
+        for position in pathCollisionMarkerPositions {
+            let center = CGPoint(x: position.x * cellSize, y: position.y * cellSize)
+
+            let glowR = 10 * markerScale
+            var glow = Path()
+            glow.addEllipse(in: CGRect(x: center.x - glowR, y: center.y - glowR, width: glowR * 2, height: glowR * 2))
+            context.fill(glow, with: .color(.red.opacity(0.18)))
+
+            let star = eightPointStarPath(center: center, outerRadius: 8 * markerScale, innerRadius: 4.2 * markerScale)
+            context.fill(star, with: .color(.white.opacity(0.95)))
+            context.stroke(star, with: .color(.red), lineWidth: 2)
+        }
+    }
+
+    private func eightPointStarPath(center: CGPoint, outerRadius: CGFloat, innerRadius: CGFloat) -> Path {
+        var path = Path()
+        let points = 16
+
+        for index in 0..<points {
+            let angle = (CGFloat(index) * .pi / 8) - (.pi / 2)
+            let radius = index.isMultiple(of: 2) ? outerRadius : innerRadius
+            let point = CGPoint(
+                x: center.x + cos(angle) * radius,
+                y: center.y + sin(angle) * radius
+            )
+
+            if index == 0 {
+                path.move(to: point)
+            } else {
+                path.addLine(to: point)
+            }
+        }
+
+        path.closeSubpath()
+        return path
     }
 
     private func drawAlignmentGuides(in context: inout GraphicsContext) {
@@ -142,27 +278,27 @@ struct FloorCanvasView: View {
             let end = CGPoint(x: item.endPosition.x * cellSize, y: item.endPosition.y * cellSize)
             let isSelected = selectedAthleteIDs.contains(item.athleteID)
             let isColliding = pathCollisionIDs.contains(item.athleteID)
-            let pathColor: Color = isColliding ? .red : (isSelected ? .orange : .green)
-            let lineWidth: CGFloat = isSelected ? 3 : 1.5
+            let isBlinking = blinkingResolvedIDs.contains(item.athleteID)
+            let resolvedColor: Color = isBlinking && blinkPhase % 2 == 0 ? .white : .green
+            let pathColor: Color = isColliding ? .red : (isBlinking ? resolvedColor : (isSelected ? formationColor : .green))
+            let isPathHovered = hoveredPathAthleteID == item.athleteID
+            let lineWidth: CGFloat = isSelected ? (isPathHovered ? 4.5 : 3) : 1.5
 
             if !item.waypoints.isEmpty {
-                let nodes = PathCalculations.waypointNodes(
-                    from: item.startPosition,
-                    to: item.endPosition,
-                    waypoints: item.waypoints
-                )
-                let screenNodes = nodes.map { CGPoint(x: $0.x * cellSize, y: $0.y * cellSize) }
+                let nodes = item.nodes
 
-                for segmentIndex in 0..<(screenNodes.count - 1) {
-                    let p0 = screenNodes[segmentIndex]
-                    let p1 = screenNodes[segmentIndex + 1]
+                for segmentIndex in 0..<(nodes.count - 1) {
+                    let p0 = CGPoint(x: nodes[segmentIndex].x * cellSize, y: nodes[segmentIndex].y * cellSize)
+                    let p1 = CGPoint(x: nodes[segmentIndex + 1].x * cellSize, y: nodes[segmentIndex + 1].y * cellSize)
                     let waypointAtEnd = segmentIndex < item.waypoints.count ? item.waypoints[segmentIndex] : nil
 
                     var segment = Path()
                     segment.move(to: p0)
                     if waypointAtEnd?.isSmooth == true {
-                        let prev = segmentIndex > 0 ? screenNodes[segmentIndex - 1] : p0
-                        let next = segmentIndex + 2 < screenNodes.count ? screenNodes[segmentIndex + 2] : p1
+                        let prevNode = segmentIndex > 0 ? nodes[segmentIndex - 1] : nodes[segmentIndex]
+                        let nextNode = segmentIndex + 2 < nodes.count ? nodes[segmentIndex + 2] : nodes[segmentIndex + 1]
+                        let prev = CGPoint(x: prevNode.x * cellSize, y: prevNode.y * cellSize)
+                        let next = CGPoint(x: nextNode.x * cellSize, y: nextNode.y * cellSize)
                         let (c1, c2) = PathCalculations.catmullRomControlPoints(prev: prev, p0: p0, p1: p1, next: next)
                         segment.addCurve(to: p1, control1: c1, control2: c2)
                     } else {
@@ -175,25 +311,6 @@ struct FloorCanvasView: View {
                         lineWidth: lineWidth
                     )
 
-                    if isSelected {
-                        let midpoint = CGPoint(x: (p0.x + p1.x) / 2, y: (p0.y + p1.y) / 2)
-                        let midpointGrid = CGPoint(x: midpoint.x / cellSize, y: midpoint.y / cellSize)
-                        let isHovered = isHandleHovered(at: midpointGrid)
-                        let handleRadius: CGFloat = isHovered ? 12 : 8
-                        var handleBackground = Path()
-                        handleBackground.addEllipse(
-                            in: CGRect(x: midpoint.x - handleRadius, y: midpoint.y - handleRadius, width: handleRadius * 2, height: handleRadius * 2)
-                        )
-                        context.fill(handleBackground, with: .color(.white.opacity(isHovered ? 0.9 : 0.75)))
-                        context.stroke(handleBackground, with: .color(pathColor.opacity(isHovered ? 0.8 : 0.55)), lineWidth: isHovered ? 2 : 1)
-                        context.draw(
-                            Text("+")
-                                .font(.system(size: isHovered ? 16 : 12, weight: .bold))
-                                .foregroundColor(pathColor),
-                            at: midpoint,
-                            anchor: .center
-                        )
-                    }
                 }
 
                 if isSelected {
@@ -250,7 +367,7 @@ struct FloorCanvasView: View {
                                     height: ringSize
                                 )
                             )
-                            context.stroke(ring, with: .color(.orange), lineWidth: 2)
+                            context.stroke(ring, with: .color(formationColor), lineWidth: 2)
                         }
                     }
                 }
@@ -263,7 +380,13 @@ struct FloorCanvasView: View {
                 } else {
                     path.addLine(to: end)
                 }
-                context.stroke(path, with: .color(pathColor.opacity(0.42 * pathOpacityMultiplier)), lineWidth: lineWidth)
+                let simpleLineWidth = isSelected && isPathHovered
+                    ? lineWidth * 1.6
+                    : lineWidth
+                let simpleOpacity = isSelected && isPathHovered
+                    ? min(1.0, 0.62 * pathOpacityMultiplier)
+                    : 0.42 * pathOpacityMultiplier
+                context.stroke(path, with: .color(pathColor.opacity(simpleOpacity)), lineWidth: simpleLineWidth)
 
                 if isSelected {
                     let midpoint: CGPoint
@@ -292,8 +415,11 @@ struct FloorCanvasView: View {
 
             let dx = end.x - start.x
             let dy = end.y - start.y
-            let distance = hypot(dx, dy)
-            guard distance > 5 else {
+
+            // ⚡ Bolt Performance Optimization:
+            // Use squared distance (dx*dx + dy*dy) to avoid expensive square root (hypot) in proximity checks.
+            let squaredDistance = dx * dx + dy * dy
+            guard squaredDistance > 25 else { // 5 squared is 25
                 drawGhostCircle(in: &context, center: start)
                 drawGhostCircle(in: &context, center: end)
                 continue
@@ -379,21 +505,165 @@ struct FloorCanvasView: View {
 
     private func drawGhostAthletes(in context: inout GraphicsContext) {
         guard !ghostAthletes.isEmpty else { return }
+        let ghostStyle = StrokeStyle(lineWidth: 1 * markerScale, dash: [3, 3])
         for athlete in ghostAthletes {
             let point = CGPoint(x: athlete.position.x * cellSize, y: athlete.position.y * cellSize)
-            let radius = athlete.role.markerRadius - 3
-            let marker = athlete.role.markerPath(center: point, radius: radius)
-            context.fill(marker, with: .color(.white.opacity(0.07)))
+            // Previous = larger than current (formations grow as they recede into the past)
+            let innerRadius = (athlete.role.markerRadius + 4) * markerScale
+            let outerRadius = (athlete.role.markerRadius + 9) * markerScale
+
+            // Inner circle — tinted with previous formation color
+            var inner = Path()
+            inner.addEllipse(in: CGRect(x: point.x - innerRadius, y: point.y - innerRadius, width: innerRadius * 2, height: innerRadius * 2))
+            context.stroke(inner, with: .color(ghostColor.opacity(0.27)), style: ghostStyle)
+
+            // Outer circle
+            var outer = Path()
+            outer.addEllipse(in: CGRect(x: point.x - outerRadius, y: point.y - outerRadius, width: outerRadius * 2, height: outerRadius * 2))
+            context.stroke(outer, with: .color(ghostColor.opacity(0.17)), style: ghostStyle)
+        }
+    }
+
+    private func drawGhostNextAthletes(in context: inout GraphicsContext) {
+        guard !ghostNextAthletes.isEmpty else { return }
+        for athlete in ghostNextAthletes {
+            let point = CGPoint(x: athlete.position.x * cellSize, y: athlete.position.y * cellSize)
+            // Next = smaller than current (hasn't happened yet, grows when it becomes current)
+            let radius = (athlete.role.markerRadius - 4) * markerScale
+
+            // Hollow outline — tinted with next formation color
+            var ring = Path()
+            ring.addEllipse(in: CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2))
+            context.stroke(ring, with: .color(ghostNextColor.opacity(0.29)), lineWidth: 1.5 * markerScale)
+        }
+    }
+
+    private func drawGhostPrevPaths(in context: inout GraphicsContext) {
+        guard !ghostPrevPaths.isEmpty else { return }
+        let style = StrokeStyle(lineWidth: 1 * markerScale, dash: [4, 5])
+        for item in ghostPrevPaths {
+            let start = CGPoint(x: item.startPosition.x * cellSize, y: item.startPosition.y * cellSize)
+            let end = CGPoint(x: item.endPosition.x * cellSize, y: item.endPosition.y * cellSize)
+
+            // ⚡ Bolt Performance Optimization:
+            // Use squared distance (dx*dx + dy*dy) to avoid expensive square root (hypot) in proximity checks.
+            let dx = end.x - start.x
+            let dy = end.y - start.y
+            guard dx * dx + dy * dy > 9 else { continue } // 3 squared is 9
+
+            var path = Path()
+            path.move(to: start)
+            if !item.waypoints.isEmpty {
+                let nodes = item.nodes
+                for i in 0..<(nodes.count - 1) {
+                    let p1 = CGPoint(x: nodes[i + 1].x * cellSize, y: nodes[i + 1].y * cellSize)
+                    path.addLine(to: p1)
+                }
+            } else if let control = item.controlPoint {
+                path.addQuadCurve(to: end, control: CGPoint(x: control.x * cellSize, y: control.y * cellSize))
+            } else {
+                path.addLine(to: end)
+            }
+            context.stroke(path, with: .color(ghostColor.opacity(0.17)), style: style)
+        }
+    }
+
+    private func drawGhostNextPaths(in context: inout GraphicsContext) {
+        guard !ghostNextPaths.isEmpty else { return }
+        let style = StrokeStyle(lineWidth: 1 * markerScale, dash: [3, 4])
+        for item in ghostNextPaths {
+            let start = CGPoint(x: item.startPosition.x * cellSize, y: item.startPosition.y * cellSize)
+            let end = CGPoint(x: item.endPosition.x * cellSize, y: item.endPosition.y * cellSize)
+
+            // ⚡ Bolt Performance Optimization:
+            // Use squared distance (dx*dx + dy*dy) to avoid expensive square root (hypot) in proximity checks.
+            let dx = end.x - start.x
+            let dy = end.y - start.y
+            guard dx * dx + dy * dy > 9 else { continue } // 3 squared is 9
+
+            var path = Path()
+            path.move(to: start)
+            if !item.waypoints.isEmpty {
+                let nodes = item.nodes
+                for i in 0..<(nodes.count - 1) {
+                    let p1 = CGPoint(x: nodes[i + 1].x * cellSize, y: nodes[i + 1].y * cellSize)
+                    path.addLine(to: p1)
+                }
+            } else if let control = item.controlPoint {
+                path.addQuadCurve(to: end, control: CGPoint(x: control.x * cellSize, y: control.y * cellSize))
+            } else {
+                path.addLine(to: end)
+            }
+            context.stroke(path, with: .color(ghostNextColor.opacity(0.17)), style: style)
+        }
+    }
+
+    private func drawGhostTransitionPaths(in context: inout GraphicsContext) {
+        guard !ghostTransitionPaths.isEmpty else { return }
+
+        let dashStyle = StrokeStyle(lineWidth: 1, dash: [4, 4])
+
+        for item in ghostTransitionPaths {
+            let start = CGPoint(x: item.startPosition.x * cellSize, y: item.startPosition.y * cellSize)
+            let end = CGPoint(x: item.endPosition.x * cellSize, y: item.endPosition.y * cellSize)
+
+            // Draw ghost start position — hollow circle showing where athlete was
+            var startMarker = Path()
+            let ghostR = 6 * markerScale
+            startMarker.addEllipse(in: CGRect(x: start.x - ghostR, y: start.y - ghostR, width: ghostR * 2, height: ghostR * 2))
+            context.stroke(startMarker, with: .color(.white.opacity(0.15)), style: dashStyle)
+
+            // Build the full path (same logic as drawTransitionPaths but simplified — no handles)
+            if !item.waypoints.isEmpty {
+                let nodes = item.nodes
+                let segmentCount = nodes.count - 1
+                guard segmentCount > 0 else { continue }
+
+                for segmentIndex in 0..<segmentCount {
+                    let p0 = CGPoint(x: nodes[segmentIndex].x * cellSize, y: nodes[segmentIndex].y * cellSize)
+                    let p1 = CGPoint(x: nodes[segmentIndex + 1].x * cellSize, y: nodes[segmentIndex + 1].y * cellSize)
+                    let waypointAtEnd = segmentIndex < item.waypoints.count ? item.waypoints[segmentIndex] : nil
+
+                    var segment = Path()
+                    segment.move(to: p0)
+                    if waypointAtEnd?.isSmooth == true {
+                        let prevNode = segmentIndex > 0 ? nodes[segmentIndex - 1] : nodes[segmentIndex]
+                        let nextNode = segmentIndex + 2 < nodes.count ? nodes[segmentIndex + 2] : nodes[segmentIndex + 1]
+                        let prev = CGPoint(x: prevNode.x * cellSize, y: prevNode.y * cellSize)
+                        let next = CGPoint(x: nextNode.x * cellSize, y: nextNode.y * cellSize)
+                        let (c1, c2) = PathCalculations.catmullRomControlPoints(prev: prev, p0: p0, p1: p1, next: next)
+                        segment.addCurve(to: p1, control1: c1, control2: c2)
+                    } else {
+                        segment.addLine(to: p1)
+                    }
+
+                    // Gradient opacity: stronger near end (where athlete arrived)
+                    let segmentProgress = CGFloat(segmentIndex + 1) / CGFloat(segmentCount)
+                    let opacity = 0.10 + 0.07 * segmentProgress  // 10% at start → 17% at end
+
+                    context.stroke(segment, with: .color(.white.opacity(opacity)), style: dashStyle)
+                }
+            } else {
+                // Simple path (straight or quadratic Bezier)
+                var path = Path()
+                path.move(to: start)
+                if let control = item.controlPoint {
+                    let controlPoint = CGPoint(x: control.x * cellSize, y: control.y * cellSize)
+                    path.addQuadCurve(to: end, control: controlPoint)
+                } else {
+                    path.addLine(to: end)
+                }
+                // For simple paths, use a middle opacity since we can't easily gradient a single stroke
+                context.stroke(path, with: .color(.white.opacity(0.14)), style: dashStyle)
+            }
         }
     }
 
     private func drawTrails(in context: inout GraphicsContext) {
         guard !trailPositions.isEmpty else { return }
 
-        let athleteLookup = Dictionary(athletes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-
-        for (athleteID, positions) in trailPositions {
-            guard positions.count > 1, let athlete = athleteLookup[athleteID] else { continue }
+        for athlete in athletes {
+            guard let positions = trailPositions[athlete.id], positions.count > 1 else { continue }
             let color: Color = useRoleColors ? athlete.role.color : formationColor
 
             for (i, position) in positions.enumerated() {
@@ -402,7 +672,7 @@ struct FloorCanvasView: View {
 
                 let opacity = 0.06 + 0.04 * CGFloat(positions.count - 1 - age)
                 let scale = 0.5 + 0.08 * CGFloat(positions.count - 1 - age)
-                let radius = athlete.role.markerRadius * scale
+                let radius = athlete.role.markerRadius * scale * markerScale
 
                 let point = CGPoint(x: position.x * cellSize, y: position.y * cellSize)
                 var trail = Path()
@@ -418,11 +688,12 @@ struct FloorCanvasView: View {
     }
 
     private func drawGhostCircle(in context: inout GraphicsContext, center: CGPoint) {
+        let r = 10 * markerScale
         var ghost = Path()
-        ghost.addEllipse(in: CGRect(x: center.x - 10, y: center.y - 10, width: 20, height: 20))
+        ghost.addEllipse(in: CGRect(x: center.x - r, y: center.y - r, width: r * 2, height: r * 2))
         context.stroke(
             ghost,
-            with: .color(.gray.opacity(0.25)),
+            with: .color(.gray.opacity(0.32)),
             style: StrokeStyle(lineWidth: 1, dash: [4, 4])
         )
     }
@@ -431,7 +702,7 @@ struct FloorCanvasView: View {
         for marker in endpointMarkers {
             let point = CGPoint(x: marker.position.x * cellSize, y: marker.position.y * cellSize)
             let isSelected = selectedAthleteIDs.contains(marker.athleteID)
-            let radius: CGFloat = isSelected ? 8 : 6
+            let radius: CGFloat = (isSelected ? 8 : 6) * markerScale
             let color = marker.formationColor
             let isDimmed = focusedEndpoint != nil && marker.endpoint != focusedEndpoint
             let opacityMultiplier: CGFloat = isDimmed ? 0.2 : 1.0
@@ -458,7 +729,7 @@ struct FloorCanvasView: View {
 
             if hasTransition {
                 // Transition mode: athletes colored by formation, blending start→end
-                let baseRadius = isSelected ? athlete.role.markerRadius - 1 : athlete.role.markerRadius - 2
+                let baseRadius = (isSelected ? athlete.role.markerRadius - 1 : athlete.role.markerRadius - 2) * markerScale
                 let radius = baseRadius * hoverScale
                 let formationColor = blendedFormationColor(progress: transitionProgress)
                 let fillColor: Color = isColliding ? .red : formationColor
@@ -467,8 +738,8 @@ struct FloorCanvasView: View {
                 context.fill(marker, with: .color(fillColor.opacity(fillOpacity)))
 
                 if isSelected || isHovered {
-                    let strokeColor: Color = isSelected ? .orange : .white
-                    context.stroke(marker, with: .color(strokeColor.opacity(0.7)), lineWidth: isHovered ? 2.5 : 2)
+                    let strokeOpacity: CGFloat = isSelected ? 1.0 : 0.7
+                    context.stroke(marker, with: .color(.white.opacity(strokeOpacity)), lineWidth: isSelected ? 3 : (isHovered ? 2.5 : 2))
                 }
 
                 let label = Text(athlete.label)
@@ -479,26 +750,26 @@ struct FloorCanvasView: View {
                 // Formation-only mode: colored by formation, role conveyed by shape
                 let baseColor: Color = useRoleColors ? athlete.role.color : formationColor
                 let fillColor: Color = isColliding ? .red : baseColor
-                let baseRadius = isSelected ? athlete.role.selectedMarkerRadius : athlete.role.markerRadius
+                let baseRadius = (isSelected ? athlete.role.selectedMarkerRadius : athlete.role.markerRadius) * markerScale
                 let radius = baseRadius * hoverScale
                 let marker = athlete.role.markerPath(center: point, radius: radius)
                 context.fill(marker, with: .color(fillColor.opacity(isSelected ? 0.92 : (isHovered ? 0.92 : 0.86))))
 
                 if isSelected || isHovered {
-                    let strokeColor: Color = isSelected ? .orange : .white
-                    context.stroke(marker, with: .color(strokeColor.opacity(0.7)), lineWidth: isHovered ? 3.5 : 3)
+                    let strokeOpacity: CGFloat = isSelected ? 1.0 : 0.7
+                    context.stroke(marker, with: .color(.white.opacity(strokeOpacity)), lineWidth: isSelected ? 3.5 : (isHovered ? 3.5 : 3))
                 }
 
                 if isColliding {
-                    let ring = athlete.role.markerPath(center: point, radius: radius + 4)
-                    context.stroke(ring, with: .color(.red), lineWidth: 2)
+                    let ring = athlete.role.markerPath(center: point, radius: radius + 4 * markerScale)
+                    context.stroke(ring, with: .color(.red), lineWidth: 2 * markerScale)
                 }
 
                 if athlete.id == swapSourceID {
-                    let ring = athlete.role.markerPath(center: point, radius: radius + 6)
+                    let ring = athlete.role.markerPath(center: point, radius: radius + 6 * markerScale)
                     context.stroke(
                         ring,
-                        with: .color(.orange),
+                        with: .color(formationColor),
                         style: StrokeStyle(lineWidth: 3, dash: [6, 3])
                     )
                 }

@@ -1,5 +1,4 @@
 import SwiftUI
-import LocalAuthentication
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -8,11 +7,16 @@ import UIKit
 
 struct RoutineWorkspaceView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var store = RoutineStore()
     @StateObject private var previewSession = TransitionPreviewSession()
 
     @State private var selectedFormationID: UUID?
+    // Mirrors selectedFormationID but retains its last non-nil value so the detail
+    // pane keeps rendering the active formation when SwiftUI's List clears its
+    // selection binding upon entering edit mode (sidebar EditButton).
+    @State private var displayedFormationID: UUID?
     @State private var compactNavigationPath: [UUID] = []
     @State private var splitViewVisibility: NavigationSplitViewVisibility = .all
     @State private var previewReferenceMode: PreviewReferenceMode = .outOfSelected
@@ -20,6 +24,8 @@ struct RoutineWorkspaceView: View {
     @State private var showingCompactFormationPicker = false
     @State private var renamingFormationID: UUID?
     @State private var formationNameDraft = ""
+    @State private var showingRoutineRenamePrompt = false
+    @State private var routineNameDraft = ""
     @EnvironmentObject private var entitlementManager: EntitlementManager
     @State private var showingUpgradeSheet = false
     @State private var isFullScreen = false
@@ -27,6 +33,9 @@ struct RoutineWorkspaceView: View {
     @State private var selectedAthleteIDs: Set<UUID> = []
     @State private var isSwapMode = false
     @State private var triggerDeleteAthlete = false
+    @State private var isIPadPortrait = false
+    @State private var showingRoutineDeleteConfirmation = false
+    @State private var sidebarEditMode: EditMode = .inactive
 
     private var isCompactLayout: Bool {
         let isPhone: Bool
@@ -46,8 +55,16 @@ struct RoutineWorkspaceView: View {
         #endif
     }
 
+    private var isPhoneLandscape: Bool {
+        isPhoneLayout && verticalSizeClass == .compact
+    }
+
+    private var effectiveFormationID: UUID? {
+        selectedFormationID ?? displayedFormationID
+    }
+
     private var selectedFormationIndex: Int? {
-        store.formationIndex(id: selectedFormationID)
+        store.formationIndex(id: effectiveFormationID)
     }
 
     private var selectedFormation: Formation? {
@@ -99,6 +116,16 @@ struct RoutineWorkspaceView: View {
 
     var body: some View {
         workspaceContent
+        .background {
+            GeometryReader { geo in
+                Color.clear.onChange(of: geo.size) { _, size in
+                    isIPadPortrait = !isPhoneLayout && size.height > size.width
+                }
+                .onAppear {
+                    isIPadPortrait = !isPhoneLayout && geo.size.height > geo.size.width
+                }
+            }
+        }
         .onAppear {
             if selectedFormationID == nil {
                 selectedFormationID = store.routine.formations.first?.id
@@ -110,7 +137,17 @@ struct RoutineWorkspaceView: View {
             reconcileSelection(with: formations)
             refreshPreviewSession()
         }
-        .onChange(of: selectedFormationID) { _, _ in
+        .onChange(of: store.workspace.activeRoutineID) { _, _ in
+            selectedAthleteIDs = []
+            isSwapMode = false
+            triggerDeleteAthlete = false
+            previewReferenceMode = smartPickReferenceMode()
+            refreshPreviewSession()
+        }
+        .onChange(of: selectedFormationID) { _, new in
+            if let new {
+                displayedFormationID = new
+            }
             selectedAthleteIDs = []
             isSwapMode = false
             previewReferenceMode = smartPickReferenceMode()
@@ -122,11 +159,23 @@ struct RoutineWorkspaceView: View {
             titleVisibility: .visible
         ) {
             Button("Reset Routine", role: .destructive) {
-                authenticateAndResetRoutine()
+                resetRoutine()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This clears the roster, formations, notes, and transition data, then starts over with one empty formation.")
+        }
+        .confirmationDialog(
+            "Delete Routine?",
+            isPresented: $showingRoutineDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Routine", role: .destructive) {
+                deleteCurrentRoutine()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will permanently delete the routine and all its formations. This cannot be undone.")
         }
         .alert("Rename Formation", isPresented: showingRenamePrompt) {
             TextField("Formation name", text: $formationNameDraft)
@@ -139,6 +188,18 @@ struct RoutineWorkspaceView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Use the routine list or toolbar menu to rename formations without covering the floor.")
+        }
+        .alert("Rename Routine", isPresented: $showingRoutineRenamePrompt) {
+            TextField("Routine name", text: $routineNameDraft)
+
+            Button("Save") {
+                commitRoutineRename()
+            }
+            .disabled(routineNameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Enter a new name for this routine.")
         }
         .sheet(isPresented: $showingUpgradeSheet) {
             ProUpgradeSheet()
@@ -158,20 +219,24 @@ struct RoutineWorkspaceView: View {
     // MARK: - Full Screen Floor
 
     private func fullScreenFloor(formationID: UUID) -> some View {
-        FloorGridView(
-            store: store,
-            selectedAthleteIDs: $selectedAthleteIDs,
-            isSwapMode: $isSwapMode,
-            triggerDeleteAthlete: $triggerDeleteAthlete,
-            formationID: formationID,
-            onCycleFormation: cycleToNextFormation,
-            onDuplicateAsNext: duplicateSelectedFormation,
-            player: previewSession.player,
-            startFormationID: previewTransitionPair?.start.id,
-            endFormationID: previewTransitionPair?.end.id
-        )
-        .overlay(alignment: .topLeading) {
-            HStack(spacing: 10) {
+        VStack(spacing: 0) {
+            FloorGridView(
+                store: store,
+                selectedAthleteIDs: $selectedAthleteIDs,
+                isSwapMode: $isSwapMode,
+                triggerDeleteAthlete: $triggerDeleteAthlete,
+                formationID: formationID,
+                onCycleFormation: cycleToNextFormation,
+                onCyclePreviousFormation: stepToPreviousFormation,
+                isFirstFormation: isFirstFormation,
+                isLastFormation: isLastFormation,
+                hideFormationContextBadge: true,
+                onDuplicateAsNext: duplicateSelectedFormation,
+                player: previewSession.player,
+                startFormationID: previewTransitionPair?.start.id,
+                endFormationID: previewTransitionPair?.end.id
+            )
+            .overlay(alignment: .topTrailing) {
                 Button {
                     withAnimation(.easeInOut(duration: 0.25)) {
                         isFullScreen = false
@@ -184,35 +249,27 @@ struct RoutineWorkspaceView: View {
                         .background(.ultraThinMaterial, in: Circle())
                 }
                 .accessibilityLabel("Exit full screen")
-
-                if store.routine.formations.count >= 2 {
-                    Button {
-                        showingRoutinePlayback = true
-                    } label: {
-                        Image(systemName: "play.fill")
-                            .font(.body.weight(.semibold))
-                            .foregroundColor(.white)
-                            .padding(10)
-                            .background(.ultraThinMaterial, in: Circle())
-                    }
-                    .accessibilityLabel("Play routine")
-                }
+                .accessibilityHint("Restores the standard interface layout")
+                .help("Exit full screen")
+                .padding(.top, 64)
+                .padding(.trailing, 12)
             }
-            .padding(16)
-        }
-        .overlay(alignment: .bottom) {
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
             if let previewTransitionPair, let player = previewSession.player {
-                CompactTransitionPlaybackOverlayView(
+                ThinTransitionTransportBar(
                     player: player,
                     startFormationName: previewTransitionPair.start.name,
                     endFormationName: previewTransitionPair.end.name,
                     onSwap: { isSwapMode.toggle() },
                     isSwapMode: isSwapMode,
                     canSwap: selectedAthleteIDs.count == 1,
-                    canEditPath: selectedAthleteIDs.count == 1
+                    canEditPath: selectedAthleteIDs.count == 1,
+                    onPreviousFormation: stepToPreviousFormation,
+                    onNextFormation: stepToNextFormation,
+                    isFirstFormation: isFirstFormation,
+                    isLastFormation: isLastFormation
                 )
-                .padding(.horizontal, 20)
-                .padding(.bottom, 20)
             }
         }
         .environmentObject(entitlementManager)
@@ -244,81 +301,98 @@ struct RoutineWorkspaceView: View {
 
     private var regularSidebar: some View {
         VStack(spacing: 0) {
-            if store.routine.formations.isEmpty {
-                emptyFormationListView
-            } else {
-                List(selection: $selectedFormationID) {
-                    Section {
-                        ForEach(store.routine.formations) { formation in
-                            formationRow(for: formation)
-                            .tag(formation.id)
-                            .contextMenu {
-                                formationContextMenu(for: formation)
-                            }
-                        }
-                        .onDelete { offsets in
-                            requestFormationDeletion(offsets.map { store.routine.formations[$0].id })
-                        }
-                        .onMove { from, to in
-                            store.moveFormations(fromOffsets: from, toOffset: to)
-                        }
-                    } header: {
-                        Text(store.routine.name)
-                    }
-                }
-            }
-
-            if let previewTransitionPair, let player = previewSession.player {
-                Divider()
-                SidebarTransportView(
+            if !selectedAthleteIDs.isEmpty, let selectedFormationID,
+               let player = previewSession.player {
+                SelectedAthleteSidebarView(
+                    store: store,
+                    formationID: selectedFormationID,
+                    selectedAthleteIDs: $selectedAthleteIDs,
+                    onDeleteAthlete: { triggerDeleteAthlete = true },
                     player: player,
-                    startFormationName: previewTransitionPair.start.name,
-                    endFormationName: previewTransitionPair.end.name,
+                    startFormationID: previewTransitionPair?.start.id,
+                    endFormationID: previewTransitionPair?.end.id,
+                    isPro: entitlementManager.isPro,
+                    onUpgrade: { showingUpgradeSheet = true },
+                    onRefreshTransition: { refreshPreviewSession() },
                     onSwap: { isSwapMode.toggle() },
-                    isSwapMode: isSwapMode,
-                    canSwap: selectedAthleteIDs.count == 1,
-                    canEditPath: selectedAthleteIDs.count == 1
+                    isSwapMode: isSwapMode
                 )
-                .padding(16)
-                .background(.thinMaterial)
-            } else if store.routine.formations.count == 1 {
-                Divider()
-                singleFormationTransitionHint
-                    .padding(16)
-                    .background(.thinMaterial)
-            }
-
-            if !selectedAthleteIDs.isEmpty, let selectedFormationID {
-                Divider()
+            } else if !selectedAthleteIDs.isEmpty, let selectedFormationID {
+                // Single formation — no player, show basic inspector
                 SidebarInspectorView(
                     store: store,
                     formationID: selectedFormationID,
                     selectedAthleteIDs: $selectedAthleteIDs,
-                    onDeleteAthlete: {
-                        triggerDeleteAthlete = true
-                    }
+                    onDeleteAthlete: { triggerDeleteAthlete = true },
+                    isPro: entitlementManager.isPro,
+                    onUpgrade: { showingUpgradeSheet = true }
                 )
-                .frame(minHeight: 200, maxHeight: 400)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                Spacer()
+            } else {
+                if store.routine.formations.isEmpty {
+                    emptyFormationListView
+                } else {
+                    List(selection: $selectedFormationID) {
+                        Section {
+                            ForEach(store.routine.formations) { formation in
+                                formationRow(for: formation)
+                                .tag(formation.id)
+                                .contextMenu {
+                                    formationContextMenu(for: formation)
+                                }
+                            }
+                            .onDelete { offsets in
+                                requestFormationDeletion(offsets.map { store.routine.formations[$0].id })
+                            }
+                            .onMove { from, to in
+                                store.moveFormations(fromOffsets: from, toOffset: to)
+                            }
+                        } header: {
+                            routinePickerMenu
+                        }
+                    }
+                }
+
+                if !isIPadPortrait, let previewTransitionPair, let player = previewSession.player {
+                    Divider()
+                    SidebarTransportView(
+                        player: player,
+                        startFormationName: previewTransitionPair.start.name,
+                        endFormationName: previewTransitionPair.end.name,
+                        onSwap: { isSwapMode.toggle() },
+                        isSwapMode: isSwapMode,
+                        canSwap: selectedAthleteIDs.count == 1,
+                        canEditPath: selectedAthleteIDs.count == 1
+                    )
+                    .padding(16)
+                    .background(.thinMaterial)
+                    .layoutPriority(1)
+                } else if !isIPadPortrait, store.routine.formations.count == 1 {
+                    Divider()
+                    singleFormationTransitionHint
+                        .padding(16)
+                        .background(.thinMaterial)
+                        .layoutPriority(1)
+                }
             }
         }
         .animation(.easeInOut(duration: 0.22), value: selectedAthleteIDs.isEmpty)
-        .navigationTitle("Routine")
+        .navigationTitle(selectedAthleteIDs.isEmpty ? "Routine" : "Athlete")
         .toolbar {
-            ToolbarItemGroup(placement: .navigationBarTrailing) {
-                Button {
-                    showingRoutinePlayback = true
-                } label: {
-                    Image(systemName: "play.circle")
+            if selectedAthleteIDs.isEmpty {
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    EditButton()
+                    Button(action: addFormation) {
+                        LockBadgedToolbarIcon(icon: "plus", locked: !canAddFormation)
+                    }
+                    .accessibilityLabel(canAddFormation ? "Add formation" : "Upgrade to Pro to add formation")
                 }
-                .disabled(store.routine.formations.count < 2)
-                .accessibilityLabel("Play routine")
-
-                EditButton()
-                Button(action: addFormation) {
-                    Image(systemName: canAddFormation ? "plus" : "lock.fill")
-                }
-                .accessibilityLabel(canAddFormation ? "Add formation" : "Upgrade to Pro to add formation")
+            }
+        }
+        .environment(\.editMode, $sidebarEditMode)
+        .onChange(of: sidebarEditMode) { _, newValue in
+            if newValue == .inactive, selectedFormationID == nil, let displayedFormationID {
+                selectedFormationID = displayedFormationID
             }
         }
     }
@@ -348,7 +422,7 @@ struct RoutineWorkspaceView: View {
                             store.moveFormations(fromOffsets: from, toOffset: to)
                         }
                     } header: {
-                        Text(store.routine.name)
+                        routinePickerMenu
                     }
                 }
             }
@@ -362,7 +436,11 @@ struct RoutineWorkspaceView: View {
                     onSwap: { isSwapMode.toggle() },
                     isSwapMode: isSwapMode,
                     canSwap: selectedAthleteIDs.count == 1,
-                    canEditPath: selectedAthleteIDs.count == 1
+                    canEditPath: selectedAthleteIDs.count == 1,
+                    onPreviousFormation: stepToPreviousFormation,
+                    onNextFormation: stepToNextFormation,
+                    isFirstFormation: isFirstFormation,
+                    isLastFormation: isLastFormation
                 )
                 .padding(16)
                 .background(.thinMaterial)
@@ -377,16 +455,17 @@ struct RoutineWorkspaceView: View {
         .toolbar {
             ToolbarItemGroup(placement: .navigationBarTrailing) {
                 Button {
-                    showingRoutinePlayback = true
+                    attemptRoutinePlayback()
                 } label: {
-                    Image(systemName: "play.circle")
+                    LockBadgedToolbarIcon(icon: "play.circle", locked: !entitlementManager.isPro)
                 }
                 .disabled(store.routine.formations.count < 2)
-                .accessibilityLabel("Play routine")
+                .accessibilityLabel(entitlementManager.isPro ? "Play routine" : "Upgrade to Pro to play routine")
+                .help(playbackHelpText)
 
                 EditButton()
                 Button(action: addFormation) {
-                    Image(systemName: canAddFormation ? "plus" : "lock.fill")
+                    LockBadgedToolbarIcon(icon: "plus", locked: !canAddFormation)
                 }
                 .accessibilityLabel(canAddFormation ? "Add formation" : "Upgrade to Pro to add formation")
             }
@@ -397,8 +476,8 @@ struct RoutineWorkspaceView: View {
 
     @ViewBuilder
     private var regularDetailView: some View {
-        if let selectedFormation, let selectedFormationID {
-            detailContent(for: selectedFormation, formationID: selectedFormationID, compact: false)
+        if let selectedFormation, let formationID = effectiveFormationID {
+            detailContent(for: selectedFormation, formationID: formationID, compact: false)
         } else {
             ContentUnavailableView("Select a formation", systemImage: "rectangle.grid.1x2")
         }
@@ -406,7 +485,7 @@ struct RoutineWorkspaceView: View {
 
     @ViewBuilder
     private func compactDetailView(for formationID: UUID) -> some View {
-        if let formation = store.routine.formations.first(where: { $0.id == formationID }) {
+        if let formation = store.formation(id: formationID) {
             detailContent(for: formation, formationID: formationID, compact: true)
                 .onAppear {
                     selectedFormationID = formationID
@@ -425,7 +504,14 @@ struct RoutineWorkspaceView: View {
             triggerDeleteAthlete: $triggerDeleteAthlete,
             formationID: formationID,
             onCycleFormation: cycleToNextFormation,
+            onCyclePreviousFormation: stepToPreviousFormation,
+            isFirstFormation: isFirstFormation,
+            isLastFormation: isLastFormation,
             onDuplicateAsNext: duplicateSelectedFormation,
+            onRenameFormation: { beginRenaming(formation) },
+            onDeleteFormation: { requestFormationDeletion([formationID]) },
+            onResetRoutine: { showingResetConfirmation = true },
+            onBack: compact ? { compactNavigationPath.removeAll() } : nil,
             player: previewSession.player,
             startFormationID: previewTransitionPair?.start.id,
             endFormationID: previewTransitionPair?.end.id
@@ -435,11 +521,16 @@ struct RoutineWorkspaceView: View {
             editor
                 .navigationTitle(formation.name)
                 .navigationBarTitleDisplayMode(.inline)
+                .toolbar(isPhoneLandscape ? .hidden : .automatic, for: .navigationBar)
+                .ignoresSafeArea(edges: isPhoneLandscape ? .all : [])
+                .statusBarHidden(isPhoneLandscape)
                 .sheet(isPresented: $showingCompactFormationPicker) {
                     compactFormationPickerSheet
                 }
                 .toolbar {
-                    compactDetailToolbar(for: formation)
+                    if !isPhoneLandscape {
+                        compactDetailToolbar(for: formation)
+                    }
                 }
         } else {
             editor
@@ -449,15 +540,17 @@ struct RoutineWorkspaceView: View {
                     HStack(spacing: 8) {
                         if store.routine.formations.count >= 2 {
                             Button {
-                                showingRoutinePlayback = true
+                                attemptRoutinePlayback()
                             } label: {
-                                Image(systemName: "play.fill")
+                                Image(systemName: entitlementManager.isPro ? "play.fill" : "lock.fill")
                                     .font(.caption.weight(.semibold))
                                     .foregroundColor(.white)
                                     .padding(8)
                                     .background(.ultraThinMaterial, in: Circle())
                             }
-                            .accessibilityLabel("Play routine")
+                            .accessibilityLabel(entitlementManager.isPro ? "Play routine" : "Upgrade to Pro to play routine")
+                            .accessibilityHint(entitlementManager.isPro ? "Play the full routine" : "Upgrade to Pro to play the full routine")
+                            .help(entitlementManager.isPro ? "Play the full routine" : "Upgrade to Pro to play the full routine")
                         }
 
                         Button {
@@ -472,8 +565,32 @@ struct RoutineWorkspaceView: View {
                                 .background(.ultraThinMaterial, in: Circle())
                         }
                         .accessibilityLabel("Enter full screen")
+                        .accessibilityHint("Expands the canvas to fill the screen")
+                        .help("Enter full screen")
                     }
                     .padding(12)
+                }
+                .overlay(alignment: .bottom) {
+                    if isIPadPortrait, let previewTransitionPair, let player = previewSession.player {
+                        SidebarTransportView(
+                            player: player,
+                            startFormationName: previewTransitionPair.start.name,
+                            endFormationName: previewTransitionPair.end.name,
+                            onSwap: { isSwapMode.toggle() },
+                            isSwapMode: isSwapMode,
+                            canSwap: selectedAthleteIDs.count == 1,
+                            canEditPath: selectedAthleteIDs.count == 1,
+                            onPreviousFormation: stepToPreviousFormation,
+                            onNextFormation: stepToNextFormation,
+                            isFirstFormation: isFirstFormation,
+                            isLastFormation: isLastFormation
+                        )
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 16)
+                    }
                 }
                 .toolbar {
                     ToolbarItemGroup(placement: .navigationBarTrailing) {
@@ -505,22 +622,25 @@ struct RoutineWorkspaceView: View {
             .accessibilityLabel("Show formations")
         }
 
-        ToolbarItem(placement: .navigationBarTrailing) {
-            Menu {
-                Button(action: duplicateSelectedFormation) {
-                    Label(
-                        canAddFormation ? "Duplicate as Next" : "Duplicate as Next (Pro)",
-                        systemImage: canAddFormation ? "plus.square.on.square" : "lock.fill"
-                    )
+        // On phone, FloorGridView contributes the merged trailing menu — skip here.
+        if !isPhoneLayout {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    Button(action: duplicateSelectedFormation) {
+                        Label(
+                            canAddFormation ? "Duplicate as Next" : "Duplicate as Next (Pro)",
+                            systemImage: canAddFormation ? "plus.square.on.square" : "lock.fill"
+                        )
+                    }
+
+                    Divider()
+
+                    formationOverflowMenu(for: formation)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
                 }
-
-                Divider()
-
-                formationOverflowMenu(for: formation)
-            } label: {
-                Image(systemName: isPhoneLayout ? "ellipsis.circle.fill" : "ellipsis.circle")
+                .accessibilityLabel("More actions")
             }
-            .accessibilityLabel("More actions")
         }
     }
 
@@ -554,7 +674,7 @@ struct RoutineWorkspaceView: View {
                         store.moveFormations(fromOffsets: from, toOffset: to)
                     }
                 } header: {
-                    Text(store.routine.name)
+                    routinePickerMenu
                 }
             }
             .navigationTitle("Formations")
@@ -568,7 +688,7 @@ struct RoutineWorkspaceView: View {
                         addFormation()
                         showingCompactFormationPicker = false
                     }) {
-                        Image(systemName: canAddFormation ? "plus" : "lock.fill")
+                        LockBadgedToolbarIcon(icon: "plus", locked: !canAddFormation)
                     }
                     .accessibilityLabel(canAddFormation ? "Add formation" : "Upgrade to Pro to add formation")
 
@@ -584,10 +704,10 @@ struct RoutineWorkspaceView: View {
 
     @ViewBuilder
     private func formationRow(for formation: Formation, showsDisclosure: Bool = false) -> some View {
-        let index = store.routine.formations.firstIndex(where: { $0.id == formation.id }) ?? 0
+        let index = store.formationIndex(id: formation.id) ?? 0
         let color = TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: index)
         HStack(spacing: 12) {
-            FormationThumbnailView(athletes: store.renderedAthletes(for: formation), color: color)
+            FormationListThumbnailView(athletes: store.renderedAthletes(for: formation), color: color)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(formation.name)
@@ -602,6 +722,7 @@ struct RoutineWorkspaceView: View {
             if !formation.notes.isEmpty {
                 Image(systemName: "note.text")
                     .foregroundColor(.secondary)
+                    .accessibilityLabel("Has notes")
             }
 
             if showsDisclosure {
@@ -639,6 +760,7 @@ struct RoutineWorkspaceView: View {
             Label("Move Earlier", systemImage: "arrow.up")
         }
         .disabled(index == 0)
+        .help(index == 0 ? "Already at the first formation" : "Move formation earlier")
         
         Button {
             store.moveFormationLater(id: formation.id)
@@ -646,6 +768,7 @@ struct RoutineWorkspaceView: View {
             Label("Move Later", systemImage: "arrow.down")
         }
         .disabled(index >= store.routine.formations.count - 1)
+        .help(index >= store.routine.formations.count - 1 ? "Already at the last formation" : "Move formation later")
 
         Divider()
 
@@ -675,6 +798,7 @@ struct RoutineWorkspaceView: View {
             Label("Move Earlier", systemImage: "arrow.up")
         }
         .disabled(index == 0)
+        .help(index == 0 ? "Already at the first formation" : "Move formation earlier")
         
         Button {
             store.moveFormationLater(id: formation.id)
@@ -682,6 +806,7 @@ struct RoutineWorkspaceView: View {
             Label("Move Later", systemImage: "arrow.down")
         }
         .disabled(index >= store.routine.formations.count - 1)
+        .help(index >= store.routine.formations.count - 1 ? "Already at the last formation" : "Move formation later")
 
         Divider()
 
@@ -737,23 +862,123 @@ struct RoutineWorkspaceView: View {
         }
     }
 
-    // MARK: - Actions
+    // MARK: - Routine Actions
 
-    private func authenticateForDestructiveAction(completion: @escaping () -> Void) {
-        let context = LAContext()
-        var error: NSError?
-
-        if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
-            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Authentication is required to perform this destructive action.") { success, _ in
-                DispatchQueue.main.async {
-                    if success {
-                        completion()
+    private var routinePickerMenu: some View {
+        Menu {
+            Section("Switch Routine") {
+                ForEach(store.workspace.routines) { routine in
+                    Button {
+                        switchRoutine(to: routine.id)
+                    } label: {
+                        HStack {
+                            Text(routine.name)
+                            if store.workspace.activeRoutineID == routine.id {
+                                Image(systemName: "checkmark")
+                            }
+                        }
                     }
                 }
             }
-        } else {
-            completion()
+
+            Section("Actions") {
+                Button {
+                    routineNameDraft = store.routine.name
+                    showingRoutineRenamePrompt = true
+                } label: {
+                    Label("Rename Routine", systemImage: "pencil")
+                }
+
+                Button {
+                    duplicateCurrentRoutine()
+                } label: {
+                    Label(entitlementManager.isPro ? "Duplicate Routine" : "Duplicate Routine (Pro)", systemImage: entitlementManager.isPro ? "plus.square.on.square" : "lock.fill")
+                }
+
+                Button(role: .destructive) {
+                    showingRoutineDeleteConfirmation = true
+                } label: {
+                    Label("Delete Routine", systemImage: "trash")
+                }
+                .disabled(store.workspace.routines.count <= 1)
+                .help(store.workspace.routines.count <= 1 ? "Cannot delete the only routine" : "Delete Routine")
+            }
+
+            Section {
+                Button {
+                    createNewRoutine()
+                } label: {
+                    Label(entitlementManager.isPro ? "New Routine" : "New Routine (Pro)", systemImage: entitlementManager.isPro ? "plus" : "lock.fill")
+                }
+            }
+        } label: {
+            HStack {
+                Text(store.routine.name)
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
         }
+        .accessibilityLabel("Routine Menu")
+        .accessibilityValue(store.routine.name)
+    }
+
+    private func switchRoutine(to id: UUID) {
+        store.switchRoutine(id: id)
+        selectedFormationID = store.routine.formations.first?.id
+    }
+
+    private func commitRoutineRename() {
+        let trimmedName = routineNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return }
+        store.renameRoutine(id: store.workspace.activeRoutineID, newName: trimmedName)
+        routineNameDraft = ""
+    }
+
+    private func duplicateCurrentRoutine() {
+        guard entitlementManager.isPro else {
+            showingUpgradeSheet = true
+            return
+        }
+        if store.duplicateRoutine(id: store.workspace.activeRoutineID) != nil {
+            selectedFormationID = store.routine.formations.first?.id
+        }
+    }
+
+    private func createNewRoutine() {
+        guard entitlementManager.isPro else {
+            showingUpgradeSheet = true
+            return
+        }
+        _ = store.addRoutine()
+        selectedFormationID = store.routine.formations.first?.id
+    }
+
+    private func deleteCurrentRoutine() {
+        store.deleteRoutine(id: store.workspace.activeRoutineID)
+        selectedFormationID = store.routine.formations.first?.id
+    }
+
+    // MARK: - Actions
+
+    private func attemptRoutinePlayback() {
+        if entitlementManager.isPro {
+            showingRoutinePlayback = true
+        } else {
+            showingUpgradeSheet = true
+        }
+    }
+
+    private var playbackHelpText: String {
+        if store.routine.formations.count < 2 {
+            return "Add at least 2 formations to play the routine"
+        }
+        if !entitlementManager.isPro {
+            return "Upgrade to Pro to play the full routine"
+        }
+        return "Play the full routine"
     }
 
     private func addFormation() {
@@ -782,9 +1007,31 @@ struct RoutineWorkspaceView: View {
     private func cycleToNextFormation() {
         let formations = store.routine.formations
         guard formations.count > 1 else { return }
-        let currentIndex = formations.firstIndex(where: { $0.id == selectedFormationID }) ?? 0
+        let currentIndex = store.formationIndex(id: selectedFormationID) ?? 0
         let nextIndex = (currentIndex + 1) % formations.count
         selectedFormationID = formations[nextIndex].id
+    }
+
+    private func stepToPreviousFormation() {
+        let formations = store.routine.formations
+        guard let currentIndex = store.formationIndex(id: selectedFormationID), currentIndex > 0 else { return }
+        selectedFormationID = formations[currentIndex - 1].id
+    }
+
+    private func stepToNextFormation() {
+        let formations = store.routine.formations
+        guard let currentIndex = store.formationIndex(id: selectedFormationID), currentIndex < formations.count - 1 else { return }
+        selectedFormationID = formations[currentIndex + 1].id
+    }
+
+    private var isFirstFormation: Bool {
+        (store.formationIndex(id: selectedFormationID) ?? 0) <= 0
+    }
+
+    private var isLastFormation: Bool {
+        let formations = store.routine.formations
+        guard let idx = store.formationIndex(id: selectedFormationID), !formations.isEmpty else { return true }
+        return idx >= formations.count - 1
     }
 
     private func requestFormationDeletion(_ formationIDs: [UUID]) {
@@ -793,7 +1040,7 @@ struct RoutineWorkspaceView: View {
 
     private func deleteSelectedFormation() {
         guard let selectedFormationID else { return }
-        deleteFormations(ids: [selectedFormationID])
+        requestFormationDeletion([selectedFormationID])
     }
 
     private func deleteFormations(ids: [UUID]) {
@@ -807,43 +1054,23 @@ struct RoutineWorkspaceView: View {
         let shouldStayInEditor = isCompactLayout && !compactNavigationPath.isEmpty
         let currentSelection = selectedFormationID
 
-        for formationID in validFormationIDs {
-            store.deleteFormation(id: formationID)
-        }
-
-        if let currentSelection, store.formationIndex(id: currentSelection) != nil {
-            return
-        }
-
-        if let nextFormationID = store.routine.formations.first?.id {
-            showFormation(nextFormationID, pushOnCompact: shouldStayInEditor)
-        } else {
-            selectedFormationID = nil
-            compactNavigationPath.removeAll()
-        }
-    }
-
-    private func authenticateAndResetRoutine() {
-        let context = LAContext()
-        var error: NSError?
-        if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) {
-            context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: "Authenticate to reset the routine") { success, _ in
-                DispatchQueue.main.async {
-                    if success {
-                        resetRoutine()
-                    }
-                }
+        // Defer to next run loop so any in-flight UICollectionView batch update
+        // (e.g. from .onDelete swipe) completes before the data source changes.
+        DispatchQueue.main.async {
+            for formationID in validFormationIDs {
+                store.deleteFormation(id: formationID)
             }
-        } else if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
-            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Authenticate to reset the routine") { success, _ in
-                DispatchQueue.main.async {
-                    if success {
-                        resetRoutine()
-                    }
-                }
+
+            if let currentSelection, store.formationIndex(id: currentSelection) != nil {
+                return
             }
-        } else {
-            resetRoutine()
+
+            if let nextFormationID = store.routine.formations.first?.id {
+                showFormation(nextFormationID, pushOnCompact: shouldStayInEditor)
+            } else {
+                selectedFormationID = nil
+                compactNavigationPath.removeAll()
+            }
         }
     }
 
@@ -892,8 +1119,13 @@ struct RoutineWorkspaceView: View {
         let validIDs = Set(formations.map(\.id))
         compactNavigationPath.removeAll { !validIDs.contains($0) }
 
+        if let displayedFormationID, !validIDs.contains(displayedFormationID) {
+            self.displayedFormationID = nil
+        }
+
         guard !formations.isEmpty else {
             selectedFormationID = nil
+            displayedFormationID = nil
             compactNavigationPath.removeAll()
             return
         }
@@ -930,9 +1162,30 @@ struct RoutineWorkspaceView: View {
     }
 }
 
-// MARK: - Formation Thumbnail
+// MARK: - Lock Badge
 
-private struct FormationThumbnailView: View {
+private struct LockBadgedToolbarIcon: View {
+    let icon: String
+    let locked: Bool
+
+    var body: some View {
+        Image(systemName: icon)
+            .overlay(alignment: .bottomTrailing) {
+                if locked {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(2)
+                        .background(.tint, in: Circle())
+                        .offset(x: 5, y: 4)
+                }
+            }
+    }
+}
+
+// MARK: - Formation List Thumbnail
+
+private struct FormationListThumbnailView: View {
     let athletes: [RenderedAthlete]
     var color: Color = .white
 

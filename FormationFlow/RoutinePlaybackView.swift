@@ -6,6 +6,8 @@ struct RoutinePlaybackView: View {
     @StateObject private var player: RoutinePlayer
     @Environment(\.dismiss) private var dismiss
 
+    private static let bottomBarHeight: CGFloat = 56
+
     init(store: RoutineStore) {
         _player = StateObject(wrappedValue: RoutinePlayer(store: store))
     }
@@ -14,13 +16,13 @@ struct RoutinePlaybackView: View {
         GeometryReader { geometry in
             let courtWidth = CourtConstants.width
             let courtHeight = CourtConstants.height
-            let availableWidth = geometry.size.width - 40  // 20pt padding each side
-            let availableHeight = geometry.size.height - 140  // room for transport bar
+            let availableWidth = geometry.size.width - 40
+            let availableHeight = geometry.size.height - Self.bottomBarHeight - 40
             let cellSize = min(availableWidth / courtWidth, availableHeight / courtHeight)
             let gridWidth = courtWidth * cellSize
             let gridHeight = courtHeight * cellSize
             let offsetX = (geometry.size.width - gridWidth) / 2
-            let offsetY = (geometry.size.height - 140 - gridHeight) / 2 + 20
+            let offsetY = (geometry.size.height - Self.bottomBarHeight - gridHeight) / 2
 
             ZStack {
                 Color.black.ignoresSafeArea()
@@ -38,7 +40,6 @@ struct RoutinePlaybackView: View {
                 )
                 .ignoresSafeArea()
 
-                // Close button
                 VStack {
                     HStack {
                         Button {
@@ -53,18 +54,17 @@ struct RoutinePlaybackView: View {
                         }
                         .padding(16)
                         .accessibilityLabel("Close")
+                        .help("Close routine playback")
 
                         Spacer()
                     }
                     Spacer()
                 }
 
-                // Transport bar
-                VStack {
+                VStack(spacing: 0) {
                     Spacer()
                     routineTransportBar
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 20)
+                        .frame(height: Self.bottomBarHeight)
                 }
             }
         }
@@ -74,31 +74,35 @@ struct RoutinePlaybackView: View {
         }
     }
 
-    // MARK: - Transport Bar
+    // MARK: - Transport Bar (thin single row)
 
     private var routineTransportBar: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // Formation name
-            HStack {
-                Text(player.currentFormationName)
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(.white.opacity(0.12), in: Capsule())
-                    .onTapGesture {
-                        player.jumpToNextSegment()
-                    }
+        HStack(spacing: 10) {
+            Text(player.currentFormationName)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(.white.opacity(0.12), in: Capsule())
+                .onTapGesture { player.jumpToNextSegment() }
+                .accessibilityAddTraits(.isButton)
+                .accessibilityHint("Jumps to the next formation")
+                .help("Jumps to the next formation")
+                .frame(maxWidth: 160, alignment: .leading)
 
-                Spacer()
-
-                Text("\(player.currentSegmentIndex + 1) / \(player.segmentCount)")
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(.secondary)
+            Button {
+                player.isPlaying ? player.pause() : player.play()
+            } label: {
+                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                    .frame(width: 28, height: 28)
             }
+            .buttonStyle(.borderedProminent)
+            .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
+            .accessibilityValue(player.isPlaying ? "Playing" : "Paused")
+            .help(player.isPlaying ? "Pause the routine playback" : "Play the routine animation")
 
-            // Scrub bar with segment markers
             ZStack(alignment: .leading) {
                 Slider(
                     value: Binding(
@@ -107,74 +111,58 @@ struct RoutinePlaybackView: View {
                     ),
                     in: 0...1
                 )
+                .accessibilityLabel("Routine progress")
 
-                // Segment marker ticks
                 GeometryReader { geo in
-                    ForEach(Array(player.segmentMarkers.enumerated()), id: \.offset) { _, marker in
+                    ForEach(player.segmentMarkers.indices, id: \.self) { index in
+                        let marker = player.segmentMarkers[index]
                         Rectangle()
                             .fill(Color.white.opacity(0.5))
-                            .frame(width: 2, height: 12)
+                            .frame(width: 2, height: 8)
                             .position(x: marker * geo.size.width, y: geo.size.height / 2)
                             .allowsHitTesting(false)
                     }
                 }
             }
-            .frame(height: 28)
+            .layoutPriority(1)
 
-            // Controls row
-            HStack(spacing: 12) {
-                // Play/Pause
-                Button {
-                    player.isPlaying ? player.pause() : player.play()
-                } label: {
-                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .frame(width: 32, height: 32)
-                }
-                .buttonStyle(.borderedProminent)
-                .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
+            Picker("Speed", selection: Binding(
+                get: { player.speed },
+                set: { player.setSpeed($0) }
+            )) {
+                Text("0.5x").tag(CGFloat(1.0))
+                Text("1x").tag(CGFloat(2.0))
+                Text("2x").tag(CGFloat(4.0))
+                Text("4x").tag(CGFloat(8.0))
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 160)
+            .controlSize(.small)
+            .accessibilityLabel("Playback Speed")
+            .accessibilityHint("Adjust the playback speed of the routine animation")
 
-                // Reset
+            Menu {
+                Text("\(player.currentSegmentIndex + 1) / \(player.segmentCount)")
+
                 Button(action: player.reset) {
-                    Image(systemName: "backward.end.fill")
-                        .frame(width: 28, height: 28)
+                    Label("Reset to Start", systemImage: "backward.end.fill")
                 }
-                .buttonStyle(.bordered)
-                .accessibilityLabel("Reset playback")
 
-                Spacer()
-
-                // Speed picker
-                Picker("Speed", selection: Binding(
-                    get: { player.speed },
-                    set: { player.setSpeed($0) }
-                )) {
-                    Text("1x").tag(CGFloat(2.0))
-                    Text("2x").tag(CGFloat(4.0))
-                    Text("4x").tag(CGFloat(8.0))
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 160)
-
-                // Trail toggle
                 Button {
                     player.showTrail.toggle()
                 } label: {
-                    Image(systemName: "sparkles")
-                        .frame(width: 28, height: 28)
+                    Label(
+                        player.showTrail ? "Hide Trails" : "Show Trails",
+                        systemImage: "sparkles"
+                    )
                 }
-                .buttonStyle(.bordered)
-                .tint(player.showTrail ? .orange : .secondary)
-                .accessibilityLabel("Toggle trails")
-                .accessibilityValue(player.showTrail ? "On" : "Off")
+            } label: {
+                Image(systemName: "ellipsis.circle").frame(width: 28, height: 28)
             }
+            .accessibilityLabel("More playback options")
         }
-        .padding(12)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(.white.opacity(0.08))
-        }
-        .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
-        .controlSize(.small)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .background(.bar)
     }
 }

@@ -18,7 +18,15 @@ struct FloorGridView: View {
     @Binding var triggerDeleteAthlete: Bool
     let formationID: UUID
     var onCycleFormation: (() -> Void)?
+    var onCyclePreviousFormation: (() -> Void)?
+    var isFirstFormation: Bool = false
+    var isLastFormation: Bool = false
+    var hideFormationContextBadge: Bool = false
     var onDuplicateAsNext: () -> Void
+    var onRenameFormation: (() -> Void)?
+    var onDeleteFormation: (() -> Void)?
+    var onResetRoutine: (() -> Void)?
+    var onBack: (() -> Void)?
 
     // Transition parameters (nil when no adjacent formation)
     var player: TransitionPlayer?
@@ -63,14 +71,19 @@ struct FloorGridView: View {
     @State private var pendingWaypointDeletionID: UUID?
     @State private var endpointDragStartPosition: CGPoint?
     @State private var showingResetAllPathsConfirmation = false
+    @State private var showingResetSinglePathConfirmation = false
     @State private var hoveredHandlePosition: CGPoint?
     @State private var hoveredAthleteID: UUID?
+    @State private var hoveredPathAthleteID: UUID?
     @State private var focusedPathHandle: CGPoint?
     @State private var playerTick: UInt = 0
     @State private var sharePayload: TransitionSharePayload?
     @State private var shareResultMessage = ""
     @State private var showingShareResult = false
-    @State private var cachedPathCollisionIDs: Set<UUID> = []
+
+    private var pathCollisionIDs: Set<UUID> {
+        player?.cachedPathCollisionIDs ?? []
+    }
 
     private var formationIndex: Int? {
         store.formationIndex(id: formationID)
@@ -97,20 +110,39 @@ struct FloorGridView: View {
         verticalSizeClass == .compact
     }
 
-    private var isViewTransformed: Bool {
-        zoomScale != 1.0 || canvasPanOffset != .zero
+    /// Controls go on the side opposite the notch/Dynamic Island.
+    private var landscapeControlsTrailing: Bool {
+        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return true }
+        switch scene.interfaceOrientation {
+        case .landscapeRight:
+            // Device rotated clockwise → notch on LEFT → controls on RIGHT
+            return true
+        case .landscapeLeft:
+            // Device rotated counter-clockwise → notch on RIGHT → controls on LEFT
+            return false
+        default:
+            return true
+        }
+    }
+
+    private var canAddFormation: Bool {
+        entitlementManager.isPro || store.routine.formations.count < FreeTierLimits.maxFormations
     }
 
     private var renderedAthletes: [RenderedAthlete] {
         _ = playerTick // force redraw on player updates
-        if let player, player.progress > 0 {
+        if let player {
             return player.currentAthletes
         }
         return store.renderedAthletes(for: formationID)
     }
 
     private var collisionSummary: (count: Int, ids: Set<UUID>) {
-        PathCalculations.collisionSummary(in: renderedAthletes)
+        // ⚡ Bolt: Avoid O(N^2) spatial math per frame during playback.
+        if let player, player.progress > 0 && player.progress < 1 {
+            return (0, [])
+        }
+        return PathCalculations.collisionSummary(in: renderedAthletes)
     }
 
     private var collidingAthletes: [RenderedAthlete] {
@@ -156,6 +188,72 @@ struct FloorGridView: View {
         return store.renderedAthletes(for: prevFormation)
     }
 
+    private var nextFormationAthletes: [RenderedAthlete] {
+        guard let formationIndex, formationIndex + 1 < store.routine.formations.count else { return [] }
+        let nextFormation = store.routine.formations[formationIndex + 1]
+        return store.renderedAthletes(for: nextFormation)
+    }
+
+    private var previousFormationColor: Color {
+        guard let formationIndex, formationIndex > 0 else { return .white }
+        return TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: formationIndex - 1)
+    }
+
+    private var nextFormationColor: Color {
+        guard let formationIndex, formationIndex + 1 < store.routine.formations.count else { return .white }
+        return TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: formationIndex + 1)
+    }
+
+    private var previousGhostPaths: [TransitionPathRenderItem] {
+        guard let formationIndex, formationIndex > 0 else { return [] }
+        let prevFormation = store.routine.formations[formationIndex - 1]
+        let curFormation = store.routine.formations[formationIndex]
+        let spec = store.transitionSpec(for: prevFormation.id, to: curFormation.id)
+        let prevAthletes = store.renderedAthletes(for: prevFormation)
+        let curAthletes = store.renderedAthletes(for: curFormation)
+        // ⚡ Bolt: Eliminate intermediate array allocation
+        let curLookup = curAthletes.reduce(into: [UUID: RenderedAthlete]()) { result, athlete in
+            if result[athlete.id] == nil { result[athlete.id] = athlete }
+        }
+        return prevAthletes.compactMap { athlete in
+            guard let end = curLookup[athlete.id] else { return nil }
+            let transition = spec.athleteTransitions.first { $0.athleteID == athlete.id }
+            return TransitionPathRenderItem(
+                athleteID: athlete.id,
+                startPosition: athlete.position,
+                endPosition: end.position,
+                controlPoint: transition?.pathControlPoint,
+                waypoints: transition?.pathWaypoints ?? [],
+                moveDelay: transition?.moveDelay ?? 0
+            )
+        }
+    }
+
+    private var nextGhostPaths: [TransitionPathRenderItem] {
+        guard let formationIndex, formationIndex + 1 < store.routine.formations.count else { return [] }
+        let curFormation = store.routine.formations[formationIndex]
+        let nextFormation = store.routine.formations[formationIndex + 1]
+        let spec = store.transitionSpec(for: curFormation.id, to: nextFormation.id)
+        let curAthletes = store.renderedAthletes(for: curFormation)
+        let nextAthletes = store.renderedAthletes(for: nextFormation)
+        // ⚡ Bolt: Eliminate intermediate array allocation
+        let nextLookup = nextAthletes.reduce(into: [UUID: RenderedAthlete]()) { result, athlete in
+            if result[athlete.id] == nil { result[athlete.id] = athlete }
+        }
+        return curAthletes.compactMap { athlete in
+            guard let end = nextLookup[athlete.id] else { return nil }
+            let transition = spec.athleteTransitions.first { $0.athleteID == athlete.id }
+            return TransitionPathRenderItem(
+                athleteID: athlete.id,
+                startPosition: athlete.position,
+                endPosition: end.position,
+                controlPoint: transition?.pathControlPoint,
+                waypoints: transition?.pathWaypoints ?? [],
+                moveDelay: transition?.moveDelay ?? 0
+            )
+        }
+    }
+
     // MARK: - Transition Computed Properties
 
     private var hasTransition: Bool {
@@ -174,25 +272,7 @@ struct FloorGridView: View {
 
     private var transitionPaths: [TransitionPathRenderItem] {
         guard let player else { return [] }
-        let endLookup = Dictionary(uniqueKeysWithValues: player.endAthletes.map { ($0.id, $0) })
-        // ⚡ Bolt: Optimize O(N^2) transition lookup to O(N) by pre-computing a dictionary.
-        let transitionLookup = Dictionary(
-            player.transitionSpec.athleteTransitions.map { ($0.athleteID, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        return player.startAthletes.compactMap { athlete in
-            guard let endAthlete = endLookup[athlete.id] else { return nil }
-            // ⚡ Bolt: Replace O(N) lookup with O(1) dictionary access
-            let transition = transitionLookup[athlete.id] ?? AthleteTransition(athleteID: athlete.id)
-            return TransitionPathRenderItem(
-                athleteID: athlete.id,
-                startPosition: athlete.position,
-                endPosition: endAthlete.position,
-                controlPoint: transition.pathControlPoint,
-                waypoints: transition.pathWaypoints,
-                moveDelay: transition.moveDelay
-            )
-        }
+        return player.cachedTransitionPaths
     }
 
     private var endpointMarkers: [TransitionEndpointMarkerRenderItem] {
@@ -234,14 +314,6 @@ struct FloorGridView: View {
         return startMarkers + endMarkers
     }
 
-    private func recomputePathCollisionIDs() {
-        guard let player else {
-            cachedPathCollisionIDs = []
-            return
-        }
-        cachedPathCollisionIDs = PathCalculations.findPathCollisionIDs(paths: transitionPaths, counts: CGFloat(player.counts))
-    }
-
     private var currentFormationEndpoint: PreviewEditableEndpoint? {
         guard hasTransition else { return nil }
         if formationID == startFormationID { return .start }
@@ -264,21 +336,15 @@ struct FloorGridView: View {
         return player.transitionSpec.athleteTransition(for: selectedAthleteID)
     }
 
-    private var hasCustomPaths: Bool {
-        guard let player else { return false }
-        return player.transitionSpec.athleteTransitions.contains {
-            $0.pathControlPoint != nil || !$0.pathWaypoints.isEmpty
-        }
-    }
 
     private var startFormationName: String? {
         guard let startFormationID else { return nil }
-        return store.routine.formations.first(where: { $0.id == startFormationID })?.name
+        return store.formation(id: startFormationID)?.name
     }
 
     private var endFormationName: String? {
         guard let endFormationID else { return nil }
-        return store.routine.formations.first(where: { $0.id == endFormationID })?.name
+        return store.formation(id: endFormationID)?.name
     }
 
     private var compactInspectorTitle: String {
@@ -302,7 +368,7 @@ struct FloorGridView: View {
     }
 
     private var pathCollidingAthletes: [RenderedAthlete] {
-        renderedAthletes.filter { cachedPathCollisionIDs.contains($0.id) }
+        renderedAthletes.filter { pathCollisionIDs.contains($0.id) }
     }
 
     private var canShareTransition: Bool {
@@ -468,6 +534,9 @@ struct FloorGridView: View {
                 }
             }
         }
+        .onChange(of: store.routine.roster) { _, _ in
+            refreshTransitionFromStore()
+        }
         .onChange(of: selectedAthleteIDs) { _, newSelection in
             pendingWaypointDeletionID = nil
             if !newSelection.isEmpty {
@@ -500,8 +569,41 @@ struct FloorGridView: View {
         } message: {
             Text("This removes every custom curve and waypoint and returns all athletes to straight-line travel. This cannot be undone.")
         }
+        .confirmationDialog(
+            "Clear waypoints?",
+            isPresented: $showingResetSinglePathConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Clear Path", role: .destructive) {
+                performResetSelectedPath()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes all waypoints and hold timings on this path. This cannot be undone.")
+        }
         .onReceive(player?.objectWillChange.eraseToAnyPublisher() ?? Empty().eraseToAnyPublisher()) { _ in
             playerTick &+= 1
+        }
+        .toolbar {
+            if isPhoneLayout && !isPhoneLandscape {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    phoneToolbarMenu
+                }
+            }
+        }
+        .overlay {
+            if isPhoneLandscape {
+                VStack {
+                    Spacer()
+                    HStack {
+                        if landscapeControlsTrailing { Spacer() }
+                        landscapeControlStrip
+                        if !landscapeControlsTrailing { Spacer() }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 20)
+                }
+            }
         }
     }
 
@@ -637,16 +739,26 @@ struct FloorGridView: View {
                     .buttonStyle(.bordered)
                     .help("Add, remove, or rename athletes on the team roster")
 
-                    Button(action: resetView) {
-                        Label("Reset View", systemImage: "arrow.counterclockwise")
+                    if hasTransition {
+                        Button(action: resetSelectedPaths) {
+                            Label(selectedAthleteIDs.count == 1 ? "Reset Path" : "Reset Paths", systemImage: "arrow.counterclockwise")
+                        }
+                        .buttonStyle(.bordered)
+                        .help(selectedAthleteIDs.count == 1 ? "Reset this athlete's path to straight" : "Reset all athlete paths to straight")
+                    } else {
+                        Button(action: resetView) {
+                            Label("Reset View", systemImage: "arrow.counterclockwise")
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityLabel("Reset View")
+                        .help("Reset zoom and pan back to the default view")
                     }
-                    .buttonStyle(.bordered)
-                    .help("Reset zoom and pan back to the default view")
 
                     Button(action: { showingNotesSheet = true }) {
                         Label("Notes", systemImage: "note.text")
                     }
                     .buttonStyle(.bordered)
+                    .accessibilityValue(formation?.notes.isEmpty == false ? "Has notes" : "")
                     .help("Add notes or reminders for this formation")
                     .overlay(alignment: .topTrailing) {
                         if formation?.notes.isEmpty == false {
@@ -682,19 +794,28 @@ struct FloorGridView: View {
                 Label("Notes", systemImage: "note.text")
             }
 
-            Button(action: resetView) {
-                Label("Reset View", systemImage: "arrow.counterclockwise")
+            if hasTransition {
+                Button(action: resetSelectedPaths) {
+                    Label(selectedAthleteIDs.count == 1 ? "Reset Path" : "Reset Paths", systemImage: "arrow.counterclockwise")
+                }
+            } else {
+                Button(action: resetView) {
+                    Label("Reset View", systemImage: "arrow.counterclockwise")
+                }
+                .accessibilityLabel("Reset View")
             }
 
             Button(action: undoLastMove) {
                 Label("Undo Move", systemImage: "arrow.uturn.backward")
             }
             .disabled(undoStack.isEmpty)
+            .help(undoStack.isEmpty ? "Nothing to undo" : "Undo the last move")
         } label: {
             compactOverflowMenuLabel
         }
         .buttonStyle(.bordered)
         .accessibilityLabel("More actions")
+        .accessibilityValue(formation?.notes.isEmpty == false ? "Has notes" : "")
     }
 
     private var compactOverflowMenuLabel: some View {
@@ -750,7 +871,7 @@ struct FloorGridView: View {
                             }
                             .buttonStyle(.bordered)
                             .disabled(renderedAthletes.isEmpty)
-                            .help("Copy this formation's positions into a new formation")
+                            .help(renderedAthletes.isEmpty ? "Add athletes to copy to a new formation" : "Copy this formation's positions into a new formation")
                         }
                     } else {
                         HStack(spacing: 12) {
@@ -774,7 +895,7 @@ struct FloorGridView: View {
                             }
                             .buttonStyle(.bordered)
                             .disabled(renderedAthletes.isEmpty)
-                            .help("Copy this formation's positions into a new formation")
+                            .help(renderedAthletes.isEmpty ? "Add athletes to copy to a new formation" : "Copy this formation's positions into a new formation")
                         }
                     }
                 }
@@ -804,11 +925,8 @@ struct FloorGridView: View {
                 viewportSize: geometry.size,
                 canvasSize: canvasSize
             )
-            let offset = CGPoint(
-                x: (geometry.size.width - canvasWidth) / 2 + displayPanOffset.width,
-                y: (geometry.size.height - canvasHeight) / 2 + displayPanOffset.height
-            )
-            let availableLeadingSideSpace = max(0, offset.x)
+            let baseOffsetX = (geometry.size.width - canvasWidth) / 2 + displayPanOffset.width
+            let availableLeadingSideSpace = max(0, baseOffsetX)
             let phonePlaybackRailWidth = max(0, availableLeadingSideSpace - 16)
             let phoneUsesPlaybackRail =
                 isPhoneLandscape
@@ -817,6 +935,17 @@ struct FloorGridView: View {
                 && startFormationName != nil
                 && endFormationName != nil
 
+            // When rail is present, center canvas in the space to the right of the rail
+            // instead of the full viewport, eliminating the empty gap on the right side.
+            let railRegionWidth: CGFloat = phoneUsesPlaybackRail ? (8 + phonePlaybackRailWidth) : 0
+            let adjustedOffsetX = phoneUsesPlaybackRail
+                ? railRegionWidth + (geometry.size.width - railRegionWidth - canvasWidth) / 2 + displayPanOffset.width
+                : baseOffsetX
+            let offset = CGPoint(
+                x: adjustedOffsetX,
+                y: (geometry.size.height - canvasHeight) / 2 + displayPanOffset.height
+            )
+
             let baseCanvasContent = FloorCanvasView(
                 athletes: renderedAthletes,
                 selectedAthleteIDs: selectedAthleteIDs,
@@ -824,11 +953,12 @@ struct FloorGridView: View {
                 endpointMarkers: endpointMarkers,
                 alignmentGuides: activeAlignmentGuides,
                 collisionIDs: collisionSummary.ids,
-                pathCollisionIDs: cachedPathCollisionIDs,
+                pathCollisionIDs: pathCollisionIDs,
+                pathCollisionMarkerPositions: player?.cachedPathCollisionMarkers ?? [],
                 cellSize: cellSize,
                 offset: offset,
                 swapSourceID: swapSourceAthleteID,
-                selectionRect: selectionRect,
+                selectionLasso: selectionLassoForDisplay,
                 focusedEndpoint: focusedEndpoint,
                 hasTransition: hasTransition,
                 startFormationColor: transitionStartColor,
@@ -836,8 +966,14 @@ struct FloorGridView: View {
                 transitionProgress: player?.progress ?? 0,
                 formationColor: currentFormationColor,
                 ghostAthletes: previousFormationAthletes,
+                ghostColor: previousFormationColor,
+                ghostNextAthletes: nextFormationAthletes,
+                ghostNextColor: nextFormationColor,
+                ghostPrevPaths: previousGhostPaths,
+                ghostNextPaths: nextGhostPaths,
                 hoveredHandlePosition: hoveredHandlePosition,
                 hoveredAthleteID: hoveredAthleteID,
+                hoveredPathAthleteID: hoveredPathAthleteID,
                 focusedPathHandle: focusedPathHandle
             )
             .gesture(
@@ -885,8 +1021,11 @@ struct FloorGridView: View {
                         guard selectedAthleteIDs.count >= 2 else { return }
                         if rotationStartPositions.isEmpty {
                             // Capture starting positions for undo + rotation reference
-                            let selected = renderedAthletes.filter { selectedAthleteIDs.contains($0.id) }
-                            rotationStartPositions = Dictionary(uniqueKeysWithValues: selected.map { ($0.id, $0.position) })
+                            rotationStartPositions = renderedAthletes.reduce(into: [UUID: CGPoint]()) { result, athlete in
+                                if selectedAthleteIDs.contains(athlete.id) {
+                                    if result[athlete.id] == nil { result[athlete.id] = athlete.position }
+                                }
+                            }
                         }
                         applyRotation(angle: value.radians)
                     }
@@ -914,26 +1053,59 @@ struct FloorGridView: View {
                     if let nearestHandle = nearestPathHandle(at: scaledPoint, cellSize: cellSize) {
                         hoveredHandlePosition = nearestHandle
                         hoveredAthleteID = nil
+                        hoveredPathAthleteID = nil
                     } else {
                         hoveredHandlePosition = nil
                         hoveredAthleteID = athleteHit(at: scaledPoint, within: renderedAthletes, cellSize: cellSize)?.id
+                        if hoveredAthleteID == nil,
+                           hasTransition,
+                           showTransitionPaths,
+                           let selectedAthleteID,
+                           let player,
+                           let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID }),
+                           let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
+                        {
+                            let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
+                            let pathHitRadiusSquared = interactionHitRadiusSquared(for: cellSize) * 6
+                            if let nearest = nearestPointOnTransitionPath(
+                                at: scaledPoint,
+                                transition: transition,
+                                startAthlete: startAthlete,
+                                endAthlete: endAthlete
+                            ), nearest.squaredDistance < pathHitRadiusSquared {
+                                hoveredPathAthleteID = selectedAthleteID
+                            } else {
+                                hoveredPathAthleteID = nil
+                            }
+                        } else {
+                            hoveredPathAthleteID = nil
+                        }
                     }
                 case .ended:
                     hoveredHandlePosition = nil
                     hoveredAthleteID = nil
+                    hoveredPathAthleteID = nil
                 }
             }
             .overlay(alignment: .top) {
                 if isPhoneLayout {
-                    VStack(spacing: 10) {
-                        phoneTopOverlay
+                    // In landscape, keep the floor fully visible — no top overlay.
+                    // When the playback rail is showing on the left side, it contains
+                    // the Add button and formation context — skip the canvas overlay to
+                    // avoid covering the floor.
+                    if !phoneUsesPlaybackRail && !isPhoneLandscape {
+                        VStack(alignment: .leading, spacing: 8) {
+                            phoneTopOverlay
 
-                        if let compactBannerConfiguration {
-                            banner(text: compactBannerConfiguration.text, color: compactBannerConfiguration.color)
+                            formationContextBadge
+
+                            if let compactBannerConfiguration {
+                                banner(text: compactBannerConfiguration.text, color: compactBannerConfiguration.color)
+                            }
                         }
+                        .padding(.horizontal, 12)
+                        .padding(.top, 12)
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.top, 12)
                 } else {
                     VStack(spacing: isCompactLayout ? 8 : 10) {
                         if isSwapMode, let athlete = swapSourceRosterAthlete {
@@ -956,7 +1128,8 @@ struct FloorGridView: View {
             .overlay(alignment: .bottom) {
                 if isPhoneLayout {
                     VStack(spacing: 10) {
-                        if selectedRosterAthlete != nil || selectedAthleteIDs.count > 1 {
+                        // In landscape the selection overlay moves to the right side.
+                        if !isPhoneLandscape, (selectedRosterAthlete != nil || selectedAthleteIDs.count > 1) {
                             phoneSelectionOverlay
                         }
 
@@ -973,7 +1146,11 @@ struct FloorGridView: View {
                                 onPath: { showingInspectorSheet = true },
                                 isSwapMode: isSwapMode,
                                 canSwap: selectedAthleteID != nil,
-                                canEditPath: selectedAthleteID != nil
+                                canEditPath: selectedAthleteID != nil,
+                                onPreviousFormation: { onCyclePreviousFormation?() },
+                                onNextFormation: { onCycleFormation?() },
+                                isFirstFormation: isFirstFormation,
+                                isLastFormation: isLastFormation
                             )
                         }
                     }
@@ -981,6 +1158,9 @@ struct FloorGridView: View {
                     .padding(.bottom, 12)
                 }
             }
+            // In phone landscape, skip the selection overlay — screen is too
+            // narrow and it overlaps the floor canvas. The user can still tap
+            // the athlete or use the inspector sheet for edits.
             .overlay(alignment: .topLeading) {
                 if phoneUsesPlaybackRail,
                     let player,
@@ -996,7 +1176,14 @@ struct FloorGridView: View {
                         onPath: { showingInspectorSheet = true },
                         isSwapMode: isSwapMode,
                         canSwap: selectedAthleteID != nil,
-                        canEditPath: selectedAthleteID != nil
+                        canEditPath: selectedAthleteID != nil,
+                        onAdd: addAthlete,
+                        formationLabel: formationContextLabel,
+                        formationColor: currentFormationColor,
+                        onPreviousFormation: { onCyclePreviousFormation?() },
+                        onNextFormation: { onCycleFormation?() },
+                        isFirstFormation: isFirstFormation,
+                        isLastFormation: isLastFormation
                     )
                     .padding(.leading, 8)
                     .padding(.top, 12)
@@ -1005,9 +1192,26 @@ struct FloorGridView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             canvasContent
-                .overlay(alignment: isPhoneLayout ? .topLeading : .bottomLeading) {
-                    formationContextBadge
-                        .padding(isPhoneLayout ? .init(top: isPhoneLandscape ? 4 : 52, leading: 12, bottom: 0, trailing: 0) : .init(top: 0, leading: 12, bottom: 12, trailing: 0))
+                .overlay(alignment: .bottomLeading) {
+                    if !isPhoneLayout && !hideFormationContextBadge {
+                        formationContextBadge
+                            .padding(.init(top: 0, leading: 12, bottom: 12, trailing: 0))
+                    }
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    if zoomScale != 1.0 || canvasPanOffset != .zero {
+                        Button(action: resetView) {
+                            Label("Reset View", systemImage: "arrow.counterclockwise")
+                                .font(.subheadline.weight(.medium))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                        }
+                        .foregroundColor(.primary)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .accessibilityLabel("Reset View")
+                        .padding(.trailing, 12)
+                        .padding(.bottom, isPhoneLayout && !isPhoneLandscape ? 92 : 12)
+                    }
                 }
                 .overlay(alignment: .bottomTrailing) {
                     resetViewFloatingButton
@@ -1082,7 +1286,13 @@ struct FloorGridView: View {
                 formationID: formationID,
                 selectedAthleteIDs: $selectedAthleteIDs,
                 isCompactLayout: true,
-                onDeleteAthlete: { deleteSelectedAthlete() }
+                onDeleteAthlete: { deleteSelectedAthlete() },
+                player: player,
+                startFormationID: startFormationID,
+                endFormationID: endFormationID,
+                isPro: entitlementManager.isPro,
+                onUpgrade: { showingUpgradeSheet = true },
+                onRefreshTransition: { refreshTransitionFromStore() }
             )
             .navigationTitle(compactInspectorTitle)
             .navigationBarTitleDisplayMode(.inline)
@@ -1109,7 +1319,11 @@ struct FloorGridView: View {
                     onPath: { showingInspectorSheet = true },
                     isSwapMode: isSwapMode,
                     canSwap: selectedAthleteID != nil,
-                    canEditPath: selectedAthleteID != nil
+                    canEditPath: selectedAthleteID != nil,
+                    onPreviousFormation: { onCyclePreviousFormation?() },
+                    onNextFormation: { onCycleFormation?() },
+                    isFirstFormation: isFirstFormation,
+                    isLastFormation: isLastFormation
                 )
                 .toolbar {
                     ToolbarItem(placement: .navigationBarTrailing) {
@@ -1133,16 +1347,134 @@ struct FloorGridView: View {
         .presentationDragIndicator(.visible)
     }
 
+    @ViewBuilder
+    private var phoneToolbarMenuContent: some View {
+        if canShareTransition {
+            Button(action: shareTransitionPreview) {
+                Label("Share Preview", systemImage: "square.and.arrow.up")
+            }
+        }
+
+        Button(action: { showingRosterSheet = true }) {
+            Label("Roster", systemImage: "list.bullet.rectangle")
+        }
+
+        Button(action: { showingNotesSheet = true }) {
+            Label("Notes", systemImage: "note.text")
+        }
+
+        Divider()
+
+        Button(action: onDuplicateAsNext) {
+            Label(
+                canAddFormation ? "Duplicate as Next" : "Duplicate as Next (Pro)",
+                systemImage: canAddFormation ? "plus.square.on.square" : "lock.fill"
+            )
+        }
+
+        Button(action: { onRenameFormation?() }) {
+            Label("Rename Formation", systemImage: "pencil")
+        }
+
+        let idx = formationIndex ?? 0
+        Button(action: { store.moveFormationEarlier(id: formationID) }) {
+            Label("Move Earlier", systemImage: "arrow.up")
+        }
+        .disabled(idx == 0)
+        .help(idx == 0 ? "Already at the first formation" : "Move formation earlier")
+
+        Button(action: { store.moveFormationLater(id: formationID) }) {
+            Label("Move Later", systemImage: "arrow.down")
+        }
+        .disabled(idx >= store.routine.formations.count - 1)
+        .help(idx >= store.routine.formations.count - 1 ? "Already at the last formation" : "Move formation later")
+
+        Divider()
+
+        if hasTransition {
+            Button(action: resetSelectedPaths) {
+                Label(selectedAthleteIDs.count == 1 ? "Reset Path" : "Reset Paths", systemImage: "arrow.counterclockwise")
+            }
+        } else {
+            Button(action: resetView) {
+                Label("Reset View", systemImage: "arrow.counterclockwise")
+            }
+            .accessibilityLabel("Reset View")
+        }
+
+        Button(action: undoLastMove) {
+            Label("Undo Move", systemImage: "arrow.uturn.backward")
+        }
+        .disabled(undoStack.isEmpty)
+        .help(undoStack.isEmpty ? "Nothing to undo" : "Undo the last move")
+
+        Divider()
+
+        Button(role: .destructive, action: { onDeleteFormation?() }) {
+            Label("Delete Formation", systemImage: "trash")
+        }
+
+        Button(role: .destructive, action: { onResetRoutine?() }) {
+            Label("Reset Routine", systemImage: "arrow.counterclockwise")
+        }
+    }
+
+    private var phoneToolbarMenu: some View {
+        Menu {
+            phoneToolbarMenuContent
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .overlay(alignment: .topTrailing) {
+                    if formation?.notes.isEmpty == false {
+                        Circle()
+                            .fill(.orange)
+                            .frame(width: 7, height: 7)
+                            .offset(x: 3, y: -3)
+                    }
+                }
+        }
+        .accessibilityLabel("Editing tools")
+        .accessibilityValue(formation?.notes.isEmpty == false ? "Has notes" : "")
+    }
+
+    private var landscapeControlStrip: some View {
+        HStack(spacing: 2) {
+            if let onBack {
+                Button(action: onBack) {
+                    Image(systemName: "chevron.left")
+                        .font(.caption.weight(.bold))
+                        .frame(width: 32, height: 32)
+                }
+                .accessibilityLabel("Back to formations")
+            }
+
+            Menu {
+                phoneToolbarMenuContent
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.caption.weight(.bold))
+                    .frame(width: 32, height: 32)
+                    .overlay(alignment: .topTrailing) {
+                        if formation?.notes.isEmpty == false {
+                            Circle()
+                                .fill(.orange)
+                                .frame(width: 6, height: 6)
+                                .offset(x: 2, y: 2)
+                        }
+                    }
+            }
+            .accessibilityLabel("Editing tools")
+        }
+        .foregroundColor(.white)
+        .background(.ultraThinMaterial, in: Capsule())
+    }
+
     private var phoneTopOverlay: some View {
-        HStack(spacing: 8) {
+        HStack {
             Button(action: addAthlete) {
                 Label("Add", systemImage: "plus.circle.fill")
             }
             .buttonStyle(.borderedProminent)
-
-            Spacer(minLength: 0)
-
-            phoneOverflowMenu
         }
         .controlSize(.small)
     }
@@ -1163,14 +1495,22 @@ struct FloorGridView: View {
                 Label("Notes", systemImage: "note.text")
             }
 
-            Button(action: resetView) {
-                Label("Reset View", systemImage: "arrow.counterclockwise")
+            if hasTransition {
+                Button(action: resetSelectedPaths) {
+                    Label(selectedAthleteIDs.count == 1 ? "Reset Path" : "Reset Paths", systemImage: "arrow.counterclockwise")
+                }
+            } else {
+                Button(action: resetView) {
+                    Label("Reset View", systemImage: "arrow.counterclockwise")
+                }
+                .accessibilityLabel("Reset View")
             }
 
             Button(action: undoLastMove) {
                 Label("Undo Move", systemImage: "arrow.uturn.backward")
             }
             .disabled(undoStack.isEmpty)
+            .help(undoStack.isEmpty ? "Nothing to undo" : "Undo the last move")
         } label: {
             Image(systemName: "ellipsis.circle.fill")
                 .frame(width: 30, height: 30)
@@ -1185,6 +1525,7 @@ struct FloorGridView: View {
         }
         .buttonStyle(.bordered)
         .accessibilityLabel("More actions")
+        .accessibilityValue(formation?.notes.isEmpty == false ? "Has notes" : "")
         .controlSize(.small)
     }
 
@@ -1217,12 +1558,19 @@ struct FloorGridView: View {
                     Button {
                         beginAthleteRename()
                     } label: {
-                        Label("Rename", systemImage: "pencil")
+                        Label(
+                            entitlementManager.isPro ? "Rename" : "Rename (Pro)",
+                            systemImage: entitlementManager.isPro ? "pencil" : "lock.fill"
+                        )
                     }
 
-                    Menu("Role") {
+                    Menu(entitlementManager.isPro ? "Role" : "Role (Pro)") {
                         ForEach(AthleteRole.allCases, id: \.self) { role in
                             Button {
+                                guard entitlementManager.isPro else {
+                                    showingUpgradeSheet = true
+                                    return
+                                }
                                 store.mutateRosterAthlete(id: selectedRosterAthlete.id) { athlete in
                                     athlete.role = role
                                 }
@@ -1301,276 +1649,6 @@ struct FloorGridView: View {
         }
     }
 
-    // MARK: - Transition Inspector
-
-    private func transitionInspectorSection(
-        transition: AthleteTransition,
-        player: TransitionPlayer,
-        startFormationID: UUID,
-        endFormationID: UUID
-    ) -> some View {
-        VStack(alignment: .leading, spacing: isCompactLayout ? 14 : 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("Transition")
-                        .font(.headline)
-                    Spacer()
-                    Button(role: .destructive) {
-                        showingResetAllPathsConfirmation = true
-                    } label: {
-                        Label("Reset All", systemImage: "arrow.uturn.backward.circle")
-                            .font(.caption)
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(!hasCustomPaths)
-                }
-                if let startFormationName, let endFormationName {
-                    Text("\(startFormationName) \u{2192} \(endFormationName)")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                }
-            }
-
-            // Move delay
-            VStack(alignment: .leading, spacing: isCompactLayout ? 6 : 8) {
-                Text("Start Delay")
-                    .font(.subheadline.weight(.semibold))
-                if entitlementManager.isPro {
-                    Slider(
-                        value: Binding(
-                            get: { transition.moveDelayCounts },
-                            set: { newValue in
-                                guard let selectedAthleteID else { return }
-                                store.mutateAthleteTransition(
-                                    from: startFormationID,
-                                    to: endFormationID,
-                                    athleteID: selectedAthleteID
-                                ) { t in
-                                    t.moveDelayCounts = min(CGFloat(player.counts), max(0, newValue))
-                                }
-                                refreshTransitionFromStore()
-                            }
-                        ),
-                        in: 0...CGFloat(player.counts),
-                        step: 0.5
-                    )
-                    .accessibilityLabel("Start Delay")
-                    .accessibilityValue(TransitionCountFormatting.label(transition.moveDelayCounts))
-                } else {
-                    HStack {
-                        Slider(value: .constant(0), in: 0...CGFloat(player.counts))
-                            .disabled(true)
-                        Button {
-                            showingUpgradeSheet = true
-                        } label: {
-                            Image(systemName: "lock.fill")
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
-                Text(TransitionCountFormatting.label(transition.moveDelayCounts))
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundColor(.secondary)
-            }
-
-            // Path controls
-            VStack(alignment: .leading, spacing: isCompactLayout ? 8 : 10) {
-                Text("Path")
-                    .font(.subheadline.weight(.semibold))
-                Group {
-                    if isCompactLayout {
-                        VStack(spacing: 8) {
-                            transitionPathButtons
-                        }
-                    } else {
-                        HStack(spacing: 10) {
-                            transitionPathButtons
-                        }
-                    }
-                }
-
-                Text("Double-tap the selected athlete to add a waypoint, then drag the handles.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-
-            // Waypoint list
-            if !transition.pathWaypoints.isEmpty {
-                VStack(alignment: .leading, spacing: isCompactLayout ? 8 : 10) {
-                    Text("Waypoints")
-                        .font(.subheadline.weight(.semibold))
-                    ForEach(Array(transition.pathWaypoints.enumerated()), id: \.element.id) { waypointIndex, waypoint in
-                        waypointCard(
-                            waypointIndex: waypointIndex,
-                            waypoint: waypoint,
-                            player: player,
-                            startFormationID: startFormationID,
-                            endFormationID: endFormationID
-                        )
-                    }
-                }
-            }
-        }
-        .padding(isCompactLayout ? 16 : 20)
-    }
-
-    @ViewBuilder
-    private var transitionPathButtons: some View {
-        Button(action: clearPath) {
-            Label("Straight", systemImage: "line.diagonal")
-                .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.bordered)
-
-        Button(action: ensureCurve) {
-            Label("Curve", systemImage: "scribble")
-                .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.bordered)
-    }
-
-    private func waypointCard(
-        waypointIndex: Int,
-        waypoint: PathWaypoint,
-        player: TransitionPlayer,
-        startFormationID: UUID,
-        endFormationID: UUID
-    ) -> some View {
-        VStack(alignment: .leading, spacing: isCompactLayout ? 6 : 8) {
-            HStack {
-                Text("Waypoint \(waypointIndex + 1)")
-                    .font(.body.weight(.medium))
-                Spacer()
-                Button(role: .destructive) {
-                    pendingWaypointDeletionID = waypoint.id
-                } label: {
-                    Image(systemName: "trash")
-                        .foregroundColor(.red)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Delete waypoint")
-            }
-
-            HStack {
-                Text(waypoint.isSmooth ? "Smooth" : "Sharp")
-                Spacer()
-                Button(waypoint.isSmooth ? "Make Sharp" : "Make Smooth") {
-                    guard entitlementManager.isPro else {
-                        showingUpgradeSheet = true
-                        return
-                    }
-                    guard let selectedAthleteID else { return }
-                    store.mutateAthleteTransition(
-                        from: startFormationID,
-                        to: endFormationID,
-                        athleteID: selectedAthleteID
-                    ) { t in
-                        t.pathWaypoints[waypointIndex].isSmooth.toggle()
-                    }
-                    refreshTransitionFromStore()
-                }
-                .buttonStyle(.bordered)
-            }
-
-            if isCompactLayout {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Hold")
-                        Spacer()
-                        Text(TransitionCountFormatting.label(waypoint.holdCounts))
-                            .font(.system(.body, design: .monospaced))
-                            .foregroundColor(.secondary)
-                    }
-
-                    HStack(spacing: 8) {
-                        Button("- 0.5") {
-                            adjustWaypointHold(
-                                by: -0.5,
-                                waypointIndex: waypointIndex,
-                                player: player,
-                                startFormationID: startFormationID,
-                                endFormationID: endFormationID
-                            )
-                        }
-                        .buttonStyle(.bordered)
-                        .frame(maxWidth: .infinity)
-
-                        Button("+ 0.5") {
-                            adjustWaypointHold(
-                                by: 0.5,
-                                waypointIndex: waypointIndex,
-                                player: player,
-                                startFormationID: startFormationID,
-                                endFormationID: endFormationID
-                            )
-                        }
-                        .buttonStyle(.bordered)
-                        .frame(maxWidth: .infinity)
-                    }
-                }
-            } else {
-                HStack {
-                    Text("Hold")
-                    Spacer()
-                    Button("- 0.5") {
-                        adjustWaypointHold(
-                            by: -0.5,
-                            waypointIndex: waypointIndex,
-                            player: player,
-                            startFormationID: startFormationID,
-                            endFormationID: endFormationID
-                        )
-                    }
-                    .buttonStyle(.bordered)
-
-                    Text(TransitionCountFormatting.label(waypoint.holdCounts))
-                        .font(.system(.body, design: .monospaced))
-                        .frame(width: 84)
-
-                    Button("+ 0.5") {
-                        adjustWaypointHold(
-                            by: 0.5,
-                            waypointIndex: waypointIndex,
-                            player: player,
-                            startFormationID: startFormationID,
-                            endFormationID: endFormationID
-                        )
-                    }
-                    .buttonStyle(.bordered)
-                }
-            }
-        }
-        .padding(isCompactLayout ? 12 : 14)
-        .background(Color.secondary.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-    }
-
-    private func adjustWaypointHold(
-        by delta: CGFloat,
-        waypointIndex: Int,
-        player: TransitionPlayer,
-        startFormationID: UUID,
-        endFormationID: UUID
-    ) {
-        guard entitlementManager.isPro else {
-            showingUpgradeSheet = true
-            return
-        }
-        guard let selectedAthleteID else { return }
-        store.mutateAthleteTransition(
-            from: startFormationID,
-            to: endFormationID,
-            athleteID: selectedAthleteID
-        ) { t in
-            let updatedValue = t.pathWaypoints[waypointIndex].holdCounts + delta
-            t.pathWaypoints[waypointIndex].holdCounts = min(
-                CGFloat(player.counts),
-                max(0, updatedValue)
-            )
-        }
-        refreshTransitionFromStore()
-    }
-
     private var rosterSheet: some View {
         NavigationStack {
             Group {
@@ -1607,12 +1685,20 @@ struct FloorGridView: View {
 
                                 Spacer()
                             }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button(role: .destructive) {
+                                    rosterDeleteIDs = [athlete.id]
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
+                        }
+                        .onDelete { offsets in
+                            let athletes = store.routine.roster
+                            rosterDeleteIDs = offsets.map { athletes[$0].id }
                         }
                         .onMove { from, to in
                             store.moveRoster(fromOffsets: from, toOffset: to)
-                        }
-                        .onDelete { offsets in
-                            rosterDeleteIDs = offsets.map { store.routine.roster[$0].id }
                         }
                     }
                 }
@@ -1626,11 +1712,7 @@ struct FloorGridView: View {
                 titleVisibility: .visible
             ) {
                 Button("Delete", role: .destructive) {
-                    for id in rosterDeleteIDs {
-                        store.deleteAthlete(id: id)
-                    }
-                    selectedAthleteIDs.subtract(rosterDeleteIDs)
-                    rosterDeleteIDs = []
+                    deleteRosterAthletes()
                 }
                 Button("Cancel", role: .cancel) {
                     rosterDeleteIDs = []
@@ -1698,6 +1780,8 @@ struct FloorGridView: View {
                     Text(endFormationName).tag(SwapFormationTarget.end)
                 }
                 .pickerStyle(.segmented)
+                .accessibilityLabel("Swap target formation")
+                .accessibilityHint("Choose whether to swap athletes in the start or end formation")
                 .frame(maxWidth: 260)
                 .onChange(of: swapFormationTarget) { _, target in
                     player?.pause()
@@ -1709,10 +1793,9 @@ struct FloorGridView: View {
 
     private func athleteHitRadiusSquared(for athlete: RenderedAthlete, cellSize: CGFloat) -> CGFloat {
         let baseRadius = sqrt(interactionHitRadiusSquared(for: cellSize))
-        let rolePadding: CGFloat = athlete.role == .tumbler ? 10 : 6
+        let rolePadding: CGFloat = athlete.role == .tumbler ? 2 : 0
         let markerRadius = (athlete.role.selectedMarkerRadius + rolePadding) / max(cellSize, 1)
-        let radiusBonus: CGFloat = athlete.role == .tumbler ? 1.25 : 0.5
-        let radius = max(baseRadius + radiusBonus, markerRadius)
+        let radius = max(baseRadius, markerRadius)
         return radius * radius
     }
 
@@ -1804,6 +1887,41 @@ struct FloorGridView: View {
         return candidates[(selectedIndex + 1) % candidates.count]
     }
 
+    private func nearestPointOnTransitionPath(
+        at point: CGPoint,
+        transition: AthleteTransition,
+        startAthlete: RenderedAthlete,
+        endAthlete: RenderedAthlete
+    ) -> (point: CGPoint, segmentIndex: Int, squaredDistance: CGFloat)? {
+        let nodes = PathCalculations.waypointNodes(
+            from: startAthlete.position,
+            to: endAthlete.position,
+            waypoints: transition.pathWaypoints
+        )
+        guard nodes.count >= 2 else { return nil }
+
+        var best: (point: CGPoint, segmentIndex: Int, squaredDistance: CGFloat)?
+        for segIdx in 0..<(nodes.count - 1) {
+            let p0 = nodes[segIdx]
+            let p1 = nodes[segIdx + 1]
+            let dx = p1.x - p0.x
+            let dy = p1.y - p0.y
+            let lenSq = dx * dx + dy * dy
+            let t: CGFloat
+            if lenSq < 0.0001 {
+                t = 0
+            } else {
+                t = max(0, min(1, ((point.x - p0.x) * dx + (point.y - p0.y) * dy) / lenSq))
+            }
+            let proj = CGPoint(x: p0.x + dx * t, y: p0.y + dy * t)
+            let d2 = PathCalculations.squaredDistance(from: point, to: proj)
+            if best == nil || d2 < best!.squaredDistance {
+                best = (proj, segIdx, d2)
+            }
+        }
+        return best
+    }
+
     private func endpointMarkerHit(
         at point: CGPoint,
         within markers: [TransitionEndpointMarkerRenderItem],
@@ -1827,7 +1945,8 @@ struct FloorGridView: View {
                 if isSwapMode { return }
 
                 let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize)
-                let dragDistance = hypot(value.translation.width, value.translation.height)
+                let dragDistanceSquared = value.translation.width * value.translation.width + value.translation.height * value.translation.height
+                let dragActivationDistanceSquared = dragActivationDistance * dragActivationDistance
                 let startScaledPoint = CGPoint(
                     x: (value.startLocation.x - offset.x) / cellSize,
                     y: (value.startLocation.y - offset.y) / cellSize
@@ -1863,14 +1982,24 @@ struct FloorGridView: View {
                     return
                 }
 
+                // Athletes always win over path handles at the drag start point.
+                let athleteAtStart: RenderedAthlete? = {
+                    if let hoveredID = hoveredAthleteID,
+                       let hovered = renderedAthletes.first(where: { $0.id == hoveredID }) {
+                        return hovered
+                    }
+                    return athleteHit(at: startScaledPoint, within: renderedAthletes, cellSize: cellSize)
+                }()
+
                 // Priority 2: Focused path handle gets a large grab area
-                if let focusedPathHandle,
+                if athleteAtStart == nil,
+                   let focusedPathHandle,
                    let selectedAthleteID, let player,
                    showTransitionPaths, hasTransition
                 {
-                    let focusedHitRadius = hitRadiusSquared * 4
+                    let focusedHitRadius = hitRadiusSquared * 2
                     if PathCalculations.squaredDistance(from: startScaledPoint, to: focusedPathHandle) < focusedHitRadius {
-                        guard dragDistance >= dragActivationDistance else { return }
+                        guard dragDistanceSquared >= dragActivationDistanceSquared else { return }
                         let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
                         // Match to a waypoint if possible
                         if let waypoint = transition.pathWaypoints.first(where: {
@@ -1887,97 +2016,48 @@ struct FloorGridView: View {
 
                 // Priority 3: Hit-test for new drag initiation
                     if showTransitionPaths, hasTransition {
-                        // 3a: Path handles (checked first so they win over athlete dot)
-                    if let selectedAthleteID,
+                        // 3a: Path handles — block only when touching the SELECTED athlete itself
+                    if athleteAtStart?.id != selectedAthleteID,
+                       let selectedAthleteID,
                        let startFormationID, let endFormationID,
                        let player
                     {
                         let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
 
-                        if !transition.pathWaypoints.isEmpty {
-                            // Check waypoint handles
-                            for waypoint in transition.pathWaypoints {
-                                if PathCalculations.squaredDistance(from: startScaledPoint, to: waypoint.position)
-                                    < hitRadiusSquared
-                                {
-                                    guard dragDistance >= dragActivationDistance else { return }
-                                    draggingWaypointID = waypoint.id
-                                    isDraggingPathHandle = true
-                                    focusedEndpoint = currentFormationEndpoint
-                                    handlePathDragContinued(scaledPoint: scaledPoint)
-                                    return
-                                }
-                            }
+                        let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID })
+                        let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
 
-                            // Check "+" midpoint handles for inserting new waypoints
-                            let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID })
-                            let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
-                            if let startAthlete, let endAthlete {
-                                let nodes = PathCalculations.waypointNodes(
-                                    from: startAthlete.position,
-                                    to: endAthlete.position,
-                                    waypoints: transition.pathWaypoints
-                                )
-                                for segmentIndex in 0..<(nodes.count - 1) {
-                                    let midpoint = CGPoint(
-                                        x: (nodes[segmentIndex].x + nodes[segmentIndex + 1].x) / 2,
-                                        y: (nodes[segmentIndex].y + nodes[segmentIndex + 1].y) / 2
-                                    )
-                                    if PathCalculations.squaredDistance(from: startScaledPoint, to: midpoint)
-                                        < hitRadiusSquared
-                                    {
-                                        guard dragDistance >= dragActivationDistance else { return }
-                                        guard entitlementManager.isPro else {
-                                            showingUpgradeSheet = true
-                                            return
-                                        }
-                                        let newWaypoint = PathWaypoint(position: midpoint, isSmooth: true)
-                                        store.mutateAthleteTransition(
-                                            from: startFormationID,
-                                            to: endFormationID,
-                                            athleteID: selectedAthleteID
-                                        ) { t in
-                                            let insertIndex = min(segmentIndex, t.pathWaypoints.count)
-                                            t.pathWaypoints.insert(newWaypoint, at: insertIndex)
-                                            t.pathControlPoint = nil
-                                        }
-                                        draggingWaypointID = newWaypoint.id
-                                        isDraggingPathHandle = true
-                                        focusedEndpoint = currentFormationEndpoint
-                                        refreshTransitionFromStore()
-                                        return
-                                    }
-                                }
+                        // Check existing waypoint handles first
+                        for waypoint in transition.pathWaypoints {
+                            if PathCalculations.squaredDistance(from: startScaledPoint, to: waypoint.position)
+                                < hitRadiusSquared
+                            {
+                                guard dragDistanceSquared >= dragActivationDistanceSquared else { return }
+                                draggingWaypointID = waypoint.id
+                                isDraggingPathHandle = true
+                                focusedEndpoint = currentFormationEndpoint
+                                handlePathDragContinued(scaledPoint: scaledPoint)
+                                return
                             }
-                        } else {
-                            // Legacy control point handle
-                            let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID })
-                            let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
-                            if let startAthlete, let endAthlete {
-                                let midpoint: CGPoint
-                                if let controlPoint = transition.pathControlPoint {
-                                    midpoint = PathCalculations.quadraticBezierPoint(
-                                        from: startAthlete.position,
-                                        control: controlPoint,
-                                        to: endAthlete.position,
-                                        t: 0.5
-                                    )
-                                } else {
-                                    midpoint = CGPoint(
-                                        x: (startAthlete.position.x + endAthlete.position.x) / 2,
-                                        y: (startAthlete.position.y + endAthlete.position.y) / 2
-                                    )
-                                }
-                                if PathCalculations.squaredDistance(from: startScaledPoint, to: midpoint)
-                                    < hitRadiusSquared
-                                {
-                                    guard dragDistance >= dragActivationDistance else { return }
-                                    isDraggingPathHandle = true
-                                    focusedEndpoint = currentFormationEndpoint
-                                    handlePathDragContinued(scaledPoint: scaledPoint)
-                                    return
-                                }
-                            }
+                        }
+
+                        // Legacy/no-waypoint paths only: grab anywhere on the path → drag the
+                        // control point so the curve's midpoint follows the finger.
+                        if transition.pathWaypoints.isEmpty,
+                           let startAthlete, let endAthlete,
+                           let nearest = nearestPointOnTransitionPath(
+                               at: startScaledPoint,
+                               transition: transition,
+                               startAthlete: startAthlete,
+                               endAthlete: endAthlete
+                           ),
+                           nearest.squaredDistance < hitRadiusSquared * 6
+                        {
+                            guard dragDistanceSquared >= dragActivationDistanceSquared else { return }
+                            isDraggingPathHandle = true
+                            focusedEndpoint = currentFormationEndpoint
+                            handlePathDragContinued(scaledPoint: scaledPoint)
+                            return
                         }
                     }
 
@@ -1990,16 +2070,16 @@ struct FloorGridView: View {
                         return athleteHit(at: startScaledPoint, within: renderedAthletes, cellSize: cellSize)
                     }()
                     if let hitAthlete = targetAthlete {
+                        focusedEndpoint = currentFormationEndpoint
+                        guard dragDistanceSquared >= dragActivationDistanceSquared else { return }
                         if !selectedAthleteIDs.contains(hitAthlete.id) {
                             selectedAthleteIDs = [hitAthlete.id]
                         }
-                        focusedEndpoint = currentFormationEndpoint
-                        guard dragDistance >= dragActivationDistance else { return }
-                        dragStartPositions = Dictionary(
-                            uniqueKeysWithValues: renderedAthletes
-                                .filter { selectedAthleteIDs.contains($0.id) }
-                                .map { ($0.id, $0.position) }
-                        )
+                        dragStartPositions = renderedAthletes.reduce(into: [UUID: CGPoint]()) { result, athlete in
+                            if selectedAthleteIDs.contains(athlete.id) {
+                                if result[athlete.id] == nil { result[athlete.id] = athlete.position }
+                            }
+                        }
                         isDraggingAthletes = true
                         handleFormationDragContinued(value, cellSize: cellSize)
                         return
@@ -2014,16 +2094,16 @@ struct FloorGridView: View {
                         return athleteHit(at: startScaledPoint, within: renderedAthletes, cellSize: cellSize)
                     }()
                     if let hitAthlete = targetAthlete {
+                        focusedEndpoint = nil
+                        guard dragDistanceSquared >= dragActivationDistanceSquared else { return }
                         if !selectedAthleteIDs.contains(hitAthlete.id) {
                             selectedAthleteIDs = [hitAthlete.id]
                         }
-                        focusedEndpoint = nil
-                        guard dragDistance >= dragActivationDistance else { return }
-                        dragStartPositions = Dictionary(
-                            uniqueKeysWithValues: renderedAthletes
-                                .filter { selectedAthleteIDs.contains($0.id) }
-                                .map { ($0.id, $0.position) }
-                        )
+                        dragStartPositions = renderedAthletes.reduce(into: [UUID: CGPoint]()) { result, athlete in
+                            if selectedAthleteIDs.contains(athlete.id) {
+                                if result[athlete.id] == nil { result[athlete.id] = athlete.position }
+                            }
+                        }
                         isDraggingAthletes = true
                         handleFormationDragContinued(value, cellSize: cellSize)
                         return
@@ -2042,7 +2122,7 @@ struct FloorGridView: View {
                         endpointDragStartPosition = hitMarker.position
                         // Only allow dragging if the marker belongs to the current formation
                         guard hitMarker.endpoint == currentFormationEndpoint else { return }
-                        guard dragDistance >= dragActivationDistance else { return }
+                        guard dragDistanceSquared >= dragActivationDistanceSquared else { return }
                         isDraggingEndpoint = true
                         handleEndpointDragContinued(value, cellSize: cellSize, offset: offset)
                         return
@@ -2051,7 +2131,7 @@ struct FloorGridView: View {
 
                 // 2d: Empty space → pan if zoomed on compact, otherwise selection box
                 focusedEndpoint = hasTransition ? currentFormationEndpoint : nil
-                guard dragDistance >= dragActivationDistance else { return }
+                guard dragDistanceSquared >= dragActivationDistanceSquared else { return }
 
                 if canPanCanvas(viewportSize: viewportSize, canvasSize: canvasSize) {
                     isPanningCanvas = true
@@ -2094,8 +2174,9 @@ struct FloorGridView: View {
                     let swapFormationID: UUID
                     let swapAthletes: [RenderedAthlete]
 
-                    if hasTransition, let player {
-                        swapFormationID = swapFormationTarget == .start ? startFormationID! : endFormationID!
+                    if hasTransition, let player,
+                       let resolvedSwapID = swapFormationTarget == .start ? startFormationID : endFormationID {
+                        swapFormationID = resolvedSwapID
                         swapAthletes = swapFormationTarget == .start ? player.startAthletes : player.endAthletes
                     } else {
                         swapFormationID = formationID
@@ -2225,9 +2306,9 @@ struct FloorGridView: View {
     // MARK: - Drag Helpers
 
     private func interactionHitRadiusSquared(for cellSize: CGFloat) -> CGFloat {
-        let minimumTouchRadius: CGFloat = isCompactLayout ? 22 : 18
+        let minimumTouchRadius: CGFloat = isCompactLayout ? 18 : 14
         let cellAdjustedRadius = minimumTouchRadius / max(cellSize, 1)
-        let defaultRadius = sqrt(CourtConstants.hitRadiusSquared)
+        let defaultRadius: CGFloat = 1.5
         let radius = max(defaultRadius, cellAdjustedRadius)
         return radius * radius
     }
@@ -2325,7 +2406,7 @@ struct FloorGridView: View {
 
     private func nearestPathHandle(at point: CGPoint, cellSize: CGFloat) -> CGPoint? {
         guard hasTransition, let selectedAthleteID, let player else { return nil }
-        let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize) * 3
+        let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize) * 1.5
 
         let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
         let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID })
@@ -2432,9 +2513,9 @@ struct FloorGridView: View {
         let snapResult = AlignmentSnapEngine.snap(
             translation: rawTranslation,
             startingPositions: [endpointDragStartPosition],
-            otherAthletePositions: editableAthletes
-                .filter { $0.id != selectedAthleteID }
-                .map(\.position)
+            otherAthletePositions: editableAthletes.compactMap {
+                $0.id != selectedAthleteID ? $0.position : nil
+            }
         )
         activeAlignmentGuides = snapResult.guides
 
@@ -2479,11 +2560,13 @@ struct FloorGridView: View {
     private func applyRotation(angle: CGFloat) {
         guard !rotationStartPositions.isEmpty else { return }
 
-        // Compute center of mass of the selected group
-        let positions = Array(rotationStartPositions.values)
-        let centerX = positions.map(\.x).reduce(0, +) / CGFloat(positions.count)
-        let centerY = positions.map(\.y).reduce(0, +) / CGFloat(positions.count)
-        let center = CGPoint(x: centerX, y: centerY)
+        // ⚡ Bolt: Eliminate redundant `.map` and intermediate arrays in O(N) path
+        // Compute center of mass of the selected group using a single pass
+        let sum = rotationStartPositions.values.reduce(CGPoint.zero) { CGPoint(x: $0.x + $1.x, y: $0.y + $1.y) }
+        let center = CGPoint(
+            x: sum.x / CGFloat(rotationStartPositions.count),
+            y: sum.y / CGFloat(rotationStartPositions.count)
+        )
 
         let cosA = cos(angle)
         let sinA = sin(angle)
@@ -2507,6 +2590,15 @@ struct FloorGridView: View {
         }
     }
 
+    private var selectionLassoForDisplay: FloorSelectionLasso? {
+        guard isDrawingSelectionBox, let rect = selectionRect, rect.width > 0 || rect.height > 0 else { return nil }
+        var lasso = FloorSelectionLasso(startPoint: CGPoint(x: rect.minX, y: rect.minY))
+        lasso.append(CGPoint(x: rect.maxX, y: rect.minY), minimumDistance: 0)
+        lasso.append(CGPoint(x: rect.maxX, y: rect.maxY), minimumDistance: 0)
+        lasso.append(CGPoint(x: rect.minX, y: rect.maxY), minimumDistance: 0)
+        return lasso
+    }
+
     private func handleSelectionBoxContinued(_ value: DragGesture.Value) {
         activeAlignmentGuides = []
         selectionRect = CGRect(
@@ -2524,19 +2616,23 @@ struct FloorGridView: View {
             .onEnded { value in
                 guard showTransitionPaths, hasTransition else { return }
                 guard let selectedAthleteID, let player else { return }
-                guard let selectedAthlete = player.currentAthletes.first(where: { $0.id == selectedAthleteID })
-                else { return }
 
                 let scaledPoint = CGPoint(
                     x: (value.location.x - offset.x) / cellSize,
                     y: (value.location.y - offset.y) / cellSize
                 )
-                let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize)
 
-                guard
-                    PathCalculations.squaredDistance(from: scaledPoint, to: selectedAthlete.position)
-                        < hitRadiusSquared
+                if nearestPathHandle(at: scaledPoint, cellSize: cellSize) != nil {
+                    resetPathForSelectedAthlete()
+                    return
+                }
+
+                guard let selectedAthlete = player.currentAthletes.first(where: { $0.id == selectedAthleteID })
                 else { return }
+                let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize)
+                guard PathCalculations.squaredDistance(from: scaledPoint, to: selectedAthlete.position) < hitRadiusSquared else {
+                    return
+                }
 
                 addWaypoint()
             }
@@ -2620,6 +2716,29 @@ struct FloorGridView: View {
         refreshTransitionFromStore()
     }
 
+    private func resetSelectedPaths() {
+        if selectedAthleteIDs.count == 1, let athleteID = selectedAthleteIDs.first {
+            resetPath(for: athleteID)
+        } else {
+            showingResetAllPathsConfirmation = true
+        }
+    }
+
+    private func resetPathForSelectedAthlete() {
+        guard let selectedAthleteID else { return }
+        resetPath(for: selectedAthleteID)
+    }
+
+    private func resetPath(for athleteID: UUID) {
+        guard let startFormationID, let endFormationID else { return }
+        clearTransitionDragState()
+        store.mutateAthleteTransition(from: startFormationID, to: endFormationID, athleteID: athleteID) { t in
+            t.pathControlPoint = nil
+            t.pathWaypoints = []
+        }
+        refreshTransitionFromStore()
+    }
+
     private func resetAllPaths() {
         guard let startFormationID, let endFormationID else { return }
         clearTransitionDragState()
@@ -2647,7 +2766,6 @@ struct FloorGridView: View {
             endAthletes: store.renderedAthletes(for: endFormationID),
             transitionSpec: store.transitionSpec(for: startFormationID, to: endFormationID)
         )
-        recomputePathCollisionIDs()
     }
 
     // MARK: - Formation Actions
@@ -2660,9 +2778,9 @@ struct FloorGridView: View {
         let result = AlignmentSnapEngine.snap(
             translation: translation,
             startingPositions: Array(dragStartPositions.values),
-            otherAthletePositions: renderedAthletes
-                .filter { !selectedAthleteIDs.contains($0.id) }
-                .map(\.position),
+            otherAthletePositions: renderedAthletes.compactMap {
+                !selectedAthleteIDs.contains($0.id) ? $0.position : nil
+            },
             skipLinearGuides: renderedAthletes.count > 20
         )
         return SnapResult(translation: result.translation, guides: result.guides)
@@ -2675,7 +2793,9 @@ struct FloorGridView: View {
     private func addAthlete() {
         let newID = store.addAthlete()
         selectedAthleteIDs = [newID]
-        
+
+        guard entitlementManager.isPro else { return }
+
         if let newAthlete = store.routine.roster.first(where: { $0.id == newID }) {
             athleteLabelDraft = newAthlete.label
             showingAthleteRenamePrompt = true
@@ -2683,6 +2803,10 @@ struct FloorGridView: View {
     }
 
     private func beginAthleteRename() {
+        guard entitlementManager.isPro else {
+            showingUpgradeSheet = true
+            return
+        }
         guard let selectedRosterAthlete else { return }
         athleteLabelDraft = selectedRosterAthlete.label
         showingAthleteRenamePrompt = true
@@ -2730,6 +2854,17 @@ struct FloorGridView: View {
     private func endSwapMode() {
         isSwapMode = false
         swapSourceAthleteID = nil
+    }
+
+    private func deleteRosterAthletes() {
+        let toDelete = rosterDeleteIDs
+        rosterDeleteIDs = []
+        DispatchQueue.main.async {
+            for id in toDelete {
+                store.deleteAthlete(id: id)
+            }
+            selectedAthleteIDs.subtract(toDelete)
+        }
     }
 
     private func deleteSelectedAthlete() {
@@ -2792,7 +2927,8 @@ struct FloorGridView: View {
             transitionPaths: transitionPaths,
             endpointMarkers: endpointMarkers,
             collisionIDs: collisionSummary.ids,
-            pathCollisionIDs: cachedPathCollisionIDs,
+            pathCollisionIDs: pathCollisionIDs,
+            pathCollisionMarkerPositions: player?.cachedPathCollisionMarkers ?? [],
             startFormationColor: transitionStartColor,
             endFormationColor: transitionEndColor,
             transitionProgress: player?.progress ?? 0

@@ -4,7 +4,7 @@ import OSLog
 
 @MainActor
 final class EntitlementManager: ObservableObject {
-    static let productID = "com.ianrichardson.formationflow.pro"
+    static let productID = "com.formationflow.prounlock"
     private static let cacheKey = "entitlement.isPro"
     private static let logger = Logger(subsystem: "FormationFlow", category: "Entitlement")
 
@@ -12,8 +12,24 @@ final class EntitlementManager: ObservableObject {
 
     private var updateTask: Task<Void, Never>?
 
+    /// True only for DEBUG builds. TestFlight and App Store both require a real purchase
+    /// — auto-granting Pro from a sandbox receipt would let the App Store reviewer skip the
+    /// paywall entirely (3.1.1 rejection risk) and would also poison the Keychain cache when
+    /// a TestFlight user moves to the App Store version.
+    private static var isTestBuild: Bool {
+        #if DEBUG
+        return true
+        #else
+        return false
+        #endif
+    }
+
     init() {
-        self.isPro = Self.readIsProFromKeychain()
+        if Self.isTestBuild {
+            self.isPro = true
+        } else {
+            self.isPro = Self.readIsProFromKeychain()
+        }
         updateTask = Task { [weak self] in
             await self?.checkEntitlement()
             await self?.listenForTransactions()
@@ -48,12 +64,14 @@ final class EntitlementManager: ObservableObject {
 
         if status == errSecSuccess {
             let attributesToUpdate: [String: Any] = [
-                kSecValueData as String: valueData
+                kSecValueData as String: valueData,
+                kSecAttrAccessible as String: kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly
             ]
             SecItemUpdate(query as CFDictionary, attributesToUpdate as CFDictionary)
         } else {
             var newQuery = query
             newQuery[kSecValueData as String] = valueData
+            newQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly
             SecItemAdd(newQuery as CFDictionary, nil)
         }
     }
@@ -65,8 +83,8 @@ final class EntitlementManager: ObservableObject {
     func purchase() async throws -> PurchaseResult {
         let products = try await Product.products(for: [Self.productID])
         guard let product = products.first else {
-            Self.logger.error("Product not found: \(Self.productID)")
-            return .userCancelled
+            Self.logger.error("Product not found: \(Self.productID, privacy: .private)")
+            throw PurchaseError.productUnavailable
         }
 
         let result = try await product.purchase()
@@ -88,10 +106,19 @@ final class EntitlementManager: ObservableObject {
     }
 
     func restore() async {
+        do {
+            try await AppStore.sync()
+        } catch {
+            Self.logger.error("AppStore.sync failed during restore: \(error.localizedDescription, privacy: .private)")
+        }
         await checkEntitlement()
     }
 
     private func checkEntitlement() async {
+        if Self.isTestBuild {
+            setIsPro(true)
+            return
+        }
         var foundPro = false
         for await result in Transaction.currentEntitlements {
             if case .verified(let transaction) = result,
@@ -119,7 +146,9 @@ final class EntitlementManager: ObservableObject {
     private func setIsPro(_ value: Bool) {
         guard isPro != value else { return }
         isPro = value
-        Self.writeIsProToKeychain(value)
+        if !Self.isTestBuild {
+            Self.writeIsProToKeychain(value)
+        }
         Self.logger.log("isPro=\(value, privacy: .private)")
     }
 
@@ -128,5 +157,16 @@ final class EntitlementManager: ObservableObject {
         case userCancelled
         case pending
         case failed
+    }
+
+    enum PurchaseError: LocalizedError {
+        case productUnavailable
+
+        var errorDescription: String? {
+            switch self {
+            case .productUnavailable:
+                return "Purchase is temporarily unavailable. Please check your connection and try again."
+            }
+        }
     }
 }

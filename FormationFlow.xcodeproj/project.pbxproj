@@ -8,18 +8,20 @@
 
 /* Begin PBXBuildFile section */
 		334C42A5B839654CCBC14ACF /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F4F48ABA5AD5A9438964E6B /* Models.swift */; };
-		36514899A24799F98ADE913C /* TimingControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D0844CFBD4E1BACC19E81AC /* TimingControlsView.swift */; };
 		5A25437D9A0BBC0AC8856EE5 /* FormationFlowApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21E94990B494F1D3D617A4E7 /* FormationFlowApp.swift */; };
 		93064509B038206204B9459D /* FloorGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFC34761911C80E5631C8341 /* FloorGridView.swift */; };
 		A1B2C3D4E5F6A7B8C9D0E1F2 /* FormationHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F6A7B8C9D0E1F2A3 /* FormationHomeView.swift */; };
-		DCC44D02B9685B8277F4D198 /* FloorCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 303A4352BC4FD6FB758B338C /* FloorCanvasView.swift */; };
-		F2404D8798687C821CBF4F7C /* TransitionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22EB4E82B510B78E55C92084 /* TransitionViews.swift */; };
-		F4094C4FBEC63EB6C48960EB /* AthleteDetailPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FD34039AE5F73A96066C39B /* AthleteDetailPanel.swift */; };
+		AA000001AA000001AA000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1F08C9AC2F57AAC400425930 /* Assets.xcassets */; };
 		CC220001CC220001CC220001 /* EntitlementManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB110001BB110001BB110001 /* EntitlementManager.swift */; };
 		CC220002CC220002CC220002 /* FreeTierLimits.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB110002BB110002BB110002 /* FreeTierLimits.swift */; };
 		CC220003CC220003CC220003 /* ProUpgradeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB110003BB110003BB110003 /* ProUpgradeSheet.swift */; };
+		DCC44D02B9685B8277F4D198 /* FloorCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 303A4352BC4FD6FB758B338C /* FloorCanvasView.swift */; };
 		DD330001DD330001DD330001 /* RoutinePlaybackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC440001CC440001CC440001 /* RoutinePlaybackView.swift */; };
-		AA000001AA000001AA000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1F08C9AC2F57AAC400425930 /* Assets.xcassets */; };
+		EE110001EE110001EE110001 /* FormationThumbnailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF220001FF220001FF220001 /* FormationThumbnailView.swift */; };
+		EE110002EE110002EE110002 /* FormationThumbnailStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF220002FF220002FF220002 /* FormationThumbnailStrip.swift */; };
+		EE110003EE110003EE110003 /* PortraitActionBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF220003FF220003FF220003 /* PortraitActionBar.swift */; };
+		F2404D8798687C821CBF4F7C /* TransitionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22EB4E82B510B78E55C92084 /* TransitionViews.swift */; };
+		F4094C4FBEC63EB6C48960EB /* AthleteDetailPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FD34039AE5F73A96066C39B /* AthleteDetailPanel.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -29,16 +31,18 @@
 		21E94990B494F1D3D617A4E7 /* FormationFlowApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FormationFlowApp.swift; path = FormationFlow/FormationFlowApp.swift; sourceTree = SOURCE_ROOT; };
 		22EB4E82B510B78E55C92084 /* TransitionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TransitionViews.swift; path = FormationFlow/TransitionViews.swift; sourceTree = SOURCE_ROOT; };
 		303A4352BC4FD6FB758B338C /* FloorCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FloorCanvasView.swift; path = FormationFlow/FloorCanvasView.swift; sourceTree = SOURCE_ROOT; };
-		4D0844CFBD4E1BACC19E81AC /* TimingControlsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TimingControlsView.swift; path = FormationFlow/TimingControlsView.swift; sourceTree = SOURCE_ROOT; };
 		4F4F48ABA5AD5A9438964E6B /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Models.swift; path = FormationFlow/Models.swift; sourceTree = SOURCE_ROOT; };
 		4FD34039AE5F73A96066C39B /* AthleteDetailPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AthleteDetailPanel.swift; path = FormationFlow/AthleteDetailPanel.swift; sourceTree = SOURCE_ROOT; };
 		B2C3D4E5F6A7B8C9D0E1F2A3 /* FormationHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FormationHomeView.swift; path = FormationFlow/FormationHomeView.swift; sourceTree = SOURCE_ROOT; };
-		EFC34761911C80E5631C8341 /* FloorGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FloorGridView.swift; path = FormationFlow/FloorGridView.swift; sourceTree = SOURCE_ROOT; };
 		BB110001BB110001BB110001 /* EntitlementManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EntitlementManager.swift; path = FormationFlow/EntitlementManager.swift; sourceTree = SOURCE_ROOT; };
 		BB110002BB110002BB110002 /* FreeTierLimits.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FreeTierLimits.swift; path = FormationFlow/FreeTierLimits.swift; sourceTree = SOURCE_ROOT; };
 		BB110003BB110003BB110003 /* ProUpgradeSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ProUpgradeSheet.swift; path = FormationFlow/ProUpgradeSheet.swift; sourceTree = SOURCE_ROOT; };
+		BB110004BB110004BB110004 /* FormationFlow.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = FormationFlow.storekit; sourceTree = SOURCE_ROOT; };
 		CC440001CC440001CC440001 /* RoutinePlaybackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RoutinePlaybackView.swift; path = FormationFlow/RoutinePlaybackView.swift; sourceTree = SOURCE_ROOT; };
-		BB110004BB110004BB110004 /* FormationFlow.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; name = FormationFlow.storekit; path = FormationFlow.storekit; sourceTree = SOURCE_ROOT; };
+		EFC34761911C80E5631C8341 /* FloorGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FloorGridView.swift; path = FormationFlow/FloorGridView.swift; sourceTree = SOURCE_ROOT; };
+		FF220001FF220001FF220001 /* FormationThumbnailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FormationThumbnailView.swift; path = FormationFlow/FormationThumbnailView.swift; sourceTree = SOURCE_ROOT; };
+		FF220002FF220002FF220002 /* FormationThumbnailStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FormationThumbnailStrip.swift; path = FormationFlow/FormationThumbnailStrip.swift; sourceTree = SOURCE_ROOT; };
+		FF220003FF220003FF220003 /* PortraitActionBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PortraitActionBar.swift; path = FormationFlow/PortraitActionBar.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -68,7 +72,6 @@
 				303A4352BC4FD6FB758B338C /* FloorCanvasView.swift */,
 				EFC34761911C80E5631C8341 /* FloorGridView.swift */,
 				22EB4E82B510B78E55C92084 /* TransitionViews.swift */,
-				4D0844CFBD4E1BACC19E81AC /* TimingControlsView.swift */,
 				4FD34039AE5F73A96066C39B /* AthleteDetailPanel.swift */,
 				4F4F48ABA5AD5A9438964E6B /* Models.swift */,
 				21E94990B494F1D3D617A4E7 /* FormationFlowApp.swift */,
@@ -76,6 +79,9 @@
 				BB110002BB110002BB110002 /* FreeTierLimits.swift */,
 				BB110003BB110003BB110003 /* ProUpgradeSheet.swift */,
 				CC440001CC440001CC440001 /* RoutinePlaybackView.swift */,
+				FF220001FF220001FF220001 /* FormationThumbnailView.swift */,
+				FF220002FF220002FF220002 /* FormationThumbnailStrip.swift */,
+				FF220003FF220003FF220003 /* PortraitActionBar.swift */,
 			);
 			path = FormationFlow;
 			sourceTree = "<group>";
@@ -106,7 +112,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastUpgradeCheck = 2620;
+				LastUpgradeCheck = 2640;
 			};
 			buildConfigurationList = 0F1A1A9A1A1A1A1A1A1A1A9A /* Build configuration list for PBXProject "FormationFlow" */;
 			compatibilityVersion = "Xcode 14.0";
@@ -146,7 +152,6 @@
 				93064509B038206204B9459D /* FloorGridView.swift in Sources */,
 				A1B2C3D4E5F6A7B8C9D0E1F2 /* FormationHomeView.swift in Sources */,
 				F2404D8798687C821CBF4F7C /* TransitionViews.swift in Sources */,
-				36514899A24799F98ADE913C /* TimingControlsView.swift in Sources */,
 				F4094C4FBEC63EB6C48960EB /* AthleteDetailPanel.swift in Sources */,
 				334C42A5B839654CCBC14ACF /* Models.swift in Sources */,
 				5A25437D9A0BBC0AC8856EE5 /* FormationFlowApp.swift in Sources */,
@@ -154,13 +159,13 @@
 				CC220002CC220002CC220002 /* FreeTierLimits.swift in Sources */,
 				CC220003CC220003CC220003 /* ProUpgradeSheet.swift in Sources */,
 				DD330001DD330001DD330001 /* RoutinePlaybackView.swift in Sources */,
+				EE110001EE110001EE110001 /* FormationThumbnailView.swift in Sources */,
+				EE110002EE110002EE110002 /* FormationThumbnailStrip.swift in Sources */,
+				EE110003EE110003EE110003 /* PortraitActionBar.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin PBXVariantGroup section */
-/* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
 		0F1A1A7A1A1A1A1A1A1A1A7A /* Release */ = {
@@ -170,7 +175,7 @@
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 11;
+				CURRENT_PROJECT_VERSION = 162;
 				INFOPLIST_FILE = FormationFlow/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = FormationFlow;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.sports";
@@ -252,6 +257,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				DEVELOPMENT_TEAM = WC46K49VFA;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_OPTIMIZATION_LEVEL = 0;
@@ -262,9 +268,10 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_COMPILATION_MODE = singlefile;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.9;
 			};
@@ -277,7 +284,7 @@
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 11;
+				CURRENT_PROJECT_VERSION = 162;
 				INFOPLIST_FILE = FormationFlow/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = FormationFlow;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.sports";
