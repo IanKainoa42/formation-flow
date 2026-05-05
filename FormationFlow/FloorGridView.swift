@@ -1443,7 +1443,7 @@ struct FloorGridView: View {
                 Button(action: onBack) {
                     Image(systemName: "chevron.left")
                         .font(.caption.weight(.bold))
-                        .frame(width: 32, height: 32)
+                        .frame(width: 44, height: 44)
                 }
                 .accessibilityLabel("Back to formations")
             }
@@ -1453,7 +1453,7 @@ struct FloorGridView: View {
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.caption.weight(.bold))
-                    .frame(width: 32, height: 32)
+                    .frame(width: 44, height: 44)
                     .overlay(alignment: .topTrailing) {
                         if formation?.notes.isEmpty == false {
                             Circle()
@@ -1513,7 +1513,7 @@ struct FloorGridView: View {
             .help(undoStack.isEmpty ? "Nothing to undo" : "Undo the last move")
         } label: {
             Image(systemName: "ellipsis.circle.fill")
-                .frame(width: 30, height: 30)
+                .frame(minWidth: 44, minHeight: 44)
                 .overlay(alignment: .topTrailing) {
                     if formation?.notes.isEmpty == false {
                         Circle()
@@ -1526,7 +1526,6 @@ struct FloorGridView: View {
         .buttonStyle(.bordered)
         .accessibilityLabel("More actions")
         .accessibilityValue(formation?.notes.isEmpty == false ? "Has notes" : "")
-        .controlSize(.small)
     }
 
     @ViewBuilder
@@ -1551,7 +1550,7 @@ struct FloorGridView: View {
                         showingInspectorSheet = true
                     }
                     .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .frame(minHeight: 44)
                 }
 
                 Menu {
@@ -1605,11 +1604,10 @@ struct FloorGridView: View {
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
-                        .frame(width: 30, height: 30)
+                        .frame(minWidth: 44, minHeight: 44)
                 }
                 .buttonStyle(.bordered)
                 .accessibilityLabel("More actions")
-                .controlSize(.small)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
@@ -1636,7 +1634,7 @@ struct FloorGridView: View {
                     selectedAthleteIDs = []
                 }
                 .buttonStyle(.bordered)
-                .controlSize(.small)
+                .frame(minHeight: 44)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
@@ -2315,8 +2313,6 @@ struct FloorGridView: View {
 
 
     private func canPanCanvas(viewportSize: CGSize, canvasSize: CGSize) -> Bool {
-        guard isCompactLayout else { return false }
-
         let overflowWidth = canvasSize.width - viewportSize.width
         let overflowHeight = canvasSize.height - viewportSize.height
         return overflowWidth > 1 || overflowHeight > 1
@@ -2969,6 +2965,10 @@ struct FloorGridView: View {
         return metadata
     }
 
+    private var isViewTransformed: Bool {
+        zoomScale != 1.0 || canvasPanOffset != .zero
+    }
+
     private func resetView() {
         withAnimation(.spring()) {
             zoomScale = 1.0
@@ -2976,6 +2976,10 @@ struct FloorGridView: View {
             canvasPanOffset = .zero
             lastCanvasPanOffset = .zero
         }
+    }
+
+    private func performResetSelectedPath() {
+        resetPathForSelectedAthlete()
     }
 }
 

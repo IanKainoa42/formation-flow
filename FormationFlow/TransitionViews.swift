@@ -37,6 +37,7 @@ enum TransportControls {
                 .frame(width: size, height: size)
         }
         .buttonStyle(.bordered)
+        .frame(minWidth: 44, minHeight: 44)
         .accessibilityLabel("Reset transition")
         .accessibilityHint("Jump back to the start of the transition")
         .help("Jump back to the start of the transition")
@@ -51,6 +52,7 @@ enum TransportControls {
                 .frame(width: size, height: size)
         }
         .buttonStyle(.borderedProminent)
+        .frame(minWidth: 44, minHeight: 44)
         .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
         .accessibilityValue(player.isPlaying ? "Playing" : "Paused")
         .accessibilityHint(player.isPlaying ? "Pause the transition preview" : "Play the transition animation")
@@ -66,6 +68,7 @@ enum TransportControls {
                 .frame(width: size, height: size)
         }
         .buttonStyle(.bordered)
+        .frame(minWidth: 44, minHeight: 44)
         .tint(player.isLooping ? .accentColor : .secondary)
         .accessibilityLabel("Toggle loop")
         .accessibilityValue(player.isLooping ? "On" : "Off")
@@ -101,6 +104,7 @@ enum TransportControls {
                 .frame(width: size, height: size)
         }
         .buttonStyle(.bordered)
+        .frame(minWidth: 44, minHeight: 44)
         .disabled(disabled)
         .tint(isActive ? .blue : .secondary)
         .accessibilityLabel(isActive ? "Cancel Swap" : "Swap Position")
@@ -116,6 +120,7 @@ enum TransportControls {
                 .frame(width: size, height: size)
         }
         .buttonStyle(.bordered)
+        .frame(minWidth: 44, minHeight: 44)
         .disabled(disabled)
         .accessibilityLabel("Edit Path")
         .accessibilityHint("Open the inspector to adjust the path curve and hold duration")
@@ -129,6 +134,7 @@ enum TransportControls {
                 .frame(width: size, height: size)
         }
         .buttonStyle(.bordered)
+        .frame(minWidth: 44, minHeight: 44)
         .disabled(disabled)
         .accessibilityLabel("Previous formation")
         .accessibilityHint(disabled ? "Already at the first formation" : "Go to the previous formation")
@@ -142,6 +148,7 @@ enum TransportControls {
                 .frame(width: size, height: size)
         }
         .buttonStyle(.bordered)
+        .frame(minWidth: 44, minHeight: 44)
         .disabled(disabled)
         .accessibilityLabel("Next formation")
         .accessibilityHint(disabled ? "Already at the last formation" : "Go to the next formation")
@@ -366,7 +373,6 @@ struct CompactTransitionPlaybackRailView: View {
                 .strokeBorder(.white.opacity(0.08))
         }
         .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
-        .controlSize(.small)
     }
 }
 
@@ -452,10 +458,10 @@ struct ThinTransitionTransportBar: View {
                 .frame(maxWidth: 180, alignment: .leading)
 
             Button(action: onPreviousFormation) {
-                Image(systemName: "chevron.up").frame(width: 26, height: 26)
+                Image(systemName: "chevron.up").frame(width: 36, height: 36)
             }
             .buttonStyle(.bordered)
-            .controlSize(.small)
+            .frame(minWidth: 44, minHeight: 44)
             .disabled(isFirstFormation)
             .accessibilityLabel("Previous formation")
             .accessibilityHint(isFirstFormation ? "Already at the first formation" : "Go to the previous formation")
@@ -464,10 +470,10 @@ struct ThinTransitionTransportBar: View {
             TransportControls.playPauseButton(player: player, size: 30)
 
             Button(action: onNextFormation) {
-                Image(systemName: "chevron.down").frame(width: 26, height: 26)
+                Image(systemName: "chevron.down").frame(width: 36, height: 36)
             }
             .buttonStyle(.bordered)
-            .controlSize(.small)
+            .frame(minWidth: 44, minHeight: 44)
             .disabled(isLastFormation)
             .accessibilityLabel("Next formation")
             .accessibilityHint(isLastFormation ? "Already at the last formation" : "Go to the next formation")
@@ -505,7 +511,7 @@ struct ThinTransitionTransportBar: View {
                 }
                 .disabled(!canEditPath)
             } label: {
-                Image(systemName: "ellipsis.circle").frame(width: 26, height: 26)
+                Image(systemName: "ellipsis.circle").frame(minWidth: 44, minHeight: 44)
             }
             .accessibilityLabel("More transition options")
             .accessibilityHint("Show more transition options")

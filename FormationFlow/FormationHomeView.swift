@@ -858,7 +858,7 @@ struct RoutineWorkspaceView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
-            .controlSize(.small)
+            .frame(minHeight: 44)
         }
     }
 

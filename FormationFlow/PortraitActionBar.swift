@@ -35,6 +35,8 @@ struct PortraitActionBar: View {
                         .background(.red.opacity(0.15), in: Capsule())
                     }
                     .buttonStyle(.plain)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
                     .accessibilityLabel("Athlete spacing alerts")
                     .accessibilityHint("Tap to cycle through collisions")
                 }
@@ -52,6 +54,8 @@ struct PortraitActionBar: View {
                         .background(.orange.opacity(0.15), in: Capsule())
                     }
                     .buttonStyle(.plain)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
                     .accessibilityLabel("Path crossing alerts")
                     .accessibilityHint("Tap to cycle through path conflicts")
                 }
@@ -61,13 +65,13 @@ struct PortraitActionBar: View {
                         .font(.caption)
                 }
                 .buttonStyle(.borderedProminent)
-                .controlSize(.small)
+                .frame(minHeight: 44)
 
                 Button(action: onShowRoster) {
                     Image(systemName: "list.bullet.rectangle")
                 }
                 .buttonStyle(.bordered)
-                .controlSize(.small)
+                .frame(minWidth: 44, minHeight: 44)
                 .accessibilityLabel("Roster")
                 .accessibilityHint("Show the athlete roster")
                 .help("Show the athlete roster")
@@ -76,7 +80,7 @@ struct PortraitActionBar: View {
                     Image(systemName: "note.text")
                 }
                 .buttonStyle(.bordered)
-                .controlSize(.small)
+                .frame(minWidth: 44, minHeight: 44)
                 .accessibilityLabel("Notes")
                 .accessibilityHint("Show formation notes")
                 .help("Show formation notes")
@@ -93,7 +97,7 @@ struct PortraitActionBar: View {
                     Image(systemName: "arrow.uturn.backward")
                 }
                 .buttonStyle(.bordered)
-                .controlSize(.small)
+                .frame(minWidth: 44, minHeight: 44)
                 .disabled(undoDisabled)
                 .accessibilityLabel("Undo move")
                 .accessibilityHint(undoDisabled ? "Nothing to undo" : "Undo the last move")
@@ -104,7 +108,7 @@ struct PortraitActionBar: View {
                         Image(systemName: showTransitionPaths ? "eye.slash" : "eye")
                     }
                     .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .frame(minWidth: 44, minHeight: 44)
                     .background(showTransitionPaths ? Color.accentColor.opacity(0.2) : .clear, in: RoundedRectangle(cornerRadius: 6))
                     .accessibilityLabel(showTransitionPaths ? "Hide paths" : "Show paths")
                     .accessibilityHint("Toggle visibility of transition paths")
@@ -120,7 +124,7 @@ struct PortraitActionBar: View {
                     Image(systemName: "square.and.arrow.up")
                 }
                 .buttonStyle(.bordered)
-                .controlSize(.small)
+                .frame(minWidth: 44, minHeight: 44)
                 .accessibilityLabel("Share preview")
                 .accessibilityHint("Share transition preview")
                 .help("Share transition preview")
