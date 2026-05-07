@@ -9,7 +9,8 @@ final class EntitlementManagerTests: XCTestCase {
         // Clear keychain for tests
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: "entitlement.isPro"
+            kSecAttrAccount as String: "entitlement.isPro",
+            kSecAttrService as String: "com.cheerforcesandiego.formationflow"
         ]
         SecItemDelete(query as CFDictionary)
     }
@@ -17,7 +18,8 @@ final class EntitlementManagerTests: XCTestCase {
     override func tearDown() {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: "entitlement.isPro"
+            kSecAttrAccount as String: "entitlement.isPro",
+            kSecAttrService as String: "com.cheerforcesandiego.formationflow"
         ]
         SecItemDelete(query as CFDictionary)
         super.tearDown()
@@ -25,18 +27,17 @@ final class EntitlementManagerTests: XCTestCase {
     
     func testInitialization() {
         let manager = EntitlementManager()
-        // In test environment (DEBUG), isTestBuild is true, so isPro should default to true.
-        XCTAssertTrue(manager.isPro)
+        // In test environment (DEBUG), isTestBuild is now false by default to allow testing the paywall.
+        XCTAssertFalse(manager.isPro)
     }
     
-    func testKeychainDoesNotPersistOnTestBuilds() {
-        // Since isTestBuild is true in tests, setting isPro should NOT persist to keychain.
-        // Wait, EntitlementManager doesn't expose setIsPro publicly.
-        // However, we can simulate what happens if we were not a test build.
-        // Let's at least test that keychain is empty initially.
+    func testKeychainPersistsInDebug() {
+        // Since isTestBuild is now false in DEBUG, setting isPro should persist to keychain.
+        // We can't call setIsPro directly, but we can verify that the keychain is used.
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: "entitlement.isPro",
+            kSecAttrService as String: "com.cheerforcesandiego.formationflow",
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
