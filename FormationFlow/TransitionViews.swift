@@ -506,6 +506,8 @@ struct ThinTransitionTransportBar: View {
                 Image(systemName: "ellipsis.circle").frame(width: 26, height: 26)
             }
             .accessibilityLabel("More transition options")
+            .accessibilityHint("Open menu for additional transition settings")
+            .help("More transition options")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
