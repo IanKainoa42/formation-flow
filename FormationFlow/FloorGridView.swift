@@ -455,6 +455,7 @@ struct FloorGridView: View {
         }
         .alert("Rename Athlete", isPresented: $showingAthleteRenamePrompt) {
             TextField("Label", text: $athleteLabelDraft)
+                .autocorrectionDisabled()
 
             Button("Save") {
                 commitAthleteRename()
