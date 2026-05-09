@@ -46,6 +46,7 @@ struct AthleteInspectorView: View {
                 if isPro {
                     TextField("Label", text: $labelDraft)
                         .textFieldStyle(.roundedBorder)
+                        .autocorrectionDisabled()
                         .onChange(of: labelDraft) { _, newValue in
                             let clamped = String(newValue.prefix(4))
                             if clamped != newValue { labelDraft = clamped }
@@ -854,6 +855,7 @@ struct SelectedAthleteSidebarView: View {
                             TextField("Label", text: $labelDraft)
                                 .textFieldStyle(.roundedBorder)
                                 .font(.headline)
+                                .autocorrectionDisabled()
                                 .onChange(of: labelDraft) { _, newValue in
                                     let clamped = String(newValue.prefix(4))
                                     if clamped != newValue { labelDraft = clamped }
