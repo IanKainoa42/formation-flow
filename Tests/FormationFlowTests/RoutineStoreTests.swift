@@ -1,3 +1,4 @@
+import Combine
 import XCTest
 @testable import FormationFlow
 
@@ -153,5 +154,32 @@ final class RoutineStoreTests: XCTestCase {
 
         XCTAssertEqual(store.routine.transitionSpecs[0].athleteTransitions.count, 1)
         XCTAssertEqual(store.routine.transitionSpecs[0].athleteTransitions[0].athleteID, athleteID2)
+    }
+
+    func testRoleMutationPublishesAfterRenderedAthletesReflectEveryRole() {
+        let athleteID = store.addAthlete()
+        let formationID = store.routine.formations[0].id
+        XCTAssertEqual(store.renderedAthletes(for: formationID).first?.role, .base)
+
+        for role in AthleteRole.allCases {
+            let publishExpectation = expectation(description: "role mutation publishes rendered \(role.rawValue) refresh")
+            var observedRoles: [AthleteRole?] = []
+            var cancellable: AnyCancellable?
+            cancellable = store.objectWillChange.sink { [weak self] _ in
+                let renderedRole = self?.store.renderedAthletes(for: formationID).first?.role
+                observedRoles.append(renderedRole)
+                if renderedRole == role {
+                    publishExpectation.fulfill()
+                }
+            }
+
+            store.mutateRosterAthlete(id: athleteID) { athlete in
+                athlete.role = role
+            }
+
+            wait(for: [publishExpectation], timeout: 1.0)
+            XCTAssertTrue(observedRoles.contains(role), "Expected a post-mutation publish with updated rendered role, observed: \(observedRoles)")
+            _ = cancellable
+        }
     }
 }

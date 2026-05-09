@@ -1664,6 +1664,7 @@ final class RoutineStore: ObservableObject {
         guard let index = rosterIndex(id: id) else { return }
         update(&routine.roster[index])
         rebuildRosterLookup()
+        objectWillChange.send()
     }
 
     func mutateTransitionSpec(from fromID: UUID, to toID: UUID, _ update: (inout TransitionSpec) -> Void) {
