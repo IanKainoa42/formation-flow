@@ -139,6 +139,7 @@ struct RoutinePlaybackView: View {
             .frame(width: 160)
             .controlSize(.small)
             .accessibilityLabel("Playback Speed")
+            .accessibilityHint("Adjust the playback speed of the routine animation")
 
             Menu {
                 Text("\(player.currentSegmentIndex + 1) / \(player.segmentCount)")
@@ -156,7 +157,7 @@ struct RoutinePlaybackView: View {
                     )
                 }
             } label: {
-                Image(systemName: "ellipsis.circle").frame(width: 28, height: 28)
+                Image(systemName: "ellipsis.circle").frame(minWidth: 44, minHeight: 44)
             }
             .accessibilityLabel("More playback options")
         }

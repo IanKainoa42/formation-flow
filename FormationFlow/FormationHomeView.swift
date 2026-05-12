@@ -249,6 +249,8 @@ struct RoutineWorkspaceView: View {
                         .background(.ultraThinMaterial, in: Circle())
                 }
                 .accessibilityLabel("Exit full screen")
+                .accessibilityHint("Restores the standard interface layout")
+                .help("Exit full screen")
                 .padding(.top, 64)
                 .padding(.trailing, 12)
             }
@@ -381,7 +383,7 @@ struct RoutineWorkspaceView: View {
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
                     EditButton()
                     Button(action: addFormation) {
-                        Image(systemName: canAddFormation ? "plus" : "lock.fill")
+                        LockBadgedToolbarIcon(icon: "plus", locked: !canAddFormation)
                     }
                     .accessibilityLabel(canAddFormation ? "Add formation" : "Upgrade to Pro to add formation")
                 }
@@ -455,7 +457,7 @@ struct RoutineWorkspaceView: View {
                 Button {
                     attemptRoutinePlayback()
                 } label: {
-                    Image(systemName: entitlementManager.isPro ? "play.circle" : "lock.fill")
+                    LockBadgedToolbarIcon(icon: "play.circle", locked: !entitlementManager.isPro)
                 }
                 .disabled(store.routine.formations.count < 2)
                 .accessibilityLabel(entitlementManager.isPro ? "Play routine" : "Upgrade to Pro to play routine")
@@ -463,7 +465,7 @@ struct RoutineWorkspaceView: View {
 
                 EditButton()
                 Button(action: addFormation) {
-                    Image(systemName: canAddFormation ? "plus" : "lock.fill")
+                    LockBadgedToolbarIcon(icon: "plus", locked: !canAddFormation)
                 }
                 .accessibilityLabel(canAddFormation ? "Add formation" : "Upgrade to Pro to add formation")
             }
@@ -547,6 +549,8 @@ struct RoutineWorkspaceView: View {
                                     .background(.ultraThinMaterial, in: Circle())
                             }
                             .accessibilityLabel(entitlementManager.isPro ? "Play routine" : "Upgrade to Pro to play routine")
+                            .accessibilityHint(entitlementManager.isPro ? "Play the full routine" : "Upgrade to Pro to play the full routine")
+                            .help(entitlementManager.isPro ? "Play the full routine" : "Upgrade to Pro to play the full routine")
                         }
 
                         Button {
@@ -561,6 +565,8 @@ struct RoutineWorkspaceView: View {
                                 .background(.ultraThinMaterial, in: Circle())
                         }
                         .accessibilityLabel("Enter full screen")
+                        .accessibilityHint("Expands the canvas to fill the screen")
+                        .help("Enter full screen")
                     }
                     .padding(12)
                 }
@@ -682,7 +688,7 @@ struct RoutineWorkspaceView: View {
                         addFormation()
                         showingCompactFormationPicker = false
                     }) {
-                        Image(systemName: canAddFormation ? "plus" : "lock.fill")
+                        LockBadgedToolbarIcon(icon: "plus", locked: !canAddFormation)
                     }
                     .accessibilityLabel(canAddFormation ? "Add formation" : "Upgrade to Pro to add formation")
 
@@ -852,7 +858,7 @@ struct RoutineWorkspaceView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
-            .controlSize(.small)
+            .frame(minHeight: 44)
         }
     }
 
@@ -1153,6 +1159,27 @@ struct RoutineWorkspaceView: View {
         withAnimation(.easeInOut(duration: 0.2)) {
             splitViewVisibility = splitViewVisibility == .detailOnly ? .all : .detailOnly
         }
+    }
+}
+
+// MARK: - Lock Badge
+
+private struct LockBadgedToolbarIcon: View {
+    let icon: String
+    let locked: Bool
+
+    var body: some View {
+        Image(systemName: icon)
+            .overlay(alignment: .bottomTrailing) {
+                if locked {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(2)
+                        .background(.tint, in: Circle())
+                        .offset(x: 5, y: 4)
+                }
+            }
     }
 }
 

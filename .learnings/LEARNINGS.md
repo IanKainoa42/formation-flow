@@ -2,6 +2,30 @@
 
 Corrections, knowledge gaps, and best practices. See `/self-improvement` for format.
 
+## 2026-04-30 — ASC submission flow: legacy endpoint is read-only, use v2 reviewSubmissions
+
+- **Category:** knowledge_gap
+- **What happened:** `POST /v1/appStoreVersionSubmissions` returns 403 `FORBIDDEN_ERROR` with `"The resource 'appStoreVersionSubmissions' does not allow 'CREATE'. Allowed operation is: DELETE"`. Apple migrated submission to the v2 reviewSubmissions flow. Also: a rejected version stays bound to its prior submission (`UNRESOLVED_ISSUES` state) and POSTing a new `reviewSubmissionItems` returns 409 `STATE_ERROR.ITEM_PART_OF_ANOTHER_SUBMISSION`. Cancel the old one first.
+- **Rule:** To submit (or resubmit after rejection) via API:
+  1. If a prior reviewSubmission is in `UNRESOLVED_ISSUES`: `PATCH /v1/reviewSubmissions/{old} {"data":{"type":"reviewSubmissions","id":"{old}","attributes":{"canceled":true}}}` → state goes `CANCELING`, poll until `COMPLETE`.
+  2. `POST /v1/reviewSubmissions` with `{platform:"IOS"}` + app relationship → returns new submission in `READY_FOR_REVIEW`.
+  3. `POST /v1/reviewSubmissionItems` with reviewSubmission + appStoreVersion relationships → adds the version.
+  4. `PATCH /v1/reviewSubmissions/{new} {"attributes":{"submitted":true}}` → state goes `WAITING_FOR_REVIEW` with `submittedDate`. That's submission complete.
+- **Build swap pattern:** `PATCH /v1/appStoreVersions/{vid}/relationships/build` with `{"data":{"type":"builds","id":"{bid}"}}` returns 204 No Content. Works on `PREPARE_FOR_SUBMISSION` versions even with prior rejected build attached.
+- **Age rating:** lives on AppInfo (`/v1/appInfos/{id}/ageRatingDeclaration`), not directly on App or appStoreVersion. ASC auto-creates a default declaration; for a clean coaching/utility app it's already all NONE/false → 4+. No action needed.
+
+## 2026-04-29 — Multiple `routine.X` mutations in one method storm SwiftUI List's UICollectionView coordinator
+
+- **Category:** correction
+- **What happened:** Roster delete crashed with `_Bug_Detected_In_Client_Of_UICollectionView_Invalid_Number_Of_Items_In_Section`. Two prior fixes did NOT resolve it: (1) replacing `.onDelete` with `.swipeActions`, (2) deferring the deletion via `DispatchQueue.main.async`. Both still crashed. Real root cause: `RoutineStore.deleteAthlete` did `routine.roster.removeAll`, then `routine.formations[i].placements.removeAll` for every formation, then `routine.transitionSpecs[i].athleteTransitions.removeAll` for every spec, then `reconcileTransitionSpecs()` (which re-assigns `routine.transitionSpecs`). Each line mutates `routine` (a computed property over `@Published var workspace`), firing `objectWillChange` per line — N+M+2 notifications in a single call. SwiftUI List's `UICollectionViewListCoordinator` saw an inconsistent diff between count-before and count-after and aborted.
+- **Rule:** When a destructive action mutates multiple sub-collections of a `@Published` value-type model in one method, snapshot first, mutate the local copy, then assign back ONCE. Pattern: `var updated = routine; updated.roster.removeAll{...}; for i { updated.formations[i].placements.removeAll{...} }; routine = updated`. This produces a single `objectWillChange` event so the List coordinator gets one consistent diff. Also avoid calling `reconcileX()` helpers that re-assign `routine` — call non-`@Published` lookup-rebuild helpers (`rebuildFormationLookup`, `rebuildTransitionSpecLookup`, `rebuildRosterLookup`) directly after the single assignment.
+
+## 2026-04-28 — Don't re-ask the user for info they already provided
+
+- **Category:** correction
+- **What happened:** User reported a crash; I asked them to reproduce while I captured a console log. After they corrected my console-capture setup, I asked them again to reproduce. They had already done it. Re-asking forced unnecessary repetition of work.
+- **Rule:** When a user reports a bug, assume they already encountered it. Capture context first (logs, file state, recent changes) and only ask the user to reproduce as a last resort, *after* exhausting code-only diagnosis. If a tool setup misses the original repro window, apply the most-likely fix with explicit "if this doesn't fix it, please repro once with logging on" — don't pre-emptively block on another repro.
+
 ## 2026-03-22 — StoreKit config files must be created via Xcode GUI
 
 - **Category:** best_practice
@@ -67,3 +91,27 @@ Corrections, knowledge gaps, and best practices. See `/self-improvement` for for
 - **Category:** best_practice
 - **What happened:** Local CURRENT_PROJECT_VERSION was at 160 today. altool rejected upload with "previousBundleVersion: 161" — meaning ASC already had build 161 from somewhere not visible in our local git. This is the SECOND time the local-vs-ASC build counter has drifted (memory: "tried to upload 152, ASC already had 153, had to bump to 154"). Likely sources: Gemini auto-uploads, fastlane lane runs from another machine, or ASC keeping older artifacts.
 - **Rule:** Before uploading any IPA, expect ASC to be 1-3 builds ahead of local. Bump CURRENT_PROJECT_VERSION generously (e.g., +5 buffer) OR be ready to bump-and-retry on first failure. After altool rejects with "previousBundleVersion: N", immediately bump to N+1 and re-sign+re-upload — full re-archive isn't needed; just `plutil -replace CFBundleVersion -string "N+1" Info.plist` inside the existing .app, re-codesign with the entitlements, re-zip, retry altool. Saves 2-3 min vs full archive rebuild.
+
+## 2026-04-28 — `simctl io screenshot` ignores simulator UI rotation
+
+- **Category:** knowledge_gap
+- **What happened:** Rotated iPad Pro 13" sim to landscape via `Device → Rotate Right`. Screenshot still came out 2064×2752 (portrait) — the same dimensions as before rotation. Same on iPhone 17 Pro Max: rotated via menu, simctl returned raw 1320×2868 portrait framebuffer with rotated content embedded. `simctl io <udid> screenshot` always returns the underlying display framebuffer in its native orientation, NOT what the user sees on screen. There is no `--orientation` or `--rotated` flag. Tried `osascript ... keystroke (ASCII 29) using command down` and direct menu clicks — both rotate the iOS UI but neither changes the screenshot output dimensions.
+- **Rule:** For ASC landscape iPad screenshots (need 2752×2064): rotate the sim to landscape (any method), then `xcrun simctl io <udid> screenshot /tmp/raw.png; sips -r -90 /tmp/raw.png` to get the correct 2752×2064 result. iPhone Pro Max ASC shots are portrait-native (1320×2868) so no rotation post-process needed. If a screenshot looks "wrong-rotation" but content is correct, it's a framebuffer-orientation issue — fix with `sips -r -90` (negative degrees), not `sips -r 90` which produces upside-down landscape.
+
+## 2026-04-29 — fastlane deliver "Too many screenshots" warnings during ASC 500 retries are non-fatal
+
+- **Category:** knowledge_gap
+- **What happened:** Replacing the iPad screenshot set via `fastlane deliver --force` (with `overwrite_screenshots: true`). First-pass uploads succeeded for some files, then ASC threw a wave of `Server error got 500` ("Waiting for screenshots to appear before uploading...") for ~20 minutes. On retry, fastlane logged `Too many screenshots found for device 'APP_IPAD_PRO_3GEN_129' in 'en-US', skipping this one (...)` for 3 files, plus `iPadPro13_02_shot.png is missing on App Store Connect`. Looked like a partial failure. Verifying via ASC API afterward showed all 10 iPad shots COMPLETE — the warnings were transient state during ASC's slow indexing.
+- **Rule:** Don't trust fastlane's mid-run "Too many" / "missing on ASC" diagnostics during a retry storm — they reflect ASC's stale read view, not the final committed state. After deliver exits cleanly (`Successfully uploaded screenshots to App Store Connect`), verify the actual set with the ASC API (`/v1/appScreenshotSets/<id>/appScreenshots`) before re-running deliver. A re-run with `overwrite_screenshots: true` would wipe a correct set and risk hitting the 500 storm again.
+
+## 2026-04-29 — Bash tool runs in zsh; arrays default to 1-indexed and break bash-style indexing
+
+- **Category:** correction
+- **What happened:** Wrote `SHOTS=(...)`; `for i in 0 1 2 3 4; do ... ${SHOTS[$i]} ...` expecting 0-indexed access. zsh (the default shell for the Bash tool on this machine) treats `${SHOTS[0]}` as empty (zsh arrays are 1-indexed by default; `KSH_ARRAYS` is not set). Result: empty filename in `cp`, copying wrong files, silently skipping the last shot.
+- **Rule:** Wrap any array-indexed Bash logic in `/bin/bash -c '...'` to force a true bash subshell. Inside heredocs/inline commands that aren't explicitly bash, never use `${arr[$i]}` with a 0-based loop — either use 1-based indexing (`for i in 1 2 3 4 5`), or invoke bash explicitly. The `#!/bin/bash` shebang in a Bash-tool command body is a comment, not a shell switch.
+
+## 2026-04-29 — Working ASC API JWT generation: use Ruby's OpenSSL::PKey::EC, not openssl(1) asn1parse
+
+- **Category:** best_practice
+- **What happened:** Tried generating an ES256 JWT for the App Store Connect API in pure bash using `openssl dgst -sha256 -sign | openssl asn1parse | awk | xxd`. The DER → r||s reconstruction was wrong (lost padding on integers with high bit set). Got `Cannot iterate over null` from jq on the API response — auth had silently failed.
+- **Rule:** For one-shot ASC API queries, use Ruby (already installed via fastlane) with `OpenSSL::PKey::EC` + `Base64.urlsafe_encode64`. The signature reconstruction needs both r and s padded/truncated to exactly 32 bytes from the DER ASN1 INTEGER. Reference snippet saved in this conversation. Don't try to do this in pure bash.

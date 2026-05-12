@@ -123,6 +123,7 @@ struct FloorCanvasView: View {
     var ghostNextPaths: [TransitionPathRenderItem] = []
     var hoveredHandlePosition: CGPoint? = nil
     var hoveredAthleteID: UUID? = nil
+    var hoveredPathAthleteID: UUID? = nil
     var focusedPathHandle: CGPoint? = nil
 
     /// Scale factor so athlete markers stay proportional to the floor.
@@ -280,7 +281,8 @@ struct FloorCanvasView: View {
             let isBlinking = blinkingResolvedIDs.contains(item.athleteID)
             let resolvedColor: Color = isBlinking && blinkPhase % 2 == 0 ? .white : .green
             let pathColor: Color = isColliding ? .red : (isBlinking ? resolvedColor : (isSelected ? formationColor : .green))
-            let lineWidth: CGFloat = isSelected ? 3 : 1.5
+            let isPathHovered = hoveredPathAthleteID == item.athleteID
+            let lineWidth: CGFloat = isSelected ? (isPathHovered ? 4.5 : 3) : 1.5
 
             if !item.waypoints.isEmpty {
                 let nodes = item.nodes
@@ -309,25 +311,6 @@ struct FloorCanvasView: View {
                         lineWidth: lineWidth
                     )
 
-                    if isSelected {
-                        let midpoint = CGPoint(x: (p0.x + p1.x) / 2, y: (p0.y + p1.y) / 2)
-                        let midpointGrid = CGPoint(x: midpoint.x / cellSize, y: midpoint.y / cellSize)
-                        let isHovered = isHandleHovered(at: midpointGrid)
-                        let handleRadius: CGFloat = isHovered ? 12 : 8
-                        var handleBackground = Path()
-                        handleBackground.addEllipse(
-                            in: CGRect(x: midpoint.x - handleRadius, y: midpoint.y - handleRadius, width: handleRadius * 2, height: handleRadius * 2)
-                        )
-                        context.fill(handleBackground, with: .color(.white.opacity(isHovered ? 0.9 : 0.75)))
-                        context.stroke(handleBackground, with: .color(pathColor.opacity(isHovered ? 0.8 : 0.55)), lineWidth: isHovered ? 2 : 1)
-                        context.draw(
-                            Text("+")
-                                .font(.system(size: isHovered ? 16 : 12, weight: .bold))
-                                .foregroundColor(pathColor),
-                            at: midpoint,
-                            anchor: .center
-                        )
-                    }
                 }
 
                 if isSelected {
@@ -397,7 +380,13 @@ struct FloorCanvasView: View {
                 } else {
                     path.addLine(to: end)
                 }
-                context.stroke(path, with: .color(pathColor.opacity(0.42 * pathOpacityMultiplier)), lineWidth: lineWidth)
+                let simpleLineWidth = isSelected && isPathHovered
+                    ? lineWidth * 1.6
+                    : lineWidth
+                let simpleOpacity = isSelected && isPathHovered
+                    ? min(1.0, 0.62 * pathOpacityMultiplier)
+                    : 0.42 * pathOpacityMultiplier
+                context.stroke(path, with: .color(pathColor.opacity(simpleOpacity)), lineWidth: simpleLineWidth)
 
                 if isSelected {
                     let midpoint: CGPoint
@@ -526,12 +515,12 @@ struct FloorCanvasView: View {
             // Inner circle — tinted with previous formation color
             var inner = Path()
             inner.addEllipse(in: CGRect(x: point.x - innerRadius, y: point.y - innerRadius, width: innerRadius * 2, height: innerRadius * 2))
-            context.stroke(inner, with: .color(ghostColor.opacity(0.2)), style: ghostStyle)
+            context.stroke(inner, with: .color(ghostColor.opacity(0.27)), style: ghostStyle)
 
             // Outer circle
             var outer = Path()
             outer.addEllipse(in: CGRect(x: point.x - outerRadius, y: point.y - outerRadius, width: outerRadius * 2, height: outerRadius * 2))
-            context.stroke(outer, with: .color(ghostColor.opacity(0.1)), style: ghostStyle)
+            context.stroke(outer, with: .color(ghostColor.opacity(0.17)), style: ghostStyle)
         }
     }
 
@@ -545,7 +534,7 @@ struct FloorCanvasView: View {
             // Hollow outline — tinted with next formation color
             var ring = Path()
             ring.addEllipse(in: CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2))
-            context.stroke(ring, with: .color(ghostNextColor.opacity(0.22)), lineWidth: 1.5 * markerScale)
+            context.stroke(ring, with: .color(ghostNextColor.opacity(0.29)), lineWidth: 1.5 * markerScale)
         }
     }
 
@@ -575,7 +564,7 @@ struct FloorCanvasView: View {
             } else {
                 path.addLine(to: end)
             }
-            context.stroke(path, with: .color(ghostColor.opacity(0.1)), style: style)
+            context.stroke(path, with: .color(ghostColor.opacity(0.17)), style: style)
         }
     }
 
@@ -605,7 +594,7 @@ struct FloorCanvasView: View {
             } else {
                 path.addLine(to: end)
             }
-            context.stroke(path, with: .color(ghostNextColor.opacity(0.1)), style: style)
+            context.stroke(path, with: .color(ghostNextColor.opacity(0.17)), style: style)
         }
     }
 
@@ -622,7 +611,7 @@ struct FloorCanvasView: View {
             var startMarker = Path()
             let ghostR = 6 * markerScale
             startMarker.addEllipse(in: CGRect(x: start.x - ghostR, y: start.y - ghostR, width: ghostR * 2, height: ghostR * 2))
-            context.stroke(startMarker, with: .color(.white.opacity(0.08)), style: dashStyle)
+            context.stroke(startMarker, with: .color(.white.opacity(0.15)), style: dashStyle)
 
             // Build the full path (same logic as drawTransitionPaths but simplified — no handles)
             if !item.waypoints.isEmpty {
@@ -650,7 +639,7 @@ struct FloorCanvasView: View {
 
                     // Gradient opacity: stronger near end (where athlete arrived)
                     let segmentProgress = CGFloat(segmentIndex + 1) / CGFloat(segmentCount)
-                    let opacity = 0.03 + 0.07 * segmentProgress  // 3% at start → 10% at end
+                    let opacity = 0.10 + 0.07 * segmentProgress  // 10% at start → 17% at end
 
                     context.stroke(segment, with: .color(.white.opacity(opacity)), style: dashStyle)
                 }
@@ -665,7 +654,7 @@ struct FloorCanvasView: View {
                     path.addLine(to: end)
                 }
                 // For simple paths, use a middle opacity since we can't easily gradient a single stroke
-                context.stroke(path, with: .color(.white.opacity(0.07)), style: dashStyle)
+                context.stroke(path, with: .color(.white.opacity(0.14)), style: dashStyle)
             }
         }
     }
@@ -704,7 +693,7 @@ struct FloorCanvasView: View {
         ghost.addEllipse(in: CGRect(x: center.x - r, y: center.y - r, width: r * 2, height: r * 2))
         context.stroke(
             ghost,
-            with: .color(.gray.opacity(0.25)),
+            with: .color(.gray.opacity(0.32)),
             style: StrokeStyle(lineWidth: 1, dash: [4, 4])
         )
     }

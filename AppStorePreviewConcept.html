@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FormationFlow — App Store Preview Concept</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --navy: #0A0F1E;
+    --navy-mid: #111827;
+    --navy-light: #1C2A40;
+    --coral: #FF4757;
+    --coral-light: #FF6B7A;
+    --electric: #00D4FF;
+    --electric-dim: #0099CC;
+    --gold: #FFD43B;
+    --green: #51CF66;
+    --purple: #9775FA;
+    --white: #FFFFFF;
+    --white-dim: rgba(255,255,255,0.7);
+    --white-faint: rgba(255,255,255,0.12);
+    --grid-line: rgba(255,255,255,0.07);
+  }
+
+  body {
+    background: #06090F;
+    font-family: 'Space Grotesk', 'Inter', sans-serif;
+    color: white;
+    overflow-x: hidden;
+  }
+
+  /* ─── HEADER ─────────────────────────────────────────────────── */
+  .header {
+    padding: 40px 60px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .header-logo {
+    width: 44px; height: 44px;
+    background: var(--coral);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 18px; letter-spacing: -1px;
+    flex-shrink: 0;
+  }
+  .header-title { font-size: 14px; font-weight: 500; color: var(--white-dim); letter-spacing: 0.05em; text-transform: uppercase; }
+  .header-sub { font-size: 22px; font-weight: 700; margin-top: 2px; }
+  .badge {
+    margin-left: auto;
+    background: rgba(0, 212, 255, 0.12);
+    border: 1px solid rgba(0,212,255,0.3);
+    color: var(--electric);
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  /* ─── SECTION LABELS ─────────────────────────────────────────── */
+  .section-label {
+    padding: 48px 60px 20px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--white-dim);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(255,255,255,0.08);
+  }
+
+  /* ─── MOSAIC OVERVIEW ─────────────────────────────────────────── */
+  .mosaic-container {
+    padding: 0 60px 60px;
+    display: flex;
+    gap: 6px;
+    height: 480px;
+    align-items: stretch;
+  }
+
+  .mosaic-frame {
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .mosaic-frame:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 24px 60px rgba(0,0,0,0.6);
+    z-index: 2;
+  }
+  .mosaic-frame.wide { flex: 2.2; }
+  .mosaic-frame.narrow { flex: 1; }
+
+  .mosaic-screen {
+    width: 100%; height: 100%;
+    display: flex; flex-direction: column;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* connector line between frames */
+  .connector {
+    width: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+  .connector::after {
+    content: '';
+    width: 2px;
+    height: 40px;
+    background: linear-gradient(to bottom, transparent, var(--coral), transparent);
+    border-radius: 2px;
+  }
+
+  /* ─── INDIVIDUAL SCREENSHOT CARDS ────────────────────────────── */
+  .screenshots-grid {
+    padding: 0 60px;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 20px;
+  }
+
+  .ss-card {
+    border-radius: 16px;
+    overflow: hidden;
+    position: relative;
+    aspect-ratio: 9/19.5;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    cursor: pointer;
+  }
+  .ss-card:hover {
+    transform: translateY(-6px) scale(1.01);
+    box-shadow: 0 24px 60px rgba(0,0,0,0.7);
+    z-index: 2;
+  }
+
+  /* ─── PHONE FRAME ─────────────────────────────────────────────── */
+  .phone-preview-section {
+    padding: 60px;
+    display: flex;
+    align-items: flex-start;
+    gap: 40px;
+    background: rgba(255,255,255,0.02);
+    border-top: 1px solid rgba(255,255,255,0.05);
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+
+  .phone-frame {
+    width: 220px;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .phone-shell {
+    width: 100%;
+    background: #1A1A1A;
+    border-radius: 38px;
+    padding: 12px;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.1), 0 30px 80px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.15);
+  }
+  .phone-screen {
+    border-radius: 28px;
+    overflow: hidden;
+    aspect-ratio: 9/19.5;
+    position: relative;
+  }
+  .phone-notch {
+    position: absolute;
+    top: 0; left: 50%; transform: translateX(-50%);
+    width: 90px; height: 32px;
+    background: #1A1A1A;
+    border-radius: 0 0 20px 20px;
+    z-index: 10;
+  }
+  .phone-controls {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .phone-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .phone-dot.active { background: var(--coral); }
+
+  .phone-nav-info {
+    flex: 1;
+  }
+  .phone-nav-info h3 {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .phone-nav-info p {
+    font-size: 14px;
+    color: var(--white-dim);
+    line-height: 1.6;
+    margin-bottom: 16px;
+  }
+  .slide-nav {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .slide-chip {
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.15);
+    color: var(--white-dim);
+    transition: all 0.2s;
+  }
+  .slide-chip.active, .slide-chip:hover {
+    background: var(--coral);
+    border-color: var(--coral);
+    color: white;
+  }
+
+  /* ─── SCREEN 1: HERO ──────────────────────────────────────────── */
+  .screen-hero {
+    background: var(--navy);
+    width: 100%; height: 100%;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero-grid-bg {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 32px 32px;
+    opacity: 0.8;
+  }
+  .hero-grid-bg::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 50% 60%, rgba(255,71,87,0.15) 0%, transparent 70%);
+  }
+  .hero-top-tag {
+    position: absolute;
+    top: 18px; left: 50%; transform: translateX(-50%);
+    background: rgba(255,71,87,0.15);
+    border: 1px solid rgba(255,71,87,0.4);
+    color: var(--coral-light);
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .hero-text-block {
+    position: absolute;
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    text-align: center;
+    width: 88%;
+  }
+  .hero-main-text {
+    font-size: clamp(18px, 4vw, 26px);
+    font-weight: 900;
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+    color: white;
+    text-transform: uppercase;
+  }
+  .hero-main-text .accent { color: var(--coral); }
+  .hero-main-text .accent-blue { color: var(--electric); }
+  .hero-sub {
+    margin-top: 10px;
+    font-size: clamp(8px, 1.5vw, 11px);
+    color: var(--white-dim);
+    line-height: 1.5;
+    font-weight: 400;
+    letter-spacing: 0.02em;
+  }
+
+  /* chaos arrows */
+  .chaos-zone {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 45%;
+    overflow: hidden;
+  }
+
+  /* ─── SCREEN 2: PLACEMENT ─────────────────────────────────────── */
+  .screen-placement {
+    background: linear-gradient(170deg, #0D1B2E 0%, #0A0F1E 100%);
+    width: 100%; height: 100%;
+    position: relative;
+    overflow: hidden;
+  }
+  .placement-label {
+    position: absolute;
+    top: 16px; left: 50%; transform: translateX(-50%);
+    font-size: 9px; font-weight: 700;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--electric);
+    white-space: nowrap;
+  }
+  .placement-title {
+    position: absolute;
+    top: 34px; left: 50%; transform: translateX(-50%);
+    font-size: clamp(12px, 2.5vw, 18px);
+    font-weight: 800; letter-spacing: -0.02em;
+    white-space: nowrap;
+    text-align: center;
+    color: white;
+  }
+  .court-container {
+    position: absolute;
+    top: 28%; left: 6%; right: 6%; bottom: 8%;
+    background: rgba(0,212,255,0.04);
+    border: 1px solid rgba(0,212,255,0.2);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .court-inner-grid {
+    width: 100%; height: 100%;
+    background-image:
+      linear-gradient(rgba(0,212,255,0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,0.08) 1px, transparent 1px);
+    background-size: calc(100%/9) calc(100%/7);
+    position: relative;
+  }
+  /* center line */
+  .court-inner-grid::after {
+    content: '';
+    position: absolute;
+    left: 50%; top: 0; bottom: 0;
+    width: 1px;
+    background: rgba(0,212,255,0.25);
+  }
+
+  /* ─── SCREEN 3: PATHS ─────────────────────────────────────────── */
+  .screen-paths {
+    background: linear-gradient(160deg, #0F1525 0%, #0A0F1E 100%);
+    width: 100%; height: 100%;
+    position: relative;
+    overflow: hidden;
+  }
+  .paths-glow {
+    position: absolute;
+    top: 30%; left: 50%; transform: translate(-50%, -50%);
+    width: 60%; height: 40%;
+    background: radial-gradient(ellipse, rgba(255,71,87,0.12) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .paths-label {
+    position: absolute;
+    top: 16px; left: 50%; transform: translateX(-50%);
+    font-size: 9px; font-weight: 700;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--coral);
+    white-space: nowrap;
+  }
+  .paths-title {
+    position: absolute;
+    top: 34px; left: 50%; transform: translateX(-50%);
+    font-size: clamp(11px, 2.5vw, 17px);
+    font-weight: 800; letter-spacing: -0.02em;
+    text-align: center;
+    color: white;
+    white-space: nowrap;
+  }
+
+  /* ─── SCREEN 4: PLAYBACK ──────────────────────────────────────── */
+  .screen-playback {
+    background: linear-gradient(155deg, #0D1220 0%, #0A0F1E 100%);
+    width: 100%; height: 100%;
+    position: relative;
+    overflow: hidden;
+  }
+  .playback-label {
+    position: absolute;
+    top: 16px; left: 50%; transform: translateX(-50%);
+    font-size: 9px; font-weight: 700;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--gold);
+    white-space: nowrap;
+  }
+  .playback-title {
+    position: absolute;
+    top: 34px; left: 50%; transform: translateX(-50%);
+    font-size: clamp(11px, 2.5vw, 17px);
+    font-weight: 800; letter-spacing: -0.02em;
+    text-align: center;
+    color: white;
+    white-space: nowrap;
+  }
+
+  /* ─── SCREEN 5: CTA ───────────────────────────────────────────── */
+  .screen-cta {
+    background: linear-gradient(175deg, #0F1830 0%, #0A0F1E 100%);
+    width: 100%; height: 100%;
+    position: relative;
+    overflow: hidden;
+  }
+  .cta-grid-bg {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+  .cta-glow {
+    position: absolute;
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 70%; height: 50%;
+    background: radial-gradient(ellipse, rgba(0,212,255,0.1) 0%, transparent 70%);
+  }
+
+  /* ─── NARRATIVE BAR ───────────────────────────────────────────── */
+  .narrative-bar {
+    margin: 0 60px;
+    padding: 24px 32px;
+    background: rgba(255,71,87,0.06);
+    border: 1px solid rgba(255,71,87,0.2);
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+  .narrative-icon {
+    width: 44px; height: 44px;
+    background: rgba(255,71,87,0.15);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+    flex-shrink: 0;
+  }
+  .narrative-text h4 { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+  .narrative-text p { font-size: 13px; color: var(--white-dim); line-height: 1.5; }
+  .narrative-arrow {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--white-dim);
+    flex-shrink: 0;
+  }
+  .nar-step {
+    padding: 4px 10px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 6px;
+    font-size: 11px;
+  }
+  .nar-step.highlight { background: var(--coral); color: white; }
+
+  /* ─── PRODUCTION NOTES ────────────────────────────────────────── */
+  .prod-notes {
+    padding: 0 60px 60px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+  .prod-note {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .prod-note h4 {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    color: var(--electric);
+  }
+  .prod-note p, .prod-note li {
+    font-size: 13px;
+    color: var(--white-dim);
+    line-height: 1.6;
+  }
+  .prod-note ul { padding-left: 16px; }
+  .prod-note li { margin-bottom: 4px; }
+
+  /* ─── COPY BLOCK ──────────────────────────────────────────────── */
+  .copy-block {
+    padding: 0 60px 40px;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 16px;
+  }
+  .copy-item {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .copy-num {
+    width: 24px; height: 24px;
+    background: var(--coral);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px;
+    font-weight: 800;
+    margin-bottom: 10px;
+  }
+  .copy-headline {
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 6px;
+    line-height: 1.3;
+    color: white;
+  }
+  .copy-sub {
+    font-size: 11px;
+    color: var(--white-dim);
+    line-height: 1.5;
+  }
+
+  /* ─── FOOTER ──────────────────────────────────────────────────── */
+  .footer {
+    padding: 40px 60px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    color: var(--white-dim);
+    font-size: 13px;
+  }
+  .footer-logo {
+    width: 28px; height: 28px;
+    background: var(--coral);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 11px;
+  }
+  .footer-right {
+    margin-left: auto;
+    display: flex;
+    gap: 20px;
+    font-size: 12px;
+  }
+  .footer-tag {
+    padding: 4px 10px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 6px;
+  }
+
+</style>
+</head>
+<body>
+
+<!-- ─── HEADER ─────────────────────────────────────────────────── -->
+<div class="header">
+  <div class="header-logo">FF</div>
+  <div>
+    <div class="header-title">App Store Preview Concept</div>
+    <div class="header-sub">FormationFlow — Screenshot Series</div>
+  </div>
+  <div class="badge">5-Frame Mosaic</div>
+</div>
+
+<!-- ─── NARRATIVE BAR ─────────────────────────────────────────── -->
+<div class="section-label">Story Arc</div>
+<div class="narrative-bar">
+  <div class="narrative-icon">📢</div>
+  <div class="narrative-text">
+    <h4>"Fix Those Ugly Transitions" — Problem → Solution Arc</h4>
+    <p>Every screen moves the coach from pain (chaotic, embarrassing transitions) to power (clean, professional routines). The mosaic reads as one continuous visual story.</p>
+  </div>
+  <div class="narrative-arrow">
+    <span class="nar-step highlight">Hook</span>
+    <span>→</span>
+    <span class="nar-step">Place</span>
+    <span>→</span>
+    <span class="nar-step">Path</span>
+    <span>→</span>
+    <span class="nar-step">Play</span>
+    <span>→</span>
+    <span class="nar-step">Win</span>
+  </div>
+</div>
+
+<!-- ─── FULL 5-SCREENSHOT GRID ────────────────────────────────── -->
+<div class="section-label">Screenshot Series — All 5 Frames</div>
+<div class="screenshots-grid" style="padding: 0 60px 40px;">
+
+  <!-- ── SCREENSHOT 1: HERO ─────────────── -->
+  <div class="ss-card" style="grid-column: span 2;">
+    <div class="screen-hero">
+      <div class="hero-grid-bg"></div>
+
+      <!-- Top tag -->
+      <div class="hero-top-tag">Cheer Choreography Planning</div>
+
+      <!-- Center text -->
+      <div style="
+        position: absolute; top: 50%; left: 50%; transform: translate(-50%, -52%);
+        text-align: center; width: 86%;
+      ">
+        <div style="
+          font-size: clamp(10px, 2.2vw, 15px);
+          font-weight: 900; line-height: 1.0; letter-spacing: -0.02em;
+          color: white; text-transform: uppercase;
+        ">
+          Stop Running<br>
+          <span style="color: var(--coral); font-size: 1.35em; letter-spacing: -0.03em;">Ugly<br>Transitions.</span>
+        </div>
+        <div style="
+          margin-top: 12px; font-size: clamp(7px, 1.2vw, 10px);
+          color: rgba(255,255,255,0.6); line-height: 1.5; font-weight: 400;
+        ">
+          Plan every path. Preview every move.<br>Coach with confidence.
+        </div>
+        <div style="
+          margin-top: 14px; display: inline-block;
+          background: var(--coral); color: white;
+          padding: 6px 16px; border-radius: 20px;
+          font-size: clamp(7px, 1.2vw, 9px); font-weight: 700;
+          letter-spacing: 0.08em; text-transform: uppercase;
+        ">Get FormationFlow →</div>
+      </div>
+
+      <!-- Before/After visual -->
+      <div class="chaos-zone">
+        <!-- BEFORE side: chaotic paths -->
+        <svg viewBox="0 0 300 200" style="position:absolute; left:0; top:0; width:50%; height:100%; opacity:0.9;">
+          <defs>
+            <marker id="arr-bad" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+              <path d="M0,0 L8,3 L0,6" fill="#FF6B6B" fill-opacity="0.7"/>
+            </marker>
+          </defs>
+          <!-- Chaotic squiggly lines -->
+          <path d="M30,20 Q180,80 50,100 Q-20,120 120,160" stroke="#FF6B6B" stroke-width="2" fill="none"
+            stroke-opacity="0.7" stroke-dasharray="4,3" marker-end="url(#arr-bad)"/>
+          <path d="M200,10 Q60,60 220,90 Q300,110 80,150" stroke="#FF6B6B" stroke-width="2" fill="none"
+            stroke-opacity="0.6" stroke-dasharray="4,3" marker-end="url(#arr-bad)"/>
+          <path d="M100,5 Q250,40 80,80 Q30,100 200,130" stroke="#FF6B6B" stroke-width="1.5" fill="none"
+            stroke-opacity="0.5" stroke-dasharray="3,3" marker-end="url(#arr-bad)"/>
+          <path d="M260,30 Q100,70 280,110 Q320,130 120,170" stroke="#FF6B6B" stroke-width="1.5" fill="none"
+            stroke-opacity="0.45" stroke-dasharray="3,3" marker-end="url(#arr-bad)"/>
+
+          <!-- X collision markers -->
+          <text x="90" y="70" fill="#FF4757" font-size="12" font-weight="bold" text-anchor="middle" opacity="0.8">✕</text>
+          <text x="175" y="105" fill="#FF4757" font-size="12" font-weight="bold" text-anchor="middle" opacity="0.8">✕</text>
+          <text x="130" y="130" fill="#FF4757" font-size="12" font-weight="bold" text-anchor="middle" opacity="0.7">✕</text>
+
+          <!-- Athletes (dots) -->
+          <circle cx="30" cy="20" r="8" fill="#3B82F6" opacity="0.85"/>
+          <circle cx="200" cy="10" r="8" fill="#EAB308" opacity="0.85"/>
+          <circle cx="100" cy="5" r="8" fill="#22C55E" opacity="0.85"/>
+          <circle cx="260" cy="30" r="8" fill="#A855F7" opacity="0.85"/>
+
+          <!-- Label: BEFORE -->
+          <text x="150" y="192" fill="#FF4757" font-size="11" font-weight="700"
+            text-anchor="middle" font-family="Space Grotesk, sans-serif" letter-spacing="2">BEFORE</text>
+        </svg>
+
+        <!-- AFTER side: clean FormationFlow paths -->
+        <svg viewBox="0 0 300 200" style="position:absolute; right:0; top:0; width:50%; height:100%; opacity:0.95;">
+          <defs>
+            <marker id="arr-good" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+              <path d="M0,0 L8,3 L0,6" fill="#00D4FF"/>
+            </marker>
+            <filter id="glow-line">
+              <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+              <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+          <!-- Clean bezier curves -->
+          <path d="M30,160 C60,100 90,60 120,40" stroke="#00D4FF" stroke-width="2.5" fill="none"
+            filter="url(#glow-line)" marker-end="url(#arr-good)"/>
+          <path d="M80,160 C120,120 160,80 200,30" stroke="#00D4FF" stroke-width="2.5" fill="none"
+            filter="url(#glow-line)" marker-end="url(#arr-good)"/>
+          <path d="M160,170 C180,130 220,90 240,50" stroke="#00D4FF" stroke-width="2.5" fill="none"
+            filter="url(#glow-line)" marker-end="url(#arr-good)"/>
+          <path d="M220,155 C230,120 250,80 265,40" stroke="#00D4FF" stroke-width="2" fill="none"
+            filter="url(#glow-line)" marker-end="url(#arr-good)"/>
+
+          <!-- Control point dots (waypoints) -->
+          <circle cx="75" cy="90" r="3" fill="#00D4FF" opacity="0.6"/>
+          <circle cx="180" cy="75" r="3" fill="#00D4FF" opacity="0.6"/>
+          <circle cx="228" cy="80" r="3" fill="#00D4FF" opacity="0.6"/>
+
+          <!-- End athletes -->
+          <circle cx="120" cy="40" r="8" fill="#3B82F6" opacity="0.9"/>
+          <circle cx="200" cy="30" r="8" fill="#EAB308" opacity="0.9"/>
+          <circle cx="240" cy="50" r="8" fill="#22C55E" opacity="0.9"/>
+          <circle cx="265" cy="40" r="8" fill="#A855F7" opacity="0.9"/>
+
+          <!-- Start athletes -->
+          <circle cx="30" cy="160" r="8" fill="#3B82F6" opacity="0.5"/>
+          <circle cx="80" cy="160" r="8" fill="#EAB308" opacity="0.5"/>
+          <circle cx="160" cy="170" r="8" fill="#22C55E" opacity="0.5"/>
+          <circle cx="220" cy="155" r="8" fill="#A855F7" opacity="0.5"/>
+
+          <!-- Label: AFTER -->
+          <text x="150" y="192" fill="#00D4FF" font-size="11" font-weight="700"
+            text-anchor="middle" font-family="Space Grotesk, sans-serif" letter-spacing="2">AFTER</text>
+        </svg>
+
+        <!-- Divider line -->
+        <div style="
+          position:absolute; left:50%; top:0; bottom:0; transform:translateX(-50%);
+          width:2px;
+          background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.5), transparent);
+        "></div>
+        <div style="
+          position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+          width:28px; height:28px;
+          background:white; border-radius:50%;
+          display:flex; align-items:center; justify-content:center;
+          font-size:12px; color:#0A0F1E; font-weight:800;
+        ">VS</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SCREENSHOT 2: PLACE YOUR TEAM ──── -->
+  <div class="ss-card">
+    <div class="screen-placement">
+      <div class="placement-label">Feature 1</div>
+      <div class="placement-title">Set Every<br>Spot</div>
+
+      <!-- Mini court -->
+      <div class="court-container">
+        <div class="court-inner-grid">
+          <svg viewBox="0 0 180 140" style="position:absolute;inset:0;width:100%;height:100%;">
+            <defs>
+              <filter id="dot-glow">
+                <feGaussianBlur stdDeviation="2" result="blur"/>
+                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+            </defs>
+            <!-- Row 1 - back formation -->
+            <circle cx="25" cy="30" r="9" fill="#3B82F6" filter="url(#dot-glow)"/>
+            <text x="25" y="34" fill="white" font-size="7" font-weight="700" text-anchor="middle" font-family="monospace">B1</text>
+            <circle cx="60" cy="22" r="9" fill="#3B82F6"/>
+            <text x="60" y="26" fill="white" font-size="7" font-weight="700" text-anchor="middle" font-family="monospace">B2</text>
+            <circle cx="95" cy="18" r="11" fill="#EAB308"/>
+            <text x="95" y="22" fill="white" font-size="7" font-weight="700" text-anchor="middle" font-family="monospace">F1</text>
+            <circle cx="130" cy="22" r="9" fill="#3B82F6"/>
+            <text x="130" y="26" fill="white" font-size="7" font-weight="700" text-anchor="middle" font-family="monospace">B3</text>
+            <circle cx="160" cy="30" r="9" fill="#22C55E"/>
+            <text x="160" y="34" fill="white" font-size="7" font-weight="700" text-anchor="middle" font-family="monospace">S1</text>
+
+            <!-- Row 2 - mid formation -->
+            <circle cx="40" cy="70" r="9" fill="#A855F7"/>
+            <text x="40" y="74" fill="white" font-size="7" font-weight="700" text-anchor="middle" font-family="monospace">BS</text>
+            <circle cx="80" cy="65" r="9" fill="#3B82F6"/>
+            <text x="80" y="69" fill="white" font-size="7" font-weight="700" text-anchor="middle" font-family="monospace">B4</text>
+            <circle cx="120" cy="65" r="9" fill="#3B82F6"/>
+            <text x="120" y="69" fill="white" font-size="7" font-weight="700" text-anchor="middle" font-family="monospace">B5</text>
+            <circle cx="155" cy="72" r="9" fill="#F97316"/>
+            <text x="155" y="76" fill="white" font-size="7" font-weight="700" text-anchor="middle" font-family="monospace">T1</text>
+
+            <!-- Row 3 - front formation -->
+            <circle cx="55" cy="112" r="9" fill="#22C55E"/>
+            <text x="55" y="116" fill="white" font-size="7" font-weight="700" text-anchor="middle" font-family="monospace">S2</text>
+            <circle cx="95" cy="108" r="9" fill="#3B82F6"/>
+            <text x="95" y="112" fill="white" font-size="7" font-weight="700" text-anchor="middle" font-family="monospace">B6</text>
+            <circle cx="135" cy="112" r="9" fill="#3B82F6"/>
+            <text x="135" y="116" fill="white" font-size="7" font-weight="700" text-anchor="middle" font-family="monospace">B7</text>
+
+            <!-- Selected athlete glow -->
+            <circle cx="95" cy="18" r="14" fill="none" stroke="#EAB308" stroke-width="2" stroke-dasharray="4,3" opacity="0.7">
+              <animateTransform attributeName="transform" type="rotate" from="0 95 18" to="360 95 18" dur="4s" repeatCount="indefinite"/>
+            </circle>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Bottom feature pills -->
+      <div style="position:absolute; bottom:10px; left:6%; right:6%; display:flex; gap:6px; flex-wrap:wrap; justify-content:center;">
+        <div style="background:rgba(0,212,255,0.12); border:1px solid rgba(0,212,255,0.3); border-radius:12px; padding:3px 8px; font-size:8px; color:#00D4FF; font-weight:600;">36 Athletes</div>
+        <div style="background:rgba(0,212,255,0.12); border:1px solid rgba(0,212,255,0.3); border-radius:12px; padding:3px 8px; font-size:8px; color:#00D4FF; font-weight:600;">72×56 ft Court</div>
+        <div style="background:rgba(0,212,255,0.12); border:1px solid rgba(0,212,255,0.3); border-radius:12px; padding:3px 8px; font-size:8px; color:#00D4FF; font-weight:600;">Drag & Drop</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SCREENSHOT 3: DESIGN THE PATH ──── -->
+  <div class="ss-card">
+    <div class="screen-paths">
+      <div class="paths-glow"></div>
+      <div class="paths-label">Feature 2</div>
+      <div class="paths-title">Draw Clean<br>Paths</div>
+
+      <!-- Path visualization -->
+      <div style="position:absolute; top:28%; left:4%; right:4%; bottom:12%; overflow:hidden; border-radius:6px; border:1px solid rgba(255,71,87,0.15); background:rgba(255,71,87,0.03);">
+        <svg viewBox="0 0 200 180" style="position:absolute;inset:0;width:100%;height:100%;">
+          <defs>
+            <marker id="arrow-path" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+              <path d="M0,0 L8,3 L0,6 Z" fill="#FF4757"/>
+            </marker>
+            <filter id="path-glow">
+              <feGaussianBlur stdDeviation="3" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <filter id="path-glow-blue">
+              <feGaussianBlur stdDeviation="2" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </marker>
+          </defs>
+
+          <!-- Grid -->
+          <defs>
+            <pattern id="grid3" width="22" height="22" patternUnits="userSpaceOnUse">
+              <path d="M 22 0 L 0 0 0 22" fill="none" stroke="rgba(255,71,87,0.1)" stroke-width="0.5"/>
+            </pattern>
+          </defs>
+          <rect width="200" height="180" fill="url(#grid3)"/>
+
+          <!-- Bezier path 1 -->
+          <path d="M30,150 C30,100 100,60 140,30" stroke="#FF4757" stroke-width="2.5" fill="none"
+            filter="url(#path-glow)" marker-end="url(#arrow-path)"/>
+          <!-- Bezier path 2 -->
+          <path d="M70,160 C80,110 130,80 170,40" stroke="#FF4757" stroke-width="2" fill="none"
+            filter="url(#path-glow)" marker-end="url(#arrow-path)"/>
+          <!-- Bezier path 3 -->
+          <path d="M120,155 C110,110 150,80 165,55" stroke="#00D4FF" stroke-width="2" fill="none" opacity="0.8"
+            marker-end="url(#arrow-path)"/>
+          <!-- Bezier path 4 -->
+          <path d="M165,160 C180,130 190,90 180,55" stroke="#00D4FF" stroke-width="1.5" fill="none" opacity="0.7"
+            marker-end="url(#arrow-path)"/>
+
+          <!-- Control point handles -->
+          <line x1="30" y1="150" x2="30" y2="100" stroke="rgba(255,255,255,0.25)" stroke-width="1" stroke-dasharray="3,2"/>
+          <circle cx="30" cy="100" r="4" fill="rgba(255,255,255,0.4)" stroke="white" stroke-width="1"/>
+          <line x1="100" y1="60" x2="140" y2="30" stroke="rgba(255,255,255,0.25)" stroke-width="1" stroke-dasharray="3,2"/>
+          <circle cx="100" cy="60" r="4" fill="rgba(255,255,255,0.4)" stroke="white" stroke-width="1"/>
+
+          <!-- Waypoint hold indicator -->
+          <circle cx="100" cy="60" r="7" fill="none" stroke="#FF4757" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.6"/>
+          <text x="112" y="57" fill="#FF4757" font-size="7" font-weight="600" font-family="Space Grotesk, sans-serif">hold 1.0s</text>
+
+          <!-- Start/end athletes -->
+          <circle cx="30" cy="150" r="9" fill="#3B82F6"/>
+          <text x="30" y="154" fill="white" font-size="7" font-weight="700" text-anchor="middle" font-family="monospace">B1</text>
+          <circle cx="70" cy="160" r="9" fill="#EAB308"/>
+          <text x="70" y="164" fill="white" font-size="7" font-weight="700" text-anchor="middle" font-family="monospace">F1</text>
+          <circle cx="120" cy="155" r="9" fill="#22C55E"/>
+          <text x="120" y="159" fill="white" font-size="7" font-weight="700" text-anchor="middle" font-family="monospace">S1</text>
+          <circle cx="165" cy="160" r="9" fill="#A855F7"/>
+          <text x="165" y="164" fill="white" font-size="7" font-weight="700" text-anchor="middle" font-family="monospace">BS</text>
+
+          <circle cx="140" cy="30" r="9" fill="#3B82F6" opacity="0.5"/>
+          <circle cx="170" cy="40" r="9" fill="#EAB308" opacity="0.5"/>
+          <circle cx="165" cy="55" r="9" fill="#22C55E" opacity="0.5"/>
+          <circle cx="180" cy="55" r="9" fill="#A855F7" opacity="0.5"/>
+
+          <!-- NO COLLISION indicator -->
+          <circle cx="170" cy="130" r="16" fill="rgba(81,207,102,0.1)" stroke="#51CF66" stroke-width="1"/>
+          <text x="170" y="127" fill="#51CF66" font-size="8" font-weight="700" text-anchor="middle" font-family="Space Grotesk">NO</text>
+          <text x="170" y="136" fill="#51CF66" font-size="7" text-anchor="middle" font-family="Space Grotesk">COLLIDE</text>
+        </svg>
+      </div>
+
+      <!-- Bottom pills -->
+      <div style="position:absolute; bottom:10px; left:4%; right:4%; display:flex; gap:5px; flex-wrap:wrap; justify-content:center;">
+        <div style="background:rgba(255,71,87,0.12); border:1px solid rgba(255,71,87,0.3); border-radius:12px; padding:3px 8px; font-size:8px; color:#FF6B7A; font-weight:600;">Bezier Curves</div>
+        <div style="background:rgba(255,71,87,0.12); border:1px solid rgba(255,71,87,0.3); border-radius:12px; padding:3px 8px; font-size:8px; color:#FF6B7A; font-weight:600;">Waypoints</div>
+        <div style="background:rgba(81,207,102,0.12); border:1px solid rgba(81,207,102,0.3); border-radius:12px; padding:3px 8px; font-size:8px; color:#51CF66; font-weight:600;">Collision Check</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SCREENSHOT 4: PREVIEW/PLAYBACK ──── -->
+  <div class="ss-card">
+    <div class="screen-playback">
+      <div class="playback-label">Feature 3</div>
+      <div class="playback-title">See It<br>Move First</div>
+
+      <!-- Animated court preview -->
+      <div style="position:absolute; top:28%; left:4%; right:4%; height:46%; overflow:hidden; border-radius:6px; border:1px solid rgba(255,211,59,0.15); background:rgba(10,15,30,0.6);">
+        <svg viewBox="0 0 200 130" style="position:absolute;inset:0;width:100%;height:100%;">
+          <defs>
+            <pattern id="grid4" width="22" height="18.5" patternUnits="userSpaceOnUse">
+              <path d="M 22 0 L 0 0 0 18.5" fill="none" stroke="rgba(255,211,59,0.07)" stroke-width="0.5"/>
+            </pattern>
+            <filter id="glow4">
+              <feGaussianBlur stdDeviation="2.5" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+          <rect width="200" height="130" fill="url(#grid4)"/>
+
+          <!-- Ghost paths (faded) -->
+          <path d="M30,100 C50,70 90,50 130,30" stroke="#3B82F6" stroke-width="1.5" fill="none" opacity="0.2"/>
+          <path d="M80,105 C100,75 130,55 160,35" stroke="#EAB308" stroke-width="1.5" fill="none" opacity="0.2"/>
+          <path d="M130,100 C140,75 155,55 165,40" stroke="#22C55E" stroke-width="1.5" fill="none" opacity="0.2"/>
+
+          <!-- Athletes mid-animation -->
+          <circle cx="78" cy="67" r="9" fill="#3B82F6" filter="url(#glow4)"/>
+          <text x="78" y="71" fill="white" font-size="7" font-weight="700" text-anchor="middle" font-family="monospace">B1</text>
+          <circle cx="115" cy="73" r="9" fill="#EAB308" filter="url(#glow4)"/>
+          <text x="115" y="77" fill="white" font-size="7" font-weight="700" text-anchor="middle" font-family="monospace">F1</text>
+          <circle cx="148" cy="68" r="9" fill="#22C55E" filter="url(#glow4)"/>
+          <text x="148" y="72" fill="white" font-size="7" font-weight="700" text-anchor="middle" font-family="monospace">S1</text>
+
+          <!-- Motion trails -->
+          <path d="M30,100 C50,70 70,67 78,67" stroke="#3B82F6" stroke-width="1.5" fill="none" opacity="0.35"/>
+          <path d="M80,105 C95,88 110,77 115,73" stroke="#EAB308" stroke-width="1.5" fill="none" opacity="0.35"/>
+          <path d="M130,100 C137,85 145,72 148,68" stroke="#22C55E" stroke-width="1.5" fill="none" opacity="0.35"/>
+        </svg>
+      </div>
+
+      <!-- Playback controls -->
+      <div style="
+        position:absolute; top:76%; left:4%; right:4%;
+        background:rgba(255,211,59,0.06); border:1px solid rgba(255,211,59,0.15);
+        border-radius:8px; padding:8px;
+      ">
+        <!-- Timeline bar -->
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+          <span style="font-size:7px; color:rgba(255,255,255,0.4); font-family:monospace;">0:00</span>
+          <div style="flex:1; height:3px; background:rgba(255,255,255,0.1); border-radius:2px; position:relative;">
+            <div style="position:absolute; left:0; top:0; bottom:0; width:48%; background:var(--gold); border-radius:2px;"></div>
+            <div style="position:absolute; left:48%; top:50%; transform:translate(-50%,-50%); width:8px; height:8px; background:white; border-radius:50%; box-shadow:0 0 6px var(--gold);"></div>
+          </div>
+          <span style="font-size:7px; color:rgba(255,255,255,0.4); font-family:monospace;">4:00</span>
+        </div>
+        <!-- Control buttons -->
+        <div style="display:flex; align-items:center; justify-content:center; gap:10px;">
+          <div style="font-size:14px;">⏮</div>
+          <div style="
+            width:26px; height:26px; background:var(--gold);
+            border-radius:50%; display:flex; align-items:center; justify-content:center;
+            font-size:11px; color:#0A0F1E;
+          ">⏸</div>
+          <div style="font-size:14px;">⏭</div>
+          <div style="margin-left:6px; font-size:8px; color:var(--gold); font-weight:600; background:rgba(255,211,59,0.1); padding:2px 8px; border-radius:8px;">1× speed</div>
+        </div>
+      </div>
+
+      <!-- Bottom pills -->
+      <div style="position:absolute; bottom:10px; left:4%; right:4%; display:flex; gap:5px; flex-wrap:wrap; justify-content:center;">
+        <div style="background:rgba(255,211,59,0.12); border:1px solid rgba(255,211,59,0.3); border-radius:12px; padding:3px 8px; font-size:8px; color:var(--gold); font-weight:600;">60fps Playback</div>
+        <div style="background:rgba(255,211,59,0.12); border:1px solid rgba(255,211,59,0.3); border-radius:12px; padding:3px 8px; font-size:8px; color:var(--gold); font-weight:600;">8-Count Timing</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── COPY & MESSAGING ──────────────────────────────────────── -->
+<div class="section-label">Screenshot Copy</div>
+<div class="copy-block">
+  <div class="copy-item">
+    <div class="copy-num">1</div>
+    <div class="copy-headline">"Fix Those Ugly Transitions."</div>
+    <div class="copy-sub">Hook. Shame-to-solution in one frame. Coach sees themselves in the "BEFORE".</div>
+  </div>
+  <div class="copy-item">
+    <div class="copy-num">2</div>
+    <div class="copy-headline">"Set Every Spot, Perfectly."</div>
+    <div class="copy-sub">36 athletes on a to-scale 72×56ft court. Drag. Drop. Done.</div>
+  </div>
+  <div class="copy-item">
+    <div class="copy-num">3</div>
+    <div class="copy-headline">"Draw the Path, Not the Chaos."</div>
+    <div class="copy-sub">Bezier curves, waypoints, hold timing. No more crossing paths.</div>
+  </div>
+  <div class="copy-item">
+    <div class="copy-num">4</div>
+    <div class="copy-headline">"See It Move Before They Do."</div>
+    <div class="copy-sub">60fps animated preview. Run your 8-counts before practice starts.</div>
+  </div>
+  <div class="copy-item">
+    <div class="copy-num">5</div>
+    <div class="copy-headline">"Coach Like a Pro."</div>
+    <div class="copy-sub">Built for USASF & UCA. Free. No account needed.</div>
+  </div>
+</div>
+
+<!-- ─── PRODUCTION NOTES ──────────────────────────────────────── -->
+<div class="section-label">Production Guide</div>
+<div class="prod-notes">
+  <div class="prod-note">
+    <h4>🎨 Design System</h4>
+    <ul>
+      <li>Background: <code>#0A0F1E</code> (deep navy)</li>
+      <li>Accent 1: <code>#FF4757</code> (coral/red — conflict, energy)</li>
+      <li>Accent 2: <code>#00D4FF</code> (electric blue — precision)</li>
+      <li>Gold: <code>#FFD43B</code> (playback, timing)</li>
+      <li>Font: Space Grotesk / Inter (Bold 800+)</li>
+      <li>Court grid: 8% white opacity lines</li>
+    </ul>
+  </div>
+  <div class="prod-note">
+    <h4>📐 Sizes Required</h4>
+    <ul>
+      <li>iPhone 6.9" → 1320 × 2868 px (primary)</li>
+      <li>iPhone 6.7" → 1290 × 2796 px</li>
+      <li>iPad Pro 13" → 2064 × 2752 px</li>
+      <li>Use Canva "App Store Screenshot" template or Figma at 1x → 390 × 844</li>
+      <li>Safe zone: keep text 60px from edges</li>
+    </ul>
+  </div>
+  <div class="prod-note">
+    <h4>🎬 Video Preview Tips</h4>
+    <ul>
+      <li>First 3 seconds are autoplay — hook must show in 3s</li>
+      <li>Ideal: Screen 1 text appears, then cross-fade to app demo</li>
+      <li>Max 30 seconds per preview (aim for 15-20s)</li>
+      <li>No sound required — design for muted autoplay</li>
+      <li>Shoot on iPad in landscape then crop to portrait</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ─── FOOTER ─────────────────────────────────────────────────── -->
+<div class="footer">
+  <div class="footer-logo">FF</div>
+  <span>FormationFlow — App Store Preview Concept</span>
+  <div class="footer-right">
+    <span class="footer-tag">v1.0 Concept</span>
+    <span class="footer-tag">April 2026</span>
+    <span class="footer-tag">iPhone + iPad</span>
+  </div>
+</div>
+
+<script>
+  // Smooth entrance on load
+  document.querySelectorAll('.ss-card, .copy-item, .prod-note').forEach((el, i) => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(20px)';
+    el.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+    setTimeout(() => {
+      el.style.opacity = '1';
+      el.style.transform = 'translateY(0)';
+    }, 100 + i * 80);
+  });
+</script>
+</body>
+</html>

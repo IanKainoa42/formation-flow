@@ -18,7 +18,7 @@ final class EntitlementManager: ObservableObject {
     /// a TestFlight user moves to the App Store version.
     private static var isTestBuild: Bool {
         #if DEBUG
-        return true
+        return false
         #else
         return false
         #endif
@@ -40,6 +40,7 @@ final class EntitlementManager: ObservableObject {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: cacheKey,
+            kSecAttrService as String: "com.cheerforcesandiego.formationflow",
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
@@ -57,21 +58,21 @@ final class EntitlementManager: ObservableObject {
         let valueData = Data([value ? 1 : 0])
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: cacheKey
+            kSecAttrAccount as String: cacheKey,
+            kSecAttrService as String: "com.cheerforcesandiego.formationflow"
         ]
 
         let status = SecItemCopyMatching(query as CFDictionary, nil)
 
         if status == errSecSuccess {
             let attributesToUpdate: [String: Any] = [
-                kSecValueData as String: valueData,
-                kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+                kSecValueData as String: valueData
             ]
             SecItemUpdate(query as CFDictionary, attributesToUpdate as CFDictionary)
         } else {
             var newQuery = query
             newQuery[kSecValueData as String] = valueData
-            newQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            newQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly
             SecItemAdd(newQuery as CFDictionary, nil)
         }
     }
