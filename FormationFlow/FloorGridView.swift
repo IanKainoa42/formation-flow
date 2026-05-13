@@ -816,6 +816,8 @@ struct FloorGridView: View {
         }
         .buttonStyle(.bordered)
         .accessibilityLabel("More actions")
+        .accessibilityHint("Open menu for additional formation actions")
+        .help("More actions")
         .accessibilityValue(formation?.notes.isEmpty == false ? "Has notes" : "")
     }
 
@@ -1526,6 +1528,8 @@ struct FloorGridView: View {
         }
         .buttonStyle(.bordered)
         .accessibilityLabel("More actions")
+        .accessibilityHint("Open menu for additional formation actions")
+        .help("More actions")
         .accessibilityValue(formation?.notes.isEmpty == false ? "Has notes" : "")
     }
 
