@@ -96,7 +96,12 @@ struct RoutineWorkspaceView: View {
     }
 
     private var canAddFormation: Bool {
-        entitlementManager.isPro || store.routine.formations.count < FreeTierLimits.maxFormations
+        // Pro users can add unlimited formations
+        if entitlementManager.isPro {
+            return true
+        }
+        // Free users can have up to 2 formations
+        return store.routine.formations.count < 2
     }
 
     @ViewBuilder
@@ -311,7 +316,6 @@ struct RoutineWorkspaceView: View {
                     player: player,
                     startFormationID: previewTransitionPair?.start.id,
                     endFormationID: previewTransitionPair?.end.id,
-                    isPro: entitlementManager.isPro,
                     onUpgrade: { showingUpgradeSheet = true },
                     onRefreshTransition: { refreshPreviewSession() },
                     onSwap: { isSwapMode.toggle() },
@@ -324,7 +328,6 @@ struct RoutineWorkspaceView: View {
                     formationID: selectedFormationID,
                     selectedAthleteIDs: $selectedAthleteIDs,
                     onDeleteAthlete: { triggerDeleteAthlete = true },
-                    isPro: entitlementManager.isPro,
                     onUpgrade: { showingUpgradeSheet = true }
                 )
                 Spacer()
@@ -383,7 +386,7 @@ struct RoutineWorkspaceView: View {
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
                     EditButton()
                     Button(action: addFormation) {
-                        LockBadgedToolbarIcon(icon: "plus", locked: !canAddFormation)
+                        LockBadgedToolbarIcon(icon: "plus")
                     }
                     .accessibilityLabel(canAddFormation ? "Add formation" : "Upgrade to Pro to add formation")
                 }
@@ -457,7 +460,7 @@ struct RoutineWorkspaceView: View {
                 Button {
                     attemptRoutinePlayback()
                 } label: {
-                    LockBadgedToolbarIcon(icon: "play.circle", locked: !entitlementManager.isPro)
+                    LockBadgedToolbarIcon(icon: "play.circle")
                 }
                 .disabled(store.routine.formations.count < 2)
                 .accessibilityLabel(entitlementManager.isPro ? "Play routine" : "Upgrade to Pro to play routine")
@@ -465,7 +468,7 @@ struct RoutineWorkspaceView: View {
 
                 EditButton()
                 Button(action: addFormation) {
-                    LockBadgedToolbarIcon(icon: "plus", locked: !canAddFormation)
+                    LockBadgedToolbarIcon(icon: "plus")
                 }
                 .accessibilityLabel(canAddFormation ? "Add formation" : "Upgrade to Pro to add formation")
             }
@@ -688,7 +691,7 @@ struct RoutineWorkspaceView: View {
                         addFormation()
                         showingCompactFormationPicker = false
                     }) {
-                        LockBadgedToolbarIcon(icon: "plus", locked: !canAddFormation)
+                        LockBadgedToolbarIcon(icon: "plus")
                     }
                     .accessibilityLabel(canAddFormation ? "Add formation" : "Upgrade to Pro to add formation")
 
@@ -1165,13 +1168,13 @@ struct RoutineWorkspaceView: View {
 // MARK: - Lock Badge
 
 private struct LockBadgedToolbarIcon: View {
+    @EnvironmentObject private var entitlementManager: EntitlementManager
     let icon: String
-    let locked: Bool
 
     var body: some View {
         Image(systemName: icon)
             .overlay(alignment: .bottomTrailing) {
-                if locked {
+                if !entitlementManager.isPro {
                     Image(systemName: "lock.fill")
                         .font(.system(size: 8, weight: .bold))
                         .foregroundStyle(.white)

@@ -115,3 +115,15 @@ Corrections, knowledge gaps, and best practices. See `/self-improvement` for for
 - **Category:** best_practice
 - **What happened:** Tried generating an ES256 JWT for the App Store Connect API in pure bash using `openssl dgst -sha256 -sign | openssl asn1parse | awk | xxd`. The DER → r||s reconstruction was wrong (lost padding on integers with high bit set). Got `Cannot iterate over null` from jq on the API response — auth had silently failed.
 - **Rule:** For one-shot ASC API queries, use Ruby (already installed via fastlane) with `OpenSSL::PKey::EC` + `Base64.urlsafe_encode64`. The signature reconstruction needs both r and s padded/truncated to exactly 32 bytes from the DER ASN1 INTEGER. Reference snippet saved in this conversation. Don't try to do this in pure bash.
+
+## 2026-05-12 — xcrun simctl has a 15-20 min cold-start delay after CoreSimulator service restart
+
+- **Category:** best_practice
+- **What happened:** After `xcrun simctl shutdown all`, the CoreSimulatorService daemon effectively restarts. All subsequent `xcrun simctl list devices` calls appear to hang (60s+ timeout) but actually complete after 15-20 minutes. This caused misdiagnosis — appeared as a fatal error but was just slow startup.
+- **Rule:** Don't use `xcrun simctl shutdown all` at the start of screenshot capture sessions; just boot the target device directly. If you do run shutdown all, don't immediately check `simctl list` — open `Simulator.app` first to kick the daemon and wait ~20 min before checking status. For diagnosing simctl hangs, check `ps aux | grep CoreSimulatorService` and look for a process started recently.
+
+## 2026-05-12 — xcodebuild cannot target iOS Simulators when iOS SDK is not installed
+
+- **Category:** knowledge_gap
+- **What happened:** `xcodebuild -showdestinations` showed ZERO iOS Simulator destinations (not even as ineligible) even though `xcrun simctl list devices` confirmed iOS 26.4 simulators exist. Root cause: the iOS 26.5 platform SDK was not installed in Xcode. Both physical and simulator iOS targets require the SDK to be present in Xcode → Settings → Platforms.
+- **Rule:** Before any screenshot capture session, run `xcodebuild -project <proj> -scheme <scheme> -showdestinations` and verify iOS Simulator entries appear. If absent: open Xcode → Settings → Platforms and download the current iOS platform. The fix also updates the CoreSimulator framework version.

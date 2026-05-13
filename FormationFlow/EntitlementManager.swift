@@ -8,72 +8,21 @@ final class EntitlementManager: ObservableObject {
     private static let cacheKey = "entitlement.isPro"
     private static let logger = Logger(subsystem: "FormationFlow", category: "Entitlement")
 
-    @Published private(set) var isPro: Bool
+    @Published private(set) var isPro: Bool = false
 
     private var updateTask: Task<Void, Never>?
 
-    /// True only for DEBUG builds. TestFlight and App Store both require a real purchase
-    /// — auto-granting Pro from a sandbox receipt would let the App Store reviewer skip the
-    /// paywall entirely (3.1.1 rejection risk) and would also poison the Keychain cache when
-    /// a TestFlight user moves to the App Store version.
-    private static var isTestBuild: Bool {
-        #if DEBUG
-        return false
-        #else
-        return false
-        #endif
-    }
-
     init() {
-        if Self.isTestBuild {
-            self.isPro = true
-        } else {
-            self.isPro = Self.readIsProFromKeychain()
+        Self.logger.info("EntitlementManager initializing...")
+        
+        // Start listening for transactions
+        updateTask = Task {
+            await listenForTransactions()
         }
-        updateTask = Task { [weak self] in
-            await self?.checkEntitlement()
-            await self?.listenForTransactions()
-        }
-    }
-
-    private static func readIsProFromKeychain() -> Bool {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: cacheKey,
-            kSecAttrService as String: "com.cheerforcesandiego.formationflow",
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-
-        var dataTypeRef: AnyObject? = nil
-        let status: OSStatus = SecItemCopyMatching(query as CFDictionary, &dataTypeRef)
-
-        if status == errSecSuccess, let data = dataTypeRef as? Data {
-            return data == Data([1])
-        }
-        return false
-    }
-
-    private static func writeIsProToKeychain(_ value: Bool) {
-        let valueData = Data([value ? 1 : 0])
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: cacheKey,
-            kSecAttrService as String: "com.cheerforcesandiego.formationflow"
-        ]
-
-        let status = SecItemCopyMatching(query as CFDictionary, nil)
-
-        if status == errSecSuccess {
-            let attributesToUpdate: [String: Any] = [
-                kSecValueData as String: valueData
-            ]
-            SecItemUpdate(query as CFDictionary, attributesToUpdate as CFDictionary)
-        } else {
-            var newQuery = query
-            newQuery[kSecValueData as String] = valueData
-            newQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly
-            SecItemAdd(newQuery as CFDictionary, nil)
+        
+        // Check current entitlement status
+        Task {
+            await checkEntitlement()
         }
     }
 
@@ -82,75 +31,109 @@ final class EntitlementManager: ObservableObject {
     }
 
     func purchase() async throws -> PurchaseResult {
+        Self.logger.info("🛒 Purchase initiated")
+        
+        // Load the product
+        Self.logger.info("📦 Loading products...")
         let products = try await Product.products(for: [Self.productID])
+        
         guard let product = products.first else {
-            Self.logger.error("Product not found: \(Self.productID, privacy: .private)")
+            Self.logger.error("❌ Product not found: \(Self.productID)")
             throw PurchaseError.productUnavailable
         }
-
+        
+        Self.logger.info("✅ Product loaded: \(product.displayName) - \(product.displayPrice)")
+        
+        // Attempt the purchase
+        Self.logger.info("💳 Starting purchase flow...")
         let result = try await product.purchase()
+        
+        Self.logger.info("📱 Purchase result received")
+        
         switch result {
         case .success(let verification):
-            if case .verified(let transaction) = verification {
-                await transaction.finish()
-                setIsPro(true)
-                return .success
-            }
-            return .failed
+            Self.logger.info("✅ Purchase succeeded, verifying...")
+            // Verify the transaction
+            let transaction = try checkVerified(verification)
+            
+            // Update entitlement
+            await checkEntitlement()
+            
+            // Finish the transaction
+            await transaction.finish()
+            
+            Self.logger.info("🎉 Purchase completed successfully")
+            return .success
+            
         case .userCancelled:
+            Self.logger.info("❌ User cancelled purchase")
             return .userCancelled
+            
         case .pending:
+            Self.logger.info("⏳ Purchase pending approval")
             return .pending
+            
         @unknown default:
+            Self.logger.error("❓ Unknown purchase result")
             return .failed
         }
     }
 
     func restore() async {
-        do {
-            try await AppStore.sync()
-        } catch {
-            Self.logger.error("AppStore.sync failed during restore: \(error.localizedDescription, privacy: .private)")
-        }
+        Self.logger.info("Restoring purchases")
         await checkEntitlement()
     }
 
     private func checkEntitlement() async {
-        if Self.isTestBuild {
-            setIsPro(true)
-            return
-        }
-        var foundPro = false
+        var hasPurchased = false
+        
+        // Check all transactions for this user
         for await result in Transaction.currentEntitlements {
-            if case .verified(let transaction) = result,
-               transaction.productID == Self.productID,
-               transaction.revocationDate == nil {
-                foundPro = true
+            guard case .verified(let transaction) = result else {
+                continue
+            }
+            
+            if transaction.productID == Self.productID {
+                hasPurchased = true
+                Self.logger.info("Found verified entitlement for product: \(Self.productID)")
                 break
             }
         }
-        setIsPro(foundPro)
+        
+        setIsPro(hasPurchased)
     }
 
     private func listenForTransactions() async {
+        // Listen for transaction updates
         for await result in Transaction.updates {
-            if case .verified(let transaction) = result {
-                if transaction.productID == Self.productID {
-                    let active = transaction.revocationDate == nil
-                    setIsPro(active)
-                }
-                await transaction.finish()
+            guard case .verified(let transaction) = result else {
+                Self.logger.warning("Received unverified transaction")
+                continue
             }
+            
+            Self.logger.info("Transaction update received for product: \(transaction.productID)")
+            
+            // Update entitlement
+            await checkEntitlement()
+            
+            // Finish the transaction
+            await transaction.finish()
         }
     }
 
     private func setIsPro(_ value: Bool) {
-        guard isPro != value else { return }
-        isPro = value
-        if !Self.isTestBuild {
-            Self.writeIsProToKeychain(value)
+        self.isPro = value
+        Self.logger.info("isPro set to: \(value)")
+    }
+    
+    private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
+        switch result {
+        case .unverified(_, let error):
+            Self.logger.error("Transaction verification failed: \(error.localizedDescription)")
+            throw error
+        case .verified(let safe):
+            return safe
         }
-        Self.logger.log("isPro=\(value, privacy: .private)")
     }
 
     enum PurchaseResult {

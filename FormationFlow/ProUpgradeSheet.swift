@@ -69,26 +69,7 @@ struct ProUpgradeSheet: View {
                 Button {
                     Task { await handlePurchase() }
                 } label: {
-                    HStack(spacing: 8) {
-                        if case .loading = purchaseState {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        }
-                        let priceSuffix = product.map { " — \($0.displayPrice)" } ?? ""
-                        let buttonText = {
-                            if case .loading = purchaseState {
-                                return "Upgrading..."
-                            }
-                            if case .error(_) = purchaseState {
-                                return "Try Again\(priceSuffix)"
-                            }
-                            return "Upgrade\(priceSuffix)"
-                        }()
-                        Text(buttonText)
-                            .font(.headline)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
+                    purchaseButtonLabel
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.orange)
@@ -153,11 +134,40 @@ struct ProUpgradeSheet: View {
                 .font(.caption)
                 .foregroundColor(.secondary)
 
+            // DEBUG UNLOCK
+            #if DEBUG
+            Button("DEBUG: FORCE UNLOCK PRO") {
+                Task {
+                    await entitlementManager.debugForceProStatus()
+                }
+            }
+            .font(.caption.bold())
+            .foregroundColor(.green)
+            .padding(.top, 4)
+            
+            Button("DEBUG: RESET PRO (Test Purchase)") {
+                Task {
+                    await entitlementManager.debugResetProStatus()
+                }
+            }
+            .font(.caption.bold())
+            .foregroundColor(.red)
+            .padding(.top, 2)
+            #endif
+
             Spacer()
         }
         .padding()
         .onChange(of: entitlementManager.isPro) { _, isPro in
+            logger.info("isPro changed to: \(isPro)")
             if isPro { dismiss() }
+        }
+        .onAppear {
+            logger.info("📱 ProUpgradeSheet appeared. isPro = \(entitlementManager.isPro)")
+            if entitlementManager.isPro { dismiss() }
+        }
+        .onDisappear {
+            logger.info("👋 ProUpgradeSheet disappeared")
         }
         .alert(
             "Restore Purchases",
@@ -181,27 +191,60 @@ struct ProUpgradeSheet: View {
         }
     }
 
+    private var purchaseButtonLabel: some View {
+        let priceSuffix = product.map { " — \($0.displayPrice)" } ?? ""
+        let buttonText = purchaseButtonText(priceSuffix: priceSuffix)
+        
+        return HStack(spacing: 8) {
+            if case .loading = purchaseState {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+            }
+            Text(buttonText)
+                .font(.headline)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+    }
+    
+    private func purchaseButtonText(priceSuffix: String) -> String {
+        if case .loading = purchaseState {
+            return "Upgrading..."
+        }
+        if case .error(_) = purchaseState {
+            return "Try Again\(priceSuffix)"
+        }
+        return "Upgrade\(priceSuffix)"
+    }
+    
     private func featureRow(_ text: String) -> some View {
         Label(text, systemImage: "checkmark.circle.fill")
             .foregroundColor(.primary)
     }
 
     private func handlePurchase() async {
+        logger.info("🛒 User tapped Upgrade button")
         purchaseState = .loading
         do {
+            logger.info("💳 Calling entitlementManager.purchase()...")
             let result = try await entitlementManager.purchase()
+            logger.info("✅ Purchase call returned")
             switch result {
             case .success:
+                logger.info("🎉 Purchase succeeded")
                 break
             case .userCancelled:
+                logger.info("❌ Purchase cancelled by user")
                 purchaseState = .idle
             case .pending:
+                logger.info("⏳ Purchase pending")
                 purchaseState = .pending
             case .failed:
+                logger.error("❌ Purchase failed")
                 purchaseState = .error("Purchase could not be completed.")
             }
         } catch {
-            logger.error("Purchase failed: \(error.localizedDescription, privacy: .private)")
+            logger.error("💥 Purchase threw error: \(error.localizedDescription, privacy: .public)")
             let message = (error as? LocalizedError)?.errorDescription
                 ?? "Something went wrong. Please try again."
             purchaseState = .error(message)
