@@ -2145,7 +2145,6 @@ struct FloorGridView: View {
                         // 3a: Path handles — block only when touching the SELECTED athlete itself
                     if athleteAtStart?.id != selectedAthleteID,
                        let selectedAthleteID,
-                       let startFormationID, let endFormationID,
                        let player
                     {
                         let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
