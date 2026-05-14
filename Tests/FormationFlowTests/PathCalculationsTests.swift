@@ -121,4 +121,84 @@ final class PathCalculationsTests: XCTestCase {
         XCTAssertTrue(collisionIDs.contains(athlete2))
         XCTAssertFalse(collisionIDs.contains(athlete3))
     }
+
+    func testFindPathCollisionDetailsAddsPenaltyResponses() {
+        let athlete1 = UUID()
+        let athlete2 = UUID()
+
+        let path1 = TransitionPathRenderItem(
+            athleteID: athlete1,
+            startPosition: CGPoint(x: 0, y: 0),
+            endPosition: CGPoint(x: 10, y: 10),
+            controlPoint: nil,
+            waypoints: []
+        )
+        let path2 = TransitionPathRenderItem(
+            athleteID: athlete2,
+            startPosition: CGPoint(x: 0, y: 10),
+            endPosition: CGPoint(x: 10, y: 0),
+            controlPoint: nil,
+            waypoints: []
+        )
+
+        let details = PathCalculations.findPathCollisionDetails(paths: [path1, path2], counts: 8, steps: 60)
+
+        XCTAssertTrue(details.ids.contains(athlete1))
+        XCTAssertTrue(details.ids.contains(athlete2))
+        XCTAssertEqual(details.responses[athlete1]?.count, 1)
+        XCTAssertEqual(details.responses[athlete2]?.count, 1)
+
+        let response1 = try XCTUnwrap(details.responses[athlete1]?.first)
+        let response2 = try XCTUnwrap(details.responses[athlete2]?.first)
+        XCTAssertEqual(response1.holdCounts, 0.5)
+        XCTAssertEqual(response2.holdCounts, 0.5)
+        XCTAssertEqual(response1.progress, 0.5, accuracy: 0.02)
+        XCTAssertEqual(response2.progress, 0.5, accuracy: 0.02)
+        XCTAssertGreaterThan(PathCalculations.squaredDistance(from: response1.redirectOffset, to: .zero), 0)
+        XCTAssertEqual(response1.redirectOffset.x, -response2.redirectOffset.x, accuracy: 0.001)
+        XCTAssertEqual(response1.redirectOffset.y, -response2.redirectOffset.y, accuracy: 0.001)
+    }
+
+    func testHoldAdjustedPathProgressSupportsTransientCollisionHolds() {
+        let collisionHold = [(progress: CGFloat(0.5), duration: CGFloat(0.5))]
+
+        let heldProgress = PathCalculations.holdAdjustedPathProgress(
+            wallProgress: 0.52,
+            holdEvents: collisionHold,
+            moveDuration: 8
+        )
+        let recoveredProgress = PathCalculations.holdAdjustedPathProgress(
+            wallProgress: 0.7,
+            holdEvents: collisionHold,
+            moveDuration: 8
+        )
+
+        XCTAssertEqual(heldProgress, 0.5, accuracy: 0.001)
+        XCTAssertGreaterThan(recoveredProgress, 0.5)
+        XCTAssertLessThan(recoveredProgress, 0.7)
+    }
+
+    func testCollisionRedirectedPositionTapersAroundCollision() {
+        let response = PathCalculations.CollisionResponse(
+            progress: 0.5,
+            holdCounts: 0.5,
+            redirectOffset: CGPoint(x: 1, y: 0)
+        )
+        let position = CGPoint(x: 10, y: 10)
+
+        let redirected = PathCalculations.collisionRedirectedPosition(
+            position,
+            pathProgress: 0.5,
+            responses: [response]
+        )
+        let recovered = PathCalculations.collisionRedirectedPosition(
+            position,
+            pathProgress: 0.7,
+            responses: [response]
+        )
+
+        XCTAssertEqual(redirected.x, 11, accuracy: 0.001)
+        XCTAssertEqual(redirected.y, 10, accuracy: 0.001)
+        XCTAssertEqual(recovered, position)
+    }
 }

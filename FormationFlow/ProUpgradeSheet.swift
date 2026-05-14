@@ -73,31 +73,10 @@ struct ProUpgradeSheet: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.orange)
-                .disabled({
-                    if case .loading = purchaseState { return true }
-                    return false
-                }())
-                .accessibilityLabel(
-                    {
-                        if case .loading = purchaseState { return "Upgrading" }
-                        if case .error(_) = purchaseState { return "Try Again" }
-                        return "Upgrade"
-                    }()
-                )
-                .accessibilityHint(
-                    {
-                        if case .loading = purchaseState { return "Upgrading to Pro version" }
-                        if case .error(_) = purchaseState { return "Try upgrading to Pro version again" }
-                        return "Upgrade to Pro version"
-                    }()
-                )
-                .help(
-                    {
-                        if case .loading = purchaseState { return "Upgrading" }
-                        if case .error(_) = purchaseState { return "Try Again" }
-                        return "Upgrade"
-                    }()
-                )
+                .disabled(isPurchaseLoading)
+                .accessibilityLabel(purchaseAccessibilityLabel)
+                .accessibilityHint(purchaseAccessibilityHint)
+                .help(purchaseHelpText)
             }
 
             Button {
@@ -205,6 +184,29 @@ struct ProUpgradeSheet: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14)
+    }
+
+    private var isPurchaseLoading: Bool {
+        if case .loading = purchaseState { return true }
+        return false
+    }
+
+    private var purchaseAccessibilityLabel: String {
+        if case .loading = purchaseState { return "Upgrading" }
+        if case .error(_) = purchaseState { return "Try Again" }
+        return "Upgrade"
+    }
+
+    private var purchaseAccessibilityHint: String {
+        if case .loading = purchaseState { return "Upgrading to Pro version" }
+        if case .error(_) = purchaseState { return "Try upgrading to Pro version again" }
+        return "Upgrade to Pro version"
+    }
+
+    private var purchaseHelpText: String {
+        if case .loading = purchaseState { return "Upgrading" }
+        if case .error(_) = purchaseState { return "Try Again" }
+        return "Upgrade"
     }
     
     private func purchaseButtonText(priceSuffix: String) -> String {

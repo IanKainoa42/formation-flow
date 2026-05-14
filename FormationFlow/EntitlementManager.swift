@@ -84,6 +84,16 @@ final class EntitlementManager: ObservableObject {
         await checkEntitlement()
     }
 
+    #if DEBUG
+    func debugForceProStatus() async {
+        setIsPro(true)
+    }
+
+    func debugResetProStatus() async {
+        setIsPro(false)
+    }
+    #endif
+
     private func checkEntitlement() async {
         var hasPurchased = false
         
