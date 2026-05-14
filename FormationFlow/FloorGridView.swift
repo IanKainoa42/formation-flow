@@ -958,6 +958,7 @@ struct FloorGridView: View {
                 collisionIDs: collisionSummary.ids,
                 pathCollisionIDs: pathCollisionIDs,
                 pathCollisionMarkerPositions: player?.cachedPathCollisionMarkers ?? [],
+                pathCollisionMarkerProgresses: player?.cachedPathCollisionMarkerProgresses ?? [],
                 cellSize: cellSize,
                 offset: offset,
                 swapSourceID: swapSourceAthleteID,
@@ -2930,6 +2931,7 @@ struct FloorGridView: View {
             collisionIDs: collisionSummary.ids,
             pathCollisionIDs: pathCollisionIDs,
             pathCollisionMarkerPositions: player?.cachedPathCollisionMarkers ?? [],
+            pathCollisionMarkerProgresses: player?.cachedPathCollisionMarkerProgresses ?? [],
             startFormationColor: transitionStartColor,
             endFormationColor: transitionEndColor,
             transitionProgress: player?.progress ?? 0

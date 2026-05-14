@@ -145,6 +145,8 @@ final class PathCalculationsTests: XCTestCase {
 
         XCTAssertTrue(details.ids.contains(athlete1))
         XCTAssertTrue(details.ids.contains(athlete2))
+        XCTAssertEqual(details.markerProgresses.count, 1)
+        XCTAssertEqual(details.markerProgresses.first ?? -1, 0.5, accuracy: 0.02)
         XCTAssertEqual(details.responses[athlete1]?.count, 1)
         XCTAssertEqual(details.responses[athlete2]?.count, 1)
 

@@ -100,6 +100,7 @@ struct FloorCanvasView: View {
     var collisionIDs: Set<UUID> = []
     var pathCollisionIDs: Set<UUID> = []
     var pathCollisionMarkerPositions: [CGPoint] = []
+    var pathCollisionMarkerProgresses: [CGFloat] = []
     var blinkingResolvedIDs: Set<UUID> = []
     var blinkPhase: Int = 0
     var cellSize: CGFloat = 12
@@ -131,18 +132,16 @@ struct FloorCanvasView: View {
     private var markerScale: CGFloat { cellSize / 12.0 }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: pathCollisionMarkerPositions.isEmpty || reduceMotion)) { timeline in
-            mainCanvas(collisionPulseTime: timeline.date.timeIntervalSinceReferenceDate)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(.background)
-                .accessibilityElement(children: .contain)
-                .accessibilityLabel("Formation court grid")
-                .accessibilityValue("\(athletes.count) athletes on the court")
-                .overlay { accessibilityOverlay }
-        }
+        mainCanvas
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(.background)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Formation court grid")
+            .accessibilityValue("\(athletes.count) athletes on the court")
+            .overlay { accessibilityOverlay }
     }
 
-    private func mainCanvas(collisionPulseTime: TimeInterval) -> some View {
+    private var mainCanvas: some View {
         Canvas { context, _ in
             var context = context
             context.translateBy(x: offset.x, y: offset.y)
@@ -155,7 +154,7 @@ struct FloorCanvasView: View {
             drawTrails(in: &context)
             drawAlignmentGuides(in: &context)
             drawTransitionPaths(in: &context)
-            drawPathCollisionMarkers(in: &context, pulseTime: collisionPulseTime)
+            drawPathCollisionMarkers(in: &context)
             drawEndpointMarkers(in: &context)
             drawAthletes(in: &context)
 
@@ -190,44 +189,44 @@ struct FloorCanvasView: View {
     }
 
 
-    private func drawPathCollisionMarkers(in context: inout GraphicsContext, pulseTime: TimeInterval) {
+    private func drawPathCollisionMarkers(in context: inout GraphicsContext) {
         guard !pathCollisionMarkerPositions.isEmpty else { return }
 
         for (index, position) in pathCollisionMarkerPositions.enumerated() {
             let center = CGPoint(x: position.x * cellSize, y: position.y * cellSize)
-            let pulseCycle = 1.15
-            let phase = CGFloat((pulseTime + (Double(index) * 0.17)).truncatingRemainder(dividingBy: pulseCycle) / pulseCycle)
-            let pulseOpacity = 1.0 - phase
-            let easedPhase = 1.0 - ((1.0 - phase) * (1.0 - phase))
 
-            let floorGlowR = (22 + (24 * easedPhase)) * markerScale
-            var floorGlow = Path()
-            floorGlow.addEllipse(
-                in: CGRect(
-                    x: center.x - floorGlowR,
-                    y: center.y - floorGlowR,
-                    width: floorGlowR * 2,
-                    height: floorGlowR * 2
+            if let pulsePhase = collisionPulsePhase(forMarkerAt: index) {
+                let expansion = pulsePhase * pulsePhase
+                let pulseOpacity = pow(1.0 - pulsePhase, 0.65)
+                let floorGlowR = (20 + (52 * expansion)) * markerScale
+                var floorGlow = Path()
+                floorGlow.addEllipse(
+                    in: CGRect(
+                        x: center.x - floorGlowR,
+                        y: center.y - floorGlowR,
+                        width: floorGlowR * 2,
+                        height: floorGlowR * 2
+                    )
                 )
-            )
-            context.fill(
-                floorGlow,
-                with: .radialGradient(
-                    Gradient(colors: [
-                        Color.red.opacity(0.32 * pulseOpacity),
-                        Color.orange.opacity(0.16 * pulseOpacity),
-                        Color.clear
-                    ]),
-                    center: center,
-                    startRadius: 0,
-                    endRadius: floorGlowR
+                context.fill(
+                    floorGlow,
+                    with: .radialGradient(
+                        Gradient(colors: [
+                            Color.red.opacity(0.34 * pulseOpacity),
+                            Color.orange.opacity(0.18 * pulseOpacity),
+                            Color.clear
+                        ]),
+                        center: center,
+                        startRadius: 0,
+                        endRadius: floorGlowR
+                    )
                 )
-            )
-            context.stroke(
-                floorGlow,
-                with: .color(.red.opacity(0.38 * pulseOpacity)),
-                lineWidth: max(1.0, 1.5 * markerScale)
-            )
+                context.stroke(
+                    floorGlow,
+                    with: .color(.red.opacity(0.42 * pulseOpacity)),
+                    lineWidth: max(1.0, 1.5 * markerScale)
+                )
+            }
 
             let glowR = 10 * markerScale
             var glow = Path()
@@ -238,6 +237,21 @@ struct FloorCanvasView: View {
             context.fill(star, with: .color(.white.opacity(0.95)))
             context.stroke(star, with: .color(.red), lineWidth: 2)
         }
+    }
+
+    private func collisionPulsePhase(forMarkerAt index: Int) -> CGFloat? {
+        guard
+            !reduceMotion,
+            pathCollisionMarkerProgresses.indices.contains(index)
+        else {
+            return nil
+        }
+
+        let collisionProgress = pathCollisionMarkerProgresses[index]
+        let pulseDuration: CGFloat = 0.22
+        let elapsed = transitionProgress - collisionProgress
+        guard elapsed >= 0, elapsed <= pulseDuration else { return nil }
+        return elapsed / pulseDuration
     }
 
     private func eightPointStarPath(center: CGPoint, outerRadius: CGFloat, innerRadius: CGFloat) -> Path {

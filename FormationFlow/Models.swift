@@ -2414,8 +2414,8 @@ struct PathCalculations {
         counts: CGFloat = 8,
         steps: Int = 60,
         minDistance: CGFloat = CourtConstants.collisionDistance
-    ) -> (ids: Set<UUID>, markers: [CGPoint], responses: [UUID: [CollisionResponse]]) {
-        guard paths.count > 1 else { return ([], [], [:]) }
+    ) -> (ids: Set<UUID>, markers: [CGPoint], markerProgresses: [CGFloat], responses: [UUID: [CollisionResponse]]) {
+        guard paths.count > 1 else { return ([], [], [], [:]) }
 
         let timings: [(travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat, thresholds: [CGFloat], nodes: [CGPoint], lengths: [CGFloat], totalLength: CGFloat, item: TransitionPathRenderItem)] = paths.map { item in
             let transition = AthleteTransition(
@@ -2503,6 +2503,7 @@ struct PathCalculations {
 
         var collisionIDs = Set<UUID>()
         var markers: [CGPoint] = []
+        var markerProgresses: [CGFloat] = []
         var responses: [UUID: [CollisionResponse]] = [:]
         var seenPairs = Set<Int64>()
 
@@ -2537,6 +2538,7 @@ struct PathCalculations {
                                             let midpoint = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
                                             if !markers.contains(where: { squaredDistance(from: $0, to: midpoint) < 1 }) {
                                                 markers.append(midpoint)
+                                                markerProgresses.append(CGFloat(step) / CGFloat(steps))
                                             }
 
                                             if timings[index].travel > collisionResponseMinimumTravel {
@@ -2582,7 +2584,7 @@ struct PathCalculations {
             responses[athleteID] = responses[athleteID]?.sorted { $0.progress < $1.progress }
         }
 
-        return (collisionIDs, markers, responses)
+        return (collisionIDs, markers, markerProgresses, responses)
     }
 
     static func findPathCollisionMarkers(
@@ -2681,6 +2683,7 @@ final class TransitionPlayer: ObservableObject {
     private(set) var cachedTransitionPaths: [TransitionPathRenderItem] = []
     private(set) var cachedPathCollisionIDs: Set<UUID> = []
     private(set) var cachedPathCollisionMarkers: [CGPoint] = []
+    private(set) var cachedPathCollisionMarkerProgresses: [CGFloat] = []
     private var collisionResponseCache: [UUID: [PathCalculations.CollisionResponse]] = [:]
 
     private var animationTimer: AnimationTimer?
@@ -2776,6 +2779,7 @@ final class TransitionPlayer: ObservableObject {
         )
         cachedPathCollisionIDs = collisions.ids
         cachedPathCollisionMarkers = collisions.markers
+        cachedPathCollisionMarkerProgresses = collisions.markerProgresses
         collisionResponseCache = collisions.responses
     }
 
