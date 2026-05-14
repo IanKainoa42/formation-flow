@@ -86,6 +86,39 @@ final class PathCalculationsTests: XCTestCase {
         XCTAssertGreaterThan(outgoingPoint.y, 2.55)
     }
 
+    func testSharpWaypointStraightensAdjacentSegmentEvenWhenNeighborIsSmooth() {
+        let start = CGPoint(x: 0, y: 0)
+        let sharpWaypoint = PathWaypoint(position: CGPoint(x: 5, y: 0), isSmooth: false)
+        let smoothWaypoint = PathWaypoint(position: CGPoint(x: 10, y: 10), isSmooth: true)
+        let end = CGPoint(x: 15, y: 10)
+
+        let path = PathCalculations.waypointPath(
+            from: start,
+            to: end,
+            waypoints: [sharpWaypoint, smoothWaypoint],
+            steps: 9
+        )
+        XCTAssertEqual(path[3].x, 6.0, accuracy: 0.001)
+        XCTAssertEqual(path[3].y, 2.0, accuracy: 0.001)
+
+        let totalLength = PathCalculations.distance(from: start, to: sharpWaypoint.position)
+            + PathCalculations.distance(from: sharpWaypoint.position, to: smoothWaypoint.position)
+            + PathCalculations.distance(from: smoothWaypoint.position, to: end)
+        let middleSegmentProgress = (
+            PathCalculations.distance(from: start, to: sharpWaypoint.position)
+                + PathCalculations.distance(from: sharpWaypoint.position, to: smoothWaypoint.position) * 0.2
+        ) / totalLength
+
+        let interpolatedPoint = PathCalculations.interpolateWaypointPath(
+            from: start,
+            to: end,
+            waypoints: [sharpWaypoint, smoothWaypoint],
+            progress: middleSegmentProgress
+        )
+        XCTAssertEqual(interpolatedPoint.x, 6.0, accuracy: 0.001)
+        XCTAssertEqual(interpolatedPoint.y, 2.0, accuracy: 0.001)
+    }
+
     func testCollisionSummary() {
         let athlete1 = RenderedAthlete(id: UUID(), label: "A1", role: .base, position: CGPoint(x: 10, y: 10))
         let athlete2 = RenderedAthlete(id: UUID(), label: "A2", role: .base, position: CGPoint(x: 11, y: 11)) // Distance ~1.41

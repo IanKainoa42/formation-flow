@@ -475,9 +475,13 @@ struct FloorCanvasView: View {
     }
 
     private func segmentUsesSmoothWaypoint(segmentIndex: Int, waypoints: [PathWaypoint]) -> Bool {
-        let waypointAtEndIsSmooth = segmentIndex < waypoints.count && waypoints[segmentIndex].isSmooth
-        let waypointAtStartIsSmooth = segmentIndex > 0 && waypoints[segmentIndex - 1].isSmooth
-        return waypointAtEndIsSmooth || waypointAtStartIsSmooth
+        let startsAtWaypoint = segmentIndex > 0
+        let endsAtWaypoint = segmentIndex < waypoints.count
+
+        if startsAtWaypoint && !waypoints[segmentIndex - 1].isSmooth { return false }
+        if endsAtWaypoint && !waypoints[segmentIndex].isSmooth { return false }
+
+        return startsAtWaypoint || endsAtWaypoint
     }
 
     private func drawTransitionPaths(in context: inout GraphicsContext) {
