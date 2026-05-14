@@ -131,16 +131,18 @@ struct FloorCanvasView: View {
     private var markerScale: CGFloat { cellSize / 12.0 }
 
     var body: some View {
-        mainCanvas
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(.background)
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Formation court grid")
-            .accessibilityValue("\(athletes.count) athletes on the court")
-            .overlay { accessibilityOverlay }
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: pathCollisionMarkerPositions.isEmpty || reduceMotion)) { timeline in
+            mainCanvas(collisionPulseTime: timeline.date.timeIntervalSinceReferenceDate)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(.background)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Formation court grid")
+                .accessibilityValue("\(athletes.count) athletes on the court")
+                .overlay { accessibilityOverlay }
+        }
     }
 
-    private var mainCanvas: some View {
+    private func mainCanvas(collisionPulseTime: TimeInterval) -> some View {
         Canvas { context, _ in
             var context = context
             context.translateBy(x: offset.x, y: offset.y)
@@ -153,7 +155,7 @@ struct FloorCanvasView: View {
             drawTrails(in: &context)
             drawAlignmentGuides(in: &context)
             drawTransitionPaths(in: &context)
-            drawPathCollisionMarkers(in: &context)
+            drawPathCollisionMarkers(in: &context, pulseTime: collisionPulseTime)
             drawEndpointMarkers(in: &context)
             drawAthletes(in: &context)
 
@@ -170,6 +172,7 @@ struct FloorCanvasView: View {
     }
 
     @Environment(\.accessibilityEnabled) private var accessibilityEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @ViewBuilder
     private var accessibilityOverlay: some View {
@@ -187,16 +190,49 @@ struct FloorCanvasView: View {
     }
 
 
-    private func drawPathCollisionMarkers(in context: inout GraphicsContext) {
+    private func drawPathCollisionMarkers(in context: inout GraphicsContext, pulseTime: TimeInterval) {
         guard !pathCollisionMarkerPositions.isEmpty else { return }
 
-        for position in pathCollisionMarkerPositions {
+        for (index, position) in pathCollisionMarkerPositions.enumerated() {
             let center = CGPoint(x: position.x * cellSize, y: position.y * cellSize)
+            let pulseCycle = 1.15
+            let phase = CGFloat((pulseTime + (Double(index) * 0.17)).truncatingRemainder(dividingBy: pulseCycle) / pulseCycle)
+            let pulseOpacity = 1.0 - phase
+            let easedPhase = 1.0 - ((1.0 - phase) * (1.0 - phase))
+
+            let floorGlowR = (22 + (24 * easedPhase)) * markerScale
+            var floorGlow = Path()
+            floorGlow.addEllipse(
+                in: CGRect(
+                    x: center.x - floorGlowR,
+                    y: center.y - floorGlowR,
+                    width: floorGlowR * 2,
+                    height: floorGlowR * 2
+                )
+            )
+            context.fill(
+                floorGlow,
+                with: .radialGradient(
+                    Gradient(colors: [
+                        Color.red.opacity(0.32 * pulseOpacity),
+                        Color.orange.opacity(0.16 * pulseOpacity),
+                        Color.clear
+                    ]),
+                    center: center,
+                    startRadius: 0,
+                    endRadius: floorGlowR
+                )
+            )
+            context.stroke(
+                floorGlow,
+                with: .color(.red.opacity(0.38 * pulseOpacity)),
+                lineWidth: max(1.0, 1.5 * markerScale)
+            )
 
             let glowR = 10 * markerScale
             var glow = Path()
             glow.addEllipse(in: CGRect(x: center.x - glowR, y: center.y - glowR, width: glowR * 2, height: glowR * 2))
-            context.fill(glow, with: .color(.red.opacity(0.18)))
+            context.fill(glow, with: .color(.red.opacity(0.22)))
 
             let star = eightPointStarPath(center: center, outerRadius: 8 * markerScale, innerRadius: 4.2 * markerScale)
             context.fill(star, with: .color(.white.opacity(0.95)))
