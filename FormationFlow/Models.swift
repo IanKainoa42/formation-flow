@@ -1815,6 +1815,7 @@ final class RoutineStore: ObservableObject {
 
 struct PathCalculations {
     static let collisionPenaltyCounts: CGFloat = 0.5
+    static let defaultPlaybackSpeed: CGFloat = 1.0
     private static let collisionResponseMinimumTravel: CGFloat = 0.001
     private static let collisionRedirectDistance: CGFloat = 1.0
     private static let collisionRedirectLeadProgress: CGFloat = 0.05
@@ -1829,6 +1830,20 @@ struct PathCalculations {
     private struct PathCollisionSample {
         let position: CGPoint
         let pathProgress: CGFloat
+    }
+
+    static func delayedMovementProgress(
+        timelineProgress: CGFloat,
+        moveDelayCounts: CGFloat,
+        moveDurationCounts: CGFloat,
+        playbackDurationCounts: CGFloat
+    ) -> CGFloat {
+        let elapsedCounts = max(0, timelineProgress) * max(playbackDurationCounts, 0.001)
+        let activeCounts = elapsedCounts - max(0, moveDelayCounts)
+        guard moveDurationCounts > 0 else {
+            return activeCounts >= 0 ? 1 : 0
+        }
+        return max(0, min(1, activeCounts / moveDurationCounts))
     }
 
     static func distance(from: CGPoint, to: CGPoint) -> CGFloat {
@@ -2304,6 +2319,11 @@ struct PathCalculations {
 
         let maxEffectiveTime = timings.max(by: { $0.effectiveTime < $1.effectiveTime })?.effectiveTime ?? 1
         let effectiveCounts = max(counts, 0.5)
+        let playbackDurationCounts = timings.reduce(effectiveCounts) { currentMax, timing in
+            let durationFraction = maxEffectiveTime > 0 ? timing.effectiveTime / maxEffectiveTime : 1
+            let activeDurationCounts = durationFraction * effectiveCounts
+            return max(currentMax, max(0, timing.item.moveDelay) + activeDurationCounts)
+        }
 
         // Sample each athlete's position at each time step
         let sampledPositions: [[CGPoint]] = timings.map { timing in
@@ -2311,13 +2331,17 @@ struct PathCalculations {
             for step in 0...steps {
                 let progress = CGFloat(step) / CGFloat(steps)
                 let durationFraction = maxEffectiveTime > 0 ? timing.effectiveTime / maxEffectiveTime : 1
-                let timingOffset = min(0.99, timing.item.moveDelay / effectiveCounts)
-                let adjustedProgress = max(0, progress - timingOffset) / (1.0 - timingOffset)
-                let athleteProgress = durationFraction > 0 ? min(1.0, adjustedProgress / durationFraction) : 1.0
+                let activeDurationCounts = durationFraction * effectiveCounts
+                let athleteProgress = delayedMovementProgress(
+                    timelineProgress: progress,
+                    moveDelayCounts: timing.item.moveDelay,
+                    moveDurationCounts: activeDurationCounts,
+                    playbackDurationCounts: playbackDurationCounts
+                )
 
                 let effectiveProgress: CGFloat
                 if !timing.item.waypoints.isEmpty && timing.hold > 0 {
-                    let moveDuration = durationFraction * effectiveCounts * (timing.travel / max(timing.effectiveTime, 0.001))
+                    let moveDuration = activeDurationCounts * (timing.travel / max(timing.effectiveTime, 0.001))
                     effectiveProgress = holdAdjustedPathProgress(
                         wallProgress: athleteProgress,
                         waypoints: timing.item.waypoints,
@@ -2441,6 +2465,11 @@ struct PathCalculations {
 
         let maxEffectiveTime = timings.max(by: { $0.effectiveTime < $1.effectiveTime })?.effectiveTime ?? 1
         let effectiveCounts = max(counts, 0.5)
+        let playbackDurationCounts = timings.reduce(effectiveCounts) { currentMax, timing in
+            let durationFraction = maxEffectiveTime > 0 ? timing.effectiveTime / maxEffectiveTime : 1
+            let activeDurationCounts = durationFraction * effectiveCounts
+            return max(currentMax, max(0, timing.item.moveDelay) + activeDurationCounts)
+        }
 
         let sampledPaths: [[PathCollisionSample]] = timings.map { timing in
             var samples: [PathCollisionSample] = []
@@ -2448,13 +2477,17 @@ struct PathCalculations {
             for step in 0...steps {
                 let progress = CGFloat(step) / CGFloat(steps)
                 let durationFraction = maxEffectiveTime > 0 ? timing.effectiveTime / maxEffectiveTime : 1
-                let timingOffset = min(0.99, timing.item.moveDelay / effectiveCounts)
-                let adjustedProgress = max(0, progress - timingOffset) / (1.0 - timingOffset)
-                let athleteProgress = durationFraction > 0 ? min(1.0, adjustedProgress / durationFraction) : 1.0
+                let activeDurationCounts = durationFraction * effectiveCounts
+                let athleteProgress = delayedMovementProgress(
+                    timelineProgress: progress,
+                    moveDelayCounts: timing.item.moveDelay,
+                    moveDurationCounts: activeDurationCounts,
+                    playbackDurationCounts: playbackDurationCounts
+                )
 
                 let effectiveProgress: CGFloat
                 if !timing.item.waypoints.isEmpty && timing.hold > 0 {
-                    let moveDuration = durationFraction * effectiveCounts * (timing.travel / max(timing.effectiveTime, 0.001))
+                    let moveDuration = activeDurationCounts * (timing.travel / max(timing.effectiveTime, 0.001))
                     effectiveProgress = holdAdjustedPathProgress(
                         wallProgress: athleteProgress,
                         waypoints: timing.item.waypoints,
@@ -2642,7 +2675,7 @@ final class TransitionPlayer: ObservableObject {
     @Published var isLooping = false
     @Published var progress: CGFloat = 0
     @Published var currentAthletes: [RenderedAthlete]
-    @Published var speed: CGFloat = 2.0
+    @Published var speed: CGFloat = PathCalculations.defaultPlaybackSpeed
     @Published var startAthletes: [RenderedAthlete] {
         didSet { guard !isBatchRefreshing else { return }; updateTimingCache() }
     }
@@ -2678,6 +2711,7 @@ final class TransitionPlayer: ObservableObject {
     // ⚡ Bolt: Cache timing calculations outside the animation loop to avoid O(N) operations per frame.
     private var timingCache: [UUID: (endAthlete: RenderedAthlete, transition: AthleteTransition, travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat, thresholds: [CGFloat], nodes: [CGPoint], lengths: [CGFloat], totalLength: CGFloat)] = [:]
     private var maxEffectiveTime: CGFloat = 1
+    private var playbackDurationCounts: CGFloat = 1
 
     // ⚡ Bolt: Cache path generation and spatial collisions outside the animation loop
     private(set) var cachedTransitionPaths: [TransitionPathRenderItem] = []
@@ -2754,10 +2788,22 @@ final class TransitionPlayer: ObservableObject {
         self.maxEffectiveTime = newMaxEffectiveTime
         updatePathCaches()
 
-        self.maxEffectiveTime = newTimingCache.map { athleteID, cached in
+        let finalMaxEffectiveTime = newTimingCache.map { athleteID, cached in
             let collisionHold = collisionResponseCache[athleteID]?.reduce(CGFloat(0)) { $0 + $1.holdCounts } ?? 0
             return cached.effectiveTime + collisionHold
         }.max() ?? newMaxEffectiveTime
+        self.maxEffectiveTime = finalMaxEffectiveTime
+
+        let effectiveCounts = max(CGFloat(counts), 0.5)
+        self.playbackDurationCounts = newTimingCache.reduce(effectiveCounts) { currentMax, entry in
+            let athleteID = entry.key
+            let cached = entry.value
+            let collisionHold = collisionResponseCache[athleteID]?.reduce(CGFloat(0)) { $0 + $1.holdCounts } ?? 0
+            let effectiveTime = cached.effectiveTime + collisionHold
+            let durationFraction = finalMaxEffectiveTime > 0 ? effectiveTime / finalMaxEffectiveTime : 1
+            let activeDurationCounts = durationFraction * effectiveCounts
+            return max(currentMax, max(0, cached.transition.moveDelayCounts) + activeDurationCounts)
+        }
     }
 
     private func updatePathCaches() {
@@ -2860,7 +2906,7 @@ final class TransitionPlayer: ObservableObject {
 
     private func update() {
         guard isPlaying else { return }
-        let delta = CGFloat(1.0 / 60.0) * speed / max(CGFloat(duration), 0.5)
+        let delta = CGFloat(1.0 / 60.0) * speed / max(playbackDurationCounts, 0.5)
         progress = min(1.0, progress + delta)
         updateAthletesForProgress()
         if progress >= 1.0 {
@@ -2887,9 +2933,13 @@ final class TransitionPlayer: ObservableObject {
             let effectiveTime = cached.effectiveTime + collisionHold
 
             let durationFraction = maxEffectiveTime > 0 ? effectiveTime / maxEffectiveTime : 1
-            let timingOffset = min(0.99, transition.moveDelayCounts / max(CGFloat(counts), 0.5))
-            let adjustedProgress = max(0, progress - timingOffset) / (1.0 - timingOffset)
-            let athleteProgress = durationFraction > 0 ? min(1.0, adjustedProgress / durationFraction) : 1.0
+            let activeDurationCounts = durationFraction * max(CGFloat(counts), 0.5)
+            let athleteProgress = PathCalculations.delayedMovementProgress(
+                timelineProgress: progress,
+                moveDelayCounts: transition.moveDelayCounts,
+                moveDurationCounts: activeDurationCounts,
+                playbackDurationCounts: playbackDurationCounts
+            )
 
             let effectiveProgress: CGFloat
             if hold > 0 || collisionHold > 0 {
@@ -2910,7 +2960,7 @@ final class TransitionPlayer: ObservableObject {
                     }
                 )
 
-                let moveDuration = durationFraction * max(CGFloat(counts), 0.5) * (travel / max(effectiveTime, 0.001))
+                let moveDuration = activeDurationCounts * (travel / max(effectiveTime, 0.001))
                 effectiveProgress = PathCalculations.holdAdjustedPathProgress(
                     wallProgress: athleteProgress,
                     holdEvents: holdEvents,
@@ -3014,7 +3064,7 @@ final class RoutinePlayer: ObservableObject {
     @Published var currentAthletes: [RenderedAthlete] = []
     @Published var progress: CGFloat = 0
     @Published var isPlaying = false
-    @Published var speed: CGFloat = 2.0
+    @Published var speed: CGFloat = PathCalculations.defaultPlaybackSpeed
     @Published var currentSegmentIndex: Int = 0
     @Published var currentFormationName: String = ""
     @Published var showTrail = false

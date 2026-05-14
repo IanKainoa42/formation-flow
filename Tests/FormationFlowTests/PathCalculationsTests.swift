@@ -122,6 +122,31 @@ final class PathCalculationsTests: XCTestCase {
         XCTAssertFalse(collisionIDs.contains(athlete3))
     }
 
+    func testDelayedMovementProgressDoesNotCompressMovementToCatchUp() {
+        let shortMoveProgress = PathCalculations.delayedMovementProgress(
+            timelineProgress: 0.5,
+            moveDelayCounts: 2,
+            moveDurationCounts: 4,
+            playbackDurationCounts: 8
+        )
+        let shortMoveFinished = PathCalculations.delayedMovementProgress(
+            timelineProgress: 0.75,
+            moveDelayCounts: 2,
+            moveDurationCounts: 4,
+            playbackDurationCounts: 8
+        )
+        let longMoveProgress = PathCalculations.delayedMovementProgress(
+            timelineProgress: 0.8,
+            moveDelayCounts: 2,
+            moveDurationCounts: 8,
+            playbackDurationCounts: 10
+        )
+
+        XCTAssertEqual(shortMoveProgress, 0.5, accuracy: 0.001)
+        XCTAssertEqual(shortMoveFinished, 1.0, accuracy: 0.001)
+        XCTAssertEqual(longMoveProgress, 0.75, accuracy: 0.001)
+    }
+
     func testFindPathCollisionDetailsAddsPenaltyResponses() {
         let athlete1 = UUID()
         let athlete2 = UUID()
