@@ -2906,6 +2906,11 @@ struct FloorGridView: View {
                     y: (value.location.y - offset.y) / cellSize
                 )
 
+                if let waypointID = waypointIDHit(at: scaledPoint, cellSize: cellSize) {
+                    deleteWaypoint(id: waypointID)
+                    return
+                }
+
                 if nearestPathHandle(at: scaledPoint, cellSize: cellSize) != nil {
                     return
                 }
@@ -2994,23 +2999,43 @@ struct FloorGridView: View {
         return waypoint.id
     }
 
+    private func waypointIDHit(at point: CGPoint, cellSize: CGFloat) -> UUID? {
+        guard hasTransition, let selectedAthleteID, let player else { return nil }
+        let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
+        let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize) * 1.5
+
+        return transition.pathWaypoints
+            .map { waypoint in
+                (
+                    id: waypoint.id,
+                    distance: PathCalculations.squaredDistance(from: point, to: waypoint.position)
+                )
+            }
+            .filter { $0.distance < hitRadiusSquared }
+            .min { $0.distance < $1.distance }?
+            .id
+    }
+
+    private func deleteWaypoint(id waypointID: UUID) {
+        guard let selectedAthleteID, let startFormationID, let endFormationID else { return }
+        pendingWaypointDeletionID = nil
+        focusedPathHandle = nil
+
+        store.mutateAthleteTransition(from: startFormationID, to: endFormationID, athleteID: selectedAthleteID) { t in
+            t.pathWaypoints.removeAll { $0.id == waypointID }
+        }
+        refreshTransitionFromStore()
+    }
+
     private func deletePendingWaypoint() {
         guard
-            let waypointID = pendingWaypointDeletionID,
-            let selectedAthleteID,
-            let startFormationID,
-            let endFormationID
+            let waypointID = pendingWaypointDeletionID
         else {
             pendingWaypointDeletionID = nil
             return
         }
 
-        pendingWaypointDeletionID = nil
-        store.mutateAthleteTransition(from: startFormationID, to: endFormationID, athleteID: selectedAthleteID) { t in
-            guard let waypointIndex = t.pathWaypoints.firstIndex(where: { $0.id == waypointID }) else { return }
-            t.pathWaypoints.remove(at: waypointIndex)
-        }
-        refreshTransitionFromStore()
+        deleteWaypoint(id: waypointID)
     }
 
     private func resetSelectedPaths() {
