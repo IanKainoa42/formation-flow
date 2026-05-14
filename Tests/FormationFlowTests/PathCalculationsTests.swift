@@ -179,8 +179,8 @@ final class PathCalculationsTests: XCTestCase {
         let markerProgress = try XCTUnwrap(details.markerProgresses.first)
         XCTAssertEqual(markerProgress, 0.422, accuracy: 0.02)
         XCTAssertLessThan(markerProgress, response1.progress)
-        XCTAssertEqual(response1.holdCounts, 0.5)
-        XCTAssertEqual(response2.holdCounts, 0.5)
+        XCTAssertEqual(response1.holdCounts, 0.1)
+        XCTAssertEqual(response2.holdCounts, 0.1)
         XCTAssertEqual(response1.progress, 0.45, accuracy: 0.02)
         XCTAssertEqual(response2.progress, 0.45, accuracy: 0.02)
         XCTAssertGreaterThan(PathCalculations.squaredDistance(from: response1.redirectOffset, to: .zero), 0)
@@ -217,10 +217,10 @@ final class PathCalculationsTests: XCTestCase {
     }
 
     func testHoldAdjustedPathProgressSupportsTransientCollisionHolds() {
-        let collisionHold = [(progress: CGFloat(0.5), duration: CGFloat(0.5))]
+        let collisionHold = [(progress: CGFloat(0.5), duration: CGFloat(0.1))]
 
         let heldProgress = PathCalculations.holdAdjustedPathProgress(
-            wallProgress: 0.52,
+            wallProgress: 0.505,
             holdEvents: collisionHold,
             moveDuration: 8
         )
@@ -238,7 +238,7 @@ final class PathCalculationsTests: XCTestCase {
     func testCollisionRedirectedPositionTapersAroundCollision() {
         let response = PathCalculations.CollisionResponse(
             progress: 0.5,
-            holdCounts: 0.5,
+            holdCounts: 0.1,
             redirectOffset: CGPoint(x: 1, y: 0)
         )
         let position = CGPoint(x: 10, y: 10)

@@ -1814,7 +1814,7 @@ final class RoutineStore: ObservableObject {
 // MARK: - Path Calculation Utilities
 
 struct PathCalculations {
-    static let collisionPenaltyCounts: CGFloat = 0.5
+    static let collisionPenaltyCounts: CGFloat = 0.1
     static let defaultPlaybackSpeed: CGFloat = 1.5
     private static let collisionResponseMinimumTravel: CGFloat = 0.001
     private static let collisionRedirectDistance: CGFloat = 1.0
