@@ -2926,7 +2926,7 @@ struct FloorGridView: View {
 
         return SnapResult(
             translation: mirrorResult.translation,
-            alignmentGuides: mirrorResult.guides.isEmpty ? alignmentResult.guides : [],
+            alignmentGuides: alignmentResult.guides,
             mirrorGuides: mirrorResult.guides
         )
     }
