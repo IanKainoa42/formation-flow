@@ -331,38 +331,74 @@ struct FloorCanvasView: View {
         guard !mirrorGuides.isEmpty else { return }
 
         let axisX = (CourtConstants.width * cellSize) / 2
+        let primaryColor = Color.white
+        let shadowColor = Color.black
         var centerAxis = Path()
         centerAxis.move(to: CGPoint(x: axisX, y: 0))
         centerAxis.addLine(to: CGPoint(x: axisX, y: CourtConstants.height * cellSize))
 
         context.stroke(
             centerAxis,
-            with: .color(formationColor.opacity(0.28)),
-            style: StrokeStyle(lineWidth: max(1.25, 1.6 * markerScale), lineCap: .round, dash: [2, 7])
+            with: .color(shadowColor.opacity(0.45)),
+            style: StrokeStyle(lineWidth: max(2.4, 2.8 * markerScale), lineCap: .round, dash: [2, 7])
+        )
+        context.stroke(
+            centerAxis,
+            with: .color(primaryColor.opacity(0.34)),
+            style: StrokeStyle(lineWidth: max(1.1, 1.3 * markerScale), lineCap: .round, dash: [2, 7])
         )
 
         for guide in mirrorGuides {
             let source = scaledCanvasPoint(guide.sourcePosition)
             let target = scaledCanvasPoint(guide.mirroredPosition)
+            let leftPoint = source.x <= target.x ? source : target
+            let rightPoint = source.x <= target.x ? target : source
+            let centerGap = max(4, 4.5 * markerScale)
+            let centerY = source.y
+            let leftEnd = CGPoint(x: max(leftPoint.x, axisX - centerGap), y: centerY)
+            let rightStart = CGPoint(x: min(rightPoint.x, axisX + centerGap), y: centerY)
+            let lineWidth = max(1.5, 1.8 * markerScale)
 
             var connector = Path()
-            connector.move(to: source)
-            connector.addLine(to: target)
+            connector.move(to: leftPoint)
+            connector.addLine(to: leftEnd)
+            connector.move(to: rightStart)
+            connector.addLine(to: rightPoint)
 
             context.stroke(
                 connector,
-                with: .color(formationColor.opacity(0.16)),
-                style: StrokeStyle(lineWidth: max(4, 4.5 * markerScale), lineCap: .round, dash: [1, 8])
+                with: .color(shadowColor.opacity(0.7)),
+                style: StrokeStyle(lineWidth: lineWidth + max(2.6, 3 * markerScale), lineCap: .butt, dash: [9, 5])
             )
             context.stroke(
                 connector,
-                with: .color(formationColor.opacity(0.72)),
-                style: StrokeStyle(lineWidth: max(1.4, 1.6 * markerScale), lineCap: .round, dash: [2, 5])
+                with: .color(primaryColor.opacity(0.86)),
+                style: StrokeStyle(lineWidth: lineWidth, lineCap: .butt, dash: [9, 5])
+            )
+
+            let barHeight = max(13, 15 * markerScale)
+            let barHalfHeight = barHeight / 2
+            let barInset = max(2.2, 2.8 * markerScale)
+            var bars = Path()
+            for x in [leftPoint.x, axisX - barInset, axisX + barInset, rightPoint.x] {
+                bars.move(to: CGPoint(x: x, y: centerY - barHalfHeight))
+                bars.addLine(to: CGPoint(x: x, y: centerY + barHalfHeight))
+            }
+            context.stroke(
+                bars,
+                with: .color(shadowColor.opacity(0.75)),
+                style: StrokeStyle(lineWidth: lineWidth + max(2.4, 2.8 * markerScale), lineCap: .round)
+            )
+            context.stroke(
+                bars,
+                with: .color(primaryColor.opacity(0.94)),
+                style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
             )
 
             let targetDiamond = diamondPath(center: target, radius: max(5.5, 6.5 * markerScale))
-            context.fill(targetDiamond, with: .color(formationColor.opacity(0.16)))
-            context.stroke(targetDiamond, with: .color(formationColor.opacity(0.9)), lineWidth: max(1.3, 1.5 * markerScale))
+            context.fill(targetDiamond, with: .color(shadowColor.opacity(0.35)))
+            context.stroke(targetDiamond, with: .color(shadowColor.opacity(0.8)), lineWidth: max(3.4, 3.8 * markerScale))
+            context.stroke(targetDiamond, with: .color(primaryColor.opacity(0.96)), lineWidth: max(1.3, 1.5 * markerScale))
 
             var sourceRing = Path()
             let sourceRadius = max(4.5, 5.5 * markerScale)
@@ -376,7 +412,12 @@ struct FloorCanvasView: View {
             )
             context.stroke(
                 sourceRing,
-                with: .color(formationColor.opacity(0.45)),
+                with: .color(shadowColor.opacity(0.65)),
+                style: StrokeStyle(lineWidth: max(3.2, 3.6 * markerScale), dash: [3, 3])
+            )
+            context.stroke(
+                sourceRing,
+                with: .color(primaryColor.opacity(0.74)),
                 style: StrokeStyle(lineWidth: max(1.2, 1.4 * markerScale), dash: [3, 3])
             )
         }
