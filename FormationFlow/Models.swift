@@ -1815,6 +1815,7 @@ final class RoutineStore: ObservableObject {
 
 struct PathCalculations {
     static let collisionPenaltyCounts: CGFloat = 0.5
+    private static let collisionResponseMinimumTravel: CGFloat = 0.001
     private static let collisionRedirectDistance: CGFloat = 1.0
     private static let collisionRedirectLeadProgress: CGFloat = 0.05
     private static let collisionRedirectRecoveryProgress: CGFloat = 0.18
@@ -2130,7 +2131,7 @@ struct PathCalculations {
         pathProgress: CGFloat,
         responses: [CollisionResponse]
     ) -> CGPoint {
-        guard !responses.isEmpty else { return position }
+        guard !responses.isEmpty, pathProgress > 0, pathProgress < 1 else { return position }
 
         var offset = CGPoint(x: 0, y: 0)
         for response in responses {
@@ -2538,26 +2539,35 @@ struct PathCalculations {
                                                 markers.append(midpoint)
                                             }
 
-                                            let redirectOffset = collisionRedirectOffset(
-                                                samples: sampledPaths[index],
-                                                step: step,
-                                                fallbackStart: paths[index].startPosition,
-                                                fallbackEnd: paths[index].endPosition
-                                            )
-                                            responses[paths[index].athleteID, default: []].append(
-                                                CollisionResponse(
-                                                    progress: sampledPaths[index][step].pathProgress,
-                                                    holdCounts: collisionPenaltyCounts,
-                                                    redirectOffset: redirectOffset
+                                            if timings[index].travel > collisionResponseMinimumTravel {
+                                                responses[paths[index].athleteID, default: []].append(
+                                                    CollisionResponse(
+                                                        progress: sampledPaths[index][step].pathProgress,
+                                                        holdCounts: collisionPenaltyCounts,
+                                                        redirectOffset: collisionRedirectOffset(
+                                                            samples: sampledPaths[index],
+                                                            step: step,
+                                                            fallbackStart: paths[index].startPosition,
+                                                            fallbackEnd: paths[index].endPosition
+                                                        )
+                                                    )
                                                 )
-                                            )
-                                            responses[paths[otherIndex].athleteID, default: []].append(
-                                                CollisionResponse(
-                                                    progress: sampledPaths[otherIndex][step].pathProgress,
-                                                    holdCounts: collisionPenaltyCounts,
-                                                    redirectOffset: CGPoint(x: -redirectOffset.x, y: -redirectOffset.y)
+                                            }
+
+                                            if timings[otherIndex].travel > collisionResponseMinimumTravel {
+                                                responses[paths[otherIndex].athleteID, default: []].append(
+                                                    CollisionResponse(
+                                                        progress: sampledPaths[otherIndex][step].pathProgress,
+                                                        holdCounts: collisionPenaltyCounts,
+                                                        redirectOffset: collisionRedirectOffset(
+                                                            samples: sampledPaths[otherIndex],
+                                                            step: step,
+                                                            fallbackStart: paths[otherIndex].startPosition,
+                                                            fallbackEnd: paths[otherIndex].endPosition
+                                                        )
+                                                    )
                                                 )
-                                            )
+                                            }
                                         }
                                     }
                                 }

@@ -155,8 +155,35 @@ final class PathCalculationsTests: XCTestCase {
         XCTAssertEqual(response1.progress, 0.5, accuracy: 0.02)
         XCTAssertEqual(response2.progress, 0.5, accuracy: 0.02)
         XCTAssertGreaterThan(PathCalculations.squaredDistance(from: response1.redirectOffset, to: .zero), 0)
-        XCTAssertEqual(response1.redirectOffset.x, -response2.redirectOffset.x, accuracy: 0.001)
-        XCTAssertEqual(response1.redirectOffset.y, -response2.redirectOffset.y, accuracy: 0.001)
+        XCTAssertGreaterThan(PathCalculations.squaredDistance(from: response2.redirectOffset, to: .zero), 0)
+        XCTAssertNotEqual(response1.redirectOffset, response2.redirectOffset)
+    }
+
+    func testPathCollisionDetailsDoesNotBumpStationaryAthlete() {
+        let movingAthlete = UUID()
+        let stationaryAthlete = UUID()
+
+        let movingPath = TransitionPathRenderItem(
+            athleteID: movingAthlete,
+            startPosition: CGPoint(x: 0, y: 5),
+            endPosition: CGPoint(x: 10, y: 5),
+            controlPoint: nil,
+            waypoints: []
+        )
+        let stationaryPath = TransitionPathRenderItem(
+            athleteID: stationaryAthlete,
+            startPosition: CGPoint(x: 5, y: 5),
+            endPosition: CGPoint(x: 5, y: 5),
+            controlPoint: nil,
+            waypoints: []
+        )
+
+        let details = PathCalculations.findPathCollisionDetails(paths: [movingPath, stationaryPath], counts: 8, steps: 60)
+
+        XCTAssertTrue(details.ids.contains(movingAthlete))
+        XCTAssertTrue(details.ids.contains(stationaryAthlete))
+        XCTAssertEqual(details.responses[movingAthlete]?.count, 1)
+        XCTAssertNil(details.responses[stationaryAthlete])
     }
 
     func testHoldAdjustedPathProgressSupportsTransientCollisionHolds() {
@@ -196,9 +223,15 @@ final class PathCalculationsTests: XCTestCase {
             pathProgress: 0.7,
             responses: [response]
         )
+        let final = PathCalculations.collisionRedirectedPosition(
+            position,
+            pathProgress: 1,
+            responses: [response]
+        )
 
         XCTAssertEqual(redirected.x, 11, accuracy: 0.001)
         XCTAssertEqual(redirected.y, 10, accuracy: 0.001)
         XCTAssertEqual(recovered, position)
+        XCTAssertEqual(final, position)
     }
 }
