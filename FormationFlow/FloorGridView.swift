@@ -1797,8 +1797,10 @@ struct FloorGridView: View {
 
     private func athleteHitRadiusSquared(for athlete: RenderedAthlete, cellSize: CGFloat) -> CGFloat {
         let baseRadius = sqrt(interactionHitRadiusSquared(for: cellSize))
-        let rolePadding: CGFloat = athlete.role == .tumbler ? 2 : 0
-        let markerRadius = (athlete.role.selectedMarkerRadius + rolePadding) / max(cellSize, 1)
+        // Use the visible marker radius, not the expanded selected radius. This
+        // keeps selection precise when athletes overlap while leaving the drawn
+        // selected state and accessibility overlay unchanged.
+        let markerRadius = athlete.role.markerRadius / max(cellSize, 1)
         let radius = max(baseRadius, markerRadius)
         return radius * radius
     }
@@ -1868,27 +1870,45 @@ struct FloorGridView: View {
         return candidates.first
     }
 
-    private func cycledAthleteHit(
+    private func nearestOrTiedCycledAthleteHit(
         at point: CGPoint,
         within athletes: [RenderedAthlete],
         cellSize: CGFloat,
         excluding excludedID: UUID? = nil
     ) -> RenderedAthlete? {
-        let candidates = athleteHits(
-            at: point,
-            within: athletes,
-            cellSize: cellSize,
-            excluding: excludedID
-        )
+        let candidates = athletes
+            .compactMap { athlete -> (athlete: RenderedAthlete, distance: CGFloat)? in
+                guard athlete.id != excludedID else { return nil }
 
-        guard !candidates.isEmpty else { return nil }
-        guard candidates.count > 1, let selectedAthleteID else { return candidates.first }
+                let distance = PathCalculations.squaredDistance(from: point, to: athlete.position)
+                guard distance < athleteHitRadiusSquared(for: athlete, cellSize: cellSize) else { return nil }
+                return (athlete, distance)
+            }
+            .sorted {
+                if abs($0.distance - $1.distance) > 0.0001 {
+                    return $0.distance < $1.distance
+                }
+                if $0.athlete.label != $1.athlete.label {
+                    return $0.athlete.label.localizedStandardCompare($1.athlete.label) == .orderedAscending
+                }
+                return $0.athlete.id.uuidString < $1.athlete.id.uuidString
+            }
 
-        guard let selectedIndex = candidates.firstIndex(where: { $0.id == selectedAthleteID }) else {
-            return candidates.first
+        guard let nearest = candidates.first else { return nil }
+
+        // The normal rule is "closest to the finger wins." Only cycle when
+        // athletes are truly stacked/equidistant, where there is no closer
+        // athlete to choose. Cycling the full hit-radius set is what made a
+        // previously selected neighbor appear to be favored after a correct
+        // momentary highlight.
+        let tiedNearest = candidates.filter { abs($0.distance - nearest.distance) <= 0.0001 }
+        guard tiedNearest.count > 1, let selectedAthleteID else { return nearest.athlete }
+
+        guard let selectedIndex = tiedNearest.firstIndex(where: { $0.athlete.id == selectedAthleteID }) else {
+            return nearest.athlete
         }
 
-        return candidates[(selectedIndex + 1) % candidates.count]
+        return tiedNearest[(selectedIndex + 1) % tiedNearest.count].athlete
     }
 
     private func nearestPointOnTransitionPath(
@@ -2233,7 +2253,7 @@ struct FloorGridView: View {
                             y: (value.location.y - offset.y) / cellSize
                         )
                         if showTransitionPaths, hasTransition, let player {
-                            if let athlete = cycledAthleteHit(
+                            if let athlete = nearestOrTiedCycledAthleteHit(
                                 at: tapPoint,
                                 within: player.currentAthletes,
                                 cellSize: cellSize
@@ -2267,11 +2287,11 @@ struct FloorGridView: View {
                     return
                 }
 
-                if let athlete = cycledAthleteHit(
+                if let athlete = nearestOrTiedCycledAthleteHit(
                     at: tapPoint,
                     within: renderedAthletes,
                     cellSize: cellSize
-                ) ?? cycledAthleteHit(
+                ) ?? nearestOrTiedCycledAthleteHit(
                     at: startScaledPoint,
                     within: renderedAthletes,
                     cellSize: cellSize
@@ -2310,9 +2330,13 @@ struct FloorGridView: View {
     // MARK: - Drag Helpers
 
     private func interactionHitRadiusSquared(for cellSize: CGFloat) -> CGFloat {
-        let minimumTouchRadius: CGFloat = isCompactLayout ? 18 : 14
+        // Selection hit-testing deliberately stays tighter than the 44pt
+        // accessibility overlay so nearby athletes/handles/waypoints don't
+        // steal taps from the item closest to the finger. Collision detection
+        // lives in PathCalculations and does not use this radius.
+        let minimumTouchRadius: CGFloat = isCompactLayout ? 14 : 11
         let cellAdjustedRadius = minimumTouchRadius / max(cellSize, 1)
-        let defaultRadius: CGFloat = 1.5
+        let defaultRadius: CGFloat = 1.15
         let radius = max(defaultRadius, cellAdjustedRadius)
         return radius * radius
     }
