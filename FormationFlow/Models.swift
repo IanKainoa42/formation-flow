@@ -2186,6 +2186,39 @@ struct PathCalculations {
         return max(0, min(1, (recoveryEnd - pathProgress) / collisionRedirectRecoveryProgress))
     }
 
+    private static func collisionContactStartProgress(
+        firstSamples: [PathCollisionSample],
+        secondSamples: [PathCollisionSample],
+        step: Int,
+        steps: Int,
+        minDistanceSquared: CGFloat
+    ) -> CGFloat {
+        guard step > 0, step < firstSamples.count, step < secondSamples.count else {
+            return CGFloat(step) / CGFloat(max(steps, 1))
+        }
+
+        let previousDistanceSquared = squaredDistance(
+            from: firstSamples[step - 1].position,
+            to: secondSamples[step - 1].position
+        )
+        let currentDistanceSquared = squaredDistance(
+            from: firstSamples[step].position,
+            to: secondSamples[step].position
+        )
+
+        if previousDistanceSquared < minDistanceSquared {
+            return CGFloat(step - 1) / CGFloat(max(steps, 1))
+        }
+
+        let crossingRange = previousDistanceSquared - currentDistanceSquared
+        guard crossingRange > 0.001 else {
+            return CGFloat(step) / CGFloat(max(steps, 1))
+        }
+
+        let crossingFraction = max(0, min(1, (previousDistanceSquared - minDistanceSquared) / crossingRange))
+        return (CGFloat(step - 1) + crossingFraction) / CGFloat(max(steps, 1))
+    }
+
     static func travelDistance(
         from start: CGPoint,
         to end: CGPoint,
@@ -2564,14 +2597,23 @@ struct PathCalculations {
                                     let packedKey = Int64(index) << 32 | Int64(otherIndex)
                                     if !seenPairs.contains(packedKey) {
                                         let b = sampledPaths[otherIndex][step].position
-                                        if squaredDistance(from: a, to: b) < minDistanceSquared {
+                                        let currentDistanceSquared = squaredDistance(from: a, to: b)
+                                        if currentDistanceSquared < minDistanceSquared {
                                             seenPairs.insert(packedKey)
                                             collisionIDs.insert(paths[index].athleteID)
                                             collisionIDs.insert(paths[otherIndex].athleteID)
                                             let midpoint = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
                                             if !markers.contains(where: { squaredDistance(from: $0, to: midpoint) < 1 }) {
                                                 markers.append(midpoint)
-                                                markerProgresses.append(CGFloat(step) / CGFloat(steps))
+                                                markerProgresses.append(
+                                                    collisionContactStartProgress(
+                                                        firstSamples: sampledPaths[index],
+                                                        secondSamples: sampledPaths[otherIndex],
+                                                        step: step,
+                                                        steps: steps,
+                                                        minDistanceSquared: minDistanceSquared
+                                                    )
+                                                )
                                             }
 
                                             if timings[index].travel > collisionResponseMinimumTravel {
