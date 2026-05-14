@@ -2546,6 +2546,29 @@ struct FloorGridView: View {
                     y: (value.startLocation.y - offset.y) / cellSize
                 )
 
+                if showTransitionPaths {
+                    if let handle = nearestPathHandle(at: tapPoint, cellSize: cellSize)
+                        ?? nearestPathHandle(at: startScaledPoint, cellSize: cellSize)
+                    {
+                        focusedEndpoint = currentFormationEndpoint
+                        focusedPathHandle = handle
+                        return
+                    }
+
+                    if let hit = selectedTransitionPathHit(
+                        at: tapPoint,
+                        maxSquaredDistance: pathHitRadiusSquared(for: cellSize)
+                    ) ?? selectedTransitionPathHit(
+                        at: startScaledPoint,
+                        maxSquaredDistance: pathHitRadiusSquared(for: cellSize)
+                    ) {
+                        focusedEndpoint = currentFormationEndpoint
+                        focusedPathHandle = nil
+                        hoveredPathAthleteID = hit.transition.athleteID
+                        return
+                    }
+                }
+
                 // If an athlete is hovered, tapping selects exactly that athlete
                 if let hoveredID = hoveredAthleteID,
                    renderedAthletes.contains(where: { $0.id == hoveredID }) {
@@ -2578,31 +2601,6 @@ struct FloorGridView: View {
                     ) != nil
                 {
                     return
-                }
-
-                if let hit = selectedTransitionPathHit(
-                    at: tapPoint,
-                    maxSquaredDistance: pathHitRadiusSquared(for: cellSize)
-                ) ?? selectedTransitionPathHit(
-                    at: startScaledPoint,
-                    maxSquaredDistance: pathHitRadiusSquared(for: cellSize)
-                ) {
-                    focusedEndpoint = currentFormationEndpoint
-                    focusedPathHandle = nearestPathHandle(at: tapPoint, cellSize: cellSize)
-                        ?? nearestPathHandle(at: startScaledPoint, cellSize: cellSize)
-                    if focusedPathHandle == nil {
-                        hoveredPathAthleteID = hit.transition.athleteID
-                    }
-                    return
-                }
-
-                if showTransitionPaths {
-                    if let handle = nearestPathHandle(at: tapPoint, cellSize: cellSize)
-                        ?? nearestPathHandle(at: startScaledPoint, cellSize: cellSize)
-                    {
-                        focusedPathHandle = handle
-                        return
-                    }
                 }
 
                 selectedAthleteIDs = []
@@ -2911,7 +2909,7 @@ struct FloorGridView: View {
                     y: (value.location.y - offset.y) / cellSize
                 )
 
-                if focusWaypointByCycling(at: scaledPoint, cellSize: cellSize) {
+                if cycleWaypointByDoubleTap(at: scaledPoint, cellSize: cellSize) {
                     return
                 }
 
@@ -3003,7 +3001,7 @@ struct FloorGridView: View {
         return waypoint.id
     }
 
-    private func focusWaypointByCycling(at point: CGPoint, cellSize: CGFloat) -> Bool {
+    private func cycleWaypointByDoubleTap(at point: CGPoint, cellSize: CGFloat) -> Bool {
         guard hasTransition, let selectedAthleteID, let player else { return false }
         let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
         let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize) * 1.5
@@ -3024,32 +3022,50 @@ struct FloorGridView: View {
 
         guard !candidates.isEmpty else { return false }
 
-        let nextCandidate: (index: Int, waypoint: PathWaypoint, distance: CGFloat)
         if let focusedIndex = focusedWaypointIndex(in: transition) {
             if let currentCandidateIndex = candidates.firstIndex(where: { $0.index == focusedIndex }),
                candidates.count > 1 {
-                nextCandidate = candidates[(currentCandidateIndex + 1) % candidates.count]
-            } else if candidates.count == 1,
-                      candidates[0].index == focusedIndex,
-                      transition.pathWaypoints.count > 1 {
-                let nextIndex = (focusedIndex + 1) % transition.pathWaypoints.count
-                let waypoint = transition.pathWaypoints[nextIndex]
-                nextCandidate = (
-                    index: nextIndex,
-                    waypoint: waypoint,
-                    distance: PathCalculations.squaredDistance(from: point, to: waypoint.position)
-                )
-            } else {
-                nextCandidate = candidates[0]
+                focusWaypoint(candidates[(currentCandidateIndex + 1) % candidates.count].waypoint)
+                return true
             }
-        } else {
-            nextCandidate = candidates[0]
+
+            if candidates.count == 1, candidates[0].index == focusedIndex {
+                let waypoint = transition.pathWaypoints[focusedIndex]
+                if waypoint.isSmooth {
+                    setWaypointSmooth(id: waypoint.id, isSmooth: false)
+                    focusWaypoint(waypoint)
+                } else {
+                    deleteWaypoint(id: waypoint.id)
+                }
+                return true
+            }
+
+            if transition.pathWaypoints.count > 1 {
+                let nextIndex = (focusedIndex + 1) % transition.pathWaypoints.count
+                focusWaypoint(transition.pathWaypoints[nextIndex])
+                return true
+            }
         }
 
-        focusedEndpoint = currentFormationEndpoint
-        focusedPathHandle = nextCandidate.waypoint.position
-        hoveredPathAthleteID = selectedAthleteID
+        focusWaypoint(candidates[0].waypoint)
         return true
+    }
+
+    private func focusWaypoint(_ waypoint: PathWaypoint) {
+        guard let selectedAthleteID else { return }
+        focusedEndpoint = currentFormationEndpoint
+        focusedPathHandle = waypoint.position
+        hoveredPathAthleteID = selectedAthleteID
+    }
+
+    private func setWaypointSmooth(id waypointID: UUID, isSmooth: Bool) {
+        guard let selectedAthleteID, let startFormationID, let endFormationID else { return }
+
+        store.mutateAthleteTransition(from: startFormationID, to: endFormationID, athleteID: selectedAthleteID) { t in
+            guard let waypointIndex = t.pathWaypoints.firstIndex(where: { $0.id == waypointID }) else { return }
+            t.pathWaypoints[waypointIndex].isSmooth = isSmooth
+        }
+        refreshTransitionFromStore()
     }
 
     private func focusedWaypointIndex(in transition: AthleteTransition) -> Int? {

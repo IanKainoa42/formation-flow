@@ -1961,9 +1961,8 @@ struct PathCalculations {
             let segmentSteps = max(2, Int(round(CGFloat(steps) * lengths[segmentIndex] / totalLength)))
             let p0 = nodes[segmentIndex]
             let p1 = nodes[segmentIndex + 1]
-            let waypointAtEnd = segmentIndex < waypoints.count ? waypoints[segmentIndex] : nil
 
-            if waypointAtEnd?.isSmooth == true {
+            if segmentUsesSmoothWaypoint(segmentIndex: segmentIndex, waypoints: waypoints) {
                 let prev = segmentIndex > 0 ? nodes[segmentIndex - 1] : p0
                 let next = segmentIndex + 2 < nodes.count ? nodes[segmentIndex + 2] : p1
                 let (c1, c2) = catmullRomControlPoints(prev: prev, p0: p0, p1: p1, next: next)
@@ -2031,9 +2030,8 @@ struct PathCalculations {
                 let t = max(0, min(1, localProgress))
                 let p0 = nodes[segmentIndex]
                 let p1 = nodes[segmentIndex + 1]
-                let waypointAtEnd = segmentIndex < waypoints.count ? waypoints[segmentIndex] : nil
 
-                if waypointAtEnd?.isSmooth == true {
+                if segmentUsesSmoothWaypoint(segmentIndex: segmentIndex, waypoints: waypoints) {
                     let prev = segmentIndex > 0 ? nodes[segmentIndex - 1] : p0
                     let next = segmentIndex + 2 < nodes.count ? nodes[segmentIndex + 2] : p1
                     let (c1, c2) = catmullRomControlPoints(prev: prev, p0: p0, p1: p1, next: next)
@@ -2049,6 +2047,12 @@ struct PathCalculations {
         }
 
         return end
+    }
+
+    private static func segmentUsesSmoothWaypoint(segmentIndex: Int, waypoints: [PathWaypoint]) -> Bool {
+        let waypointAtEndIsSmooth = segmentIndex < waypoints.count && waypoints[segmentIndex].isSmooth
+        let waypointAtStartIsSmooth = segmentIndex > 0 && waypoints[segmentIndex - 1].isSmooth
+        return waypointAtEndIsSmooth || waypointAtStartIsSmooth
     }
 
     static func waypointProgressThresholds(

@@ -68,6 +68,24 @@ final class PathCalculationsTests: XCTestCase {
         XCTAssertEqual(path[2], end)
     }
 
+    func testSmoothWaypointCurvesBothIncomingAndOutgoingSegments() {
+        let start = CGPoint(x: 0, y: 0)
+        let waypoint = PathWaypoint(position: CGPoint(x: 5, y: 5), isSmooth: true)
+        let end = CGPoint(x: 10, y: 0)
+
+        let path = PathCalculations.waypointPath(from: start, to: end, waypoints: [waypoint], steps: 4)
+        XCTAssertEqual(path.count, 5)
+        XCTAssertGreaterThan(path[3].y, 2.55)
+
+        let outgoingPoint = PathCalculations.interpolateWaypointPath(
+            from: start,
+            to: end,
+            waypoints: [waypoint],
+            progress: 0.75
+        )
+        XCTAssertGreaterThan(outgoingPoint.y, 2.55)
+    }
+
     func testCollisionSummary() {
         let athlete1 = RenderedAthlete(id: UUID(), label: "A1", role: .base, position: CGPoint(x: 10, y: 10))
         let athlete2 = RenderedAthlete(id: UUID(), label: "A2", role: .base, position: CGPoint(x: 11, y: 11)) // Distance ~1.41
