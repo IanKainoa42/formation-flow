@@ -2483,6 +2483,11 @@ struct FloorGridView: View {
                     refreshTransitionFromStore()
                 }
 
+                if isDraggingPathHandle {
+                    refreshTransitionFromStore()
+                    return
+                }
+
                 if isSketchingPath {
                     finishPathSketch()
                     return
