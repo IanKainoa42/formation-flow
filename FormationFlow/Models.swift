@@ -1815,11 +1815,12 @@ final class RoutineStore: ObservableObject {
 
 struct PathCalculations {
     static let collisionPenaltyCounts: CGFloat = 0.5
-    static let defaultPlaybackSpeed: CGFloat = 1.0
+    static let defaultPlaybackSpeed: CGFloat = 1.5
     private static let collisionResponseMinimumTravel: CGFloat = 0.001
     private static let collisionRedirectDistance: CGFloat = 1.0
     private static let collisionRedirectLeadProgress: CGFloat = 0.05
     private static let collisionRedirectRecoveryProgress: CGFloat = 0.18
+    private static let collisionPulseLeadProgress: CGFloat = 0.025
 
     struct CollisionResponse: Equatable, Hashable {
         let progress: CGFloat
@@ -2605,14 +2606,15 @@ struct PathCalculations {
                                             let midpoint = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
                                             if !markers.contains(where: { squaredDistance(from: $0, to: midpoint) < 1 }) {
                                                 markers.append(midpoint)
+                                                let contactStartProgress = collisionContactStartProgress(
+                                                    firstSamples: sampledPaths[index],
+                                                    secondSamples: sampledPaths[otherIndex],
+                                                    step: step,
+                                                    steps: steps,
+                                                    minDistanceSquared: minDistanceSquared
+                                                )
                                                 markerProgresses.append(
-                                                    collisionContactStartProgress(
-                                                        firstSamples: sampledPaths[index],
-                                                        secondSamples: sampledPaths[otherIndex],
-                                                        step: step,
-                                                        steps: steps,
-                                                        minDistanceSquared: minDistanceSquared
-                                                    )
+                                                    max(0, contactStartProgress - collisionPulseLeadProgress)
                                                 )
                                             }
 

@@ -131,12 +131,13 @@ struct RoutinePlaybackView: View {
                 set: { player.setSpeed($0) }
             )) {
                 Text("0.5x").tag(CGFloat(1.0))
+                Text("0.75x").tag(CGFloat(1.5))
                 Text("1x").tag(CGFloat(2.0))
                 Text("2x").tag(CGFloat(4.0))
                 Text("4x").tag(CGFloat(8.0))
             }
             .pickerStyle(.segmented)
-            .frame(width: 160)
+            .frame(width: 210)
             .controlSize(.small)
             .accessibilityLabel("Playback Speed")
             .accessibilityHint("Adjust the playback speed of the routine animation")

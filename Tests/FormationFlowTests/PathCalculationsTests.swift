@@ -177,7 +177,7 @@ final class PathCalculationsTests: XCTestCase {
         let response1 = try XCTUnwrap(details.responses[athlete1]?.first)
         let response2 = try XCTUnwrap(details.responses[athlete2]?.first)
         let markerProgress = try XCTUnwrap(details.markerProgresses.first)
-        XCTAssertEqual(markerProgress, 0.447, accuracy: 0.02)
+        XCTAssertEqual(markerProgress, 0.422, accuracy: 0.02)
         XCTAssertLessThan(markerProgress, response1.progress)
         XCTAssertEqual(response1.holdCounts, 0.5)
         XCTAssertEqual(response2.holdCounts, 0.5)
@@ -211,7 +211,7 @@ final class PathCalculationsTests: XCTestCase {
 
         XCTAssertTrue(details.ids.contains(movingAthlete))
         XCTAssertTrue(details.ids.contains(stationaryAthlete))
-        XCTAssertEqual(details.markerProgresses.first ?? -1, 0.35, accuracy: 0.02)
+        XCTAssertEqual(details.markerProgresses.first ?? -1, 0.325, accuracy: 0.02)
         XCTAssertEqual(details.responses[movingAthlete]?.count, 1)
         XCTAssertNil(details.responses[stationaryAthlete])
     }
