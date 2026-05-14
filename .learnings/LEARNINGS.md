@@ -127,3 +127,15 @@ Corrections, knowledge gaps, and best practices. See `/self-improvement` for for
 - **Category:** knowledge_gap
 - **What happened:** `xcodebuild -showdestinations` showed ZERO iOS Simulator destinations (not even as ineligible) even though `xcrun simctl list devices` confirmed iOS 26.4 simulators exist. Root cause: the iOS 26.5 platform SDK was not installed in Xcode. Both physical and simulator iOS targets require the SDK to be present in Xcode → Settings → Platforms.
 - **Rule:** Before any screenshot capture session, run `xcodebuild -project <proj> -scheme <scheme> -showdestinations` and verify iOS Simulator entries appear. If absent: open Xcode → Settings → Platforms and download the current iOS platform. The fix also updates the CoreSimulator framework version.
+
+## 2026-05-14 — App persistence is file-based, not UserDefaults
+
+- **Category:** knowledge_gap
+- **What happened:** CLAUDE.md says persistence is `UserDefaults` key `routine.v1`, but the app now saves to `Documents/workspace.v1.json` (RoutineStore uses `workspaceStorageKey = "workspace.v1"` with FileManager). Seeding via `defaults write` always failed; seeding via `cp demo_routine.json "$CONTAINER/Documents/workspace.v1.json"` works.
+- **Rule:** For simulator seeding, use `cp .appstore/demo_routine.json "$(xcrun simctl get_app_container <UDID> com.ianrichardson.formationflow data)/Documents/workspace.v1.json"`. Do not attempt `xcrun simctl spawn defaults write` for this app.
+
+## 2026-05-14 — Headless simulator rotation is not possible without assistive access
+
+- **Category:** knowledge_gap
+- **What happened:** `xcrun simctl` has no rotate command. Peekaboo hotkey `cmd+right` was accepted but had no effect (Simulator window didn't rotate). AppleScript `click menu item "Rotate Left"` failed due to missing assistive access.
+- **Rule:** Landscape iPad screenshots require Simulator.app to have assistive access granted in System Settings > Privacy > Accessibility, OR manual rotation before the headless capture run. Without it, simctl captures are always portrait (2064×2752 for iPad Pro 13").
