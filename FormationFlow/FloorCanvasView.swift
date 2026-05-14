@@ -91,12 +91,29 @@ struct FloorSelectionLasso {
     }
 }
 
+struct FormationMirrorGuideRenderItem: Identifiable, Equatable, Hashable {
+    let sourcePosition: CGPoint
+    let mirroredPosition: CGPoint
+
+    var id: String {
+        [
+            sourcePosition.x,
+            sourcePosition.y,
+            mirroredPosition.x,
+            mirroredPosition.y
+        ]
+        .map { String(Int(($0 * 100).rounded())) }
+        .joined(separator: "-")
+    }
+}
+
 struct FloorCanvasView: View {
     let athletes: [RenderedAthlete]
     var selectedAthleteIDs: Set<UUID> = []
     var transitionPaths: [TransitionPathRenderItem] = []
     var endpointMarkers: [TransitionEndpointMarkerRenderItem] = []
     var alignmentGuides: [AlignmentGuideRenderItem] = []
+    var mirrorGuides: [FormationMirrorGuideRenderItem] = []
     var collisionIDs: Set<UUID> = []
     var pathCollisionIDs: Set<UUID> = []
     var pathCollisionMarkerPositions: [CGPoint] = []
@@ -153,6 +170,7 @@ struct FloorCanvasView: View {
             drawGhostTransitionPaths(in: &context)
             drawTrails(in: &context)
             drawAlignmentGuides(in: &context)
+            drawMirrorGuides(in: &context)
             drawTransitionPaths(in: &context)
             drawPathCollisionMarkers(in: &context)
             drawEndpointMarkers(in: &context)
@@ -307,6 +325,75 @@ struct FloorCanvasView: View {
                 style: StrokeStyle(lineWidth: lineWidth, dash: guide.emphasis == .strong ? [8, 4] : [4, 4])
             )
         }
+    }
+
+    private func drawMirrorGuides(in context: inout GraphicsContext) {
+        guard !mirrorGuides.isEmpty else { return }
+
+        let axisX = (CourtConstants.width * cellSize) / 2
+        var centerAxis = Path()
+        centerAxis.move(to: CGPoint(x: axisX, y: 0))
+        centerAxis.addLine(to: CGPoint(x: axisX, y: CourtConstants.height * cellSize))
+
+        context.stroke(
+            centerAxis,
+            with: .color(formationColor.opacity(0.28)),
+            style: StrokeStyle(lineWidth: max(1.25, 1.6 * markerScale), lineCap: .round, dash: [2, 7])
+        )
+
+        for guide in mirrorGuides {
+            let source = scaledCanvasPoint(guide.sourcePosition)
+            let target = scaledCanvasPoint(guide.mirroredPosition)
+
+            var connector = Path()
+            connector.move(to: source)
+            connector.addLine(to: target)
+
+            context.stroke(
+                connector,
+                with: .color(formationColor.opacity(0.16)),
+                style: StrokeStyle(lineWidth: max(4, 4.5 * markerScale), lineCap: .round, dash: [1, 8])
+            )
+            context.stroke(
+                connector,
+                with: .color(formationColor.opacity(0.72)),
+                style: StrokeStyle(lineWidth: max(1.4, 1.6 * markerScale), lineCap: .round, dash: [2, 5])
+            )
+
+            let targetDiamond = diamondPath(center: target, radius: max(5.5, 6.5 * markerScale))
+            context.fill(targetDiamond, with: .color(formationColor.opacity(0.16)))
+            context.stroke(targetDiamond, with: .color(formationColor.opacity(0.9)), lineWidth: max(1.3, 1.5 * markerScale))
+
+            var sourceRing = Path()
+            let sourceRadius = max(4.5, 5.5 * markerScale)
+            sourceRing.addEllipse(
+                in: CGRect(
+                    x: source.x - sourceRadius,
+                    y: source.y - sourceRadius,
+                    width: sourceRadius * 2,
+                    height: sourceRadius * 2
+                )
+            )
+            context.stroke(
+                sourceRing,
+                with: .color(formationColor.opacity(0.45)),
+                style: StrokeStyle(lineWidth: max(1.2, 1.4 * markerScale), dash: [3, 3])
+            )
+        }
+    }
+
+    private func scaledCanvasPoint(_ point: CGPoint) -> CGPoint {
+        CGPoint(x: point.x * cellSize, y: point.y * cellSize)
+    }
+
+    private func diamondPath(center: CGPoint, radius: CGFloat) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: center.x, y: center.y - radius))
+        path.addLine(to: CGPoint(x: center.x + radius, y: center.y))
+        path.addLine(to: CGPoint(x: center.x, y: center.y + radius))
+        path.addLine(to: CGPoint(x: center.x - radius, y: center.y))
+        path.closeSubpath()
+        return path
     }
 
     private func isHandleHovered(at gridPosition: CGPoint) -> Bool {

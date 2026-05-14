@@ -59,6 +59,7 @@ struct FloorGridView: View {
     @State private var swapFormationTarget: SwapFormationTarget = .start
     @State private var hasMadeFirstSelection = false
     @State private var activeAlignmentGuides: [AlignmentGuideRenderItem] = []
+    @State private var activeMirrorGuides: [FormationMirrorGuideRenderItem] = []
     @State private var rosterDeleteIDs: [UUID] = []
     @State private var collisionCycleIndex: Int = 0
     @State private var pathCollisionCycleIndex: Int = 0
@@ -502,7 +503,7 @@ struct FloorGridView: View {
             // Batch all resets before clearing selection to avoid
             // cascading onChange triggers in the same frame.
             endSwapMode()
-            activeAlignmentGuides = []
+            clearActiveGuides()
             collisionCycleIndex = 0
             pathCollisionCycleIndex = 0
             focusedEndpoint = currentFormationEndpoint
@@ -955,6 +956,7 @@ struct FloorGridView: View {
                 transitionPaths: showTransitionPaths ? transitionPaths : [],
                 endpointMarkers: endpointMarkers,
                 alignmentGuides: activeAlignmentGuides,
+                mirrorGuides: activeMirrorGuides,
                 collisionIDs: collisionSummary.ids,
                 pathCollisionIDs: pathCollisionIDs,
                 pathCollisionMarkerPositions: player?.cachedPathCollisionMarkers ?? [],
@@ -2291,7 +2293,7 @@ struct FloorGridView: View {
                     selectionRect = nil
                     dragStartPositions = [:]
                     endpointDragStartPosition = nil
-                    activeAlignmentGuides = []
+                    clearActiveGuides()
                     store.saveNow()
                 }
 
@@ -2466,6 +2468,11 @@ struct FloorGridView: View {
         return overflowWidth > 1 || overflowHeight > 1
     }
 
+    private func clearActiveGuides() {
+        activeAlignmentGuides = []
+        activeMirrorGuides = []
+    }
+
     private func clampedCanvasPanOffset(
         _ proposedOffset: CGSize,
         viewportSize: CGSize,
@@ -2485,7 +2492,7 @@ struct FloorGridView: View {
         viewportSize: CGSize,
         canvasSize: CGSize
     ) {
-        activeAlignmentGuides = []
+        clearActiveGuides()
         canvasPanOffset = clampedCanvasPanOffset(
             CGSize(
                 width: lastCanvasPanOffset.width + value.translation.width,
@@ -2568,7 +2575,7 @@ struct FloorGridView: View {
 
     private func handlePathDragContinued(scaledPoint: CGPoint) {
         guard let selectedAthleteID, let player, let startFormationID, let endFormationID else { return }
-        activeAlignmentGuides = []
+        clearActiveGuides()
         let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
 
         if !transition.pathWaypoints.isEmpty {
@@ -2617,14 +2624,16 @@ struct FloorGridView: View {
             x: value.translation.width / cellSize,
             y: value.translation.height / cellSize
         )
-        let snapResult = AlignmentSnapEngine.snap(
+        let snapResult = snappingResult(
             translation: rawTranslation,
             startingPositions: [endpointDragStartPosition],
             otherAthletePositions: editableAthletes.compactMap {
                 $0.id != selectedAthleteID ? $0.position : nil
-            }
+            },
+            skipLinearGuides: false
         )
-        activeAlignmentGuides = snapResult.guides
+        activeAlignmentGuides = snapResult.alignmentGuides
+        activeMirrorGuides = snapResult.mirrorGuides
 
         let nextPosition = CGPoint(
             x: clampedCoordinate(endpointDragStartPosition.x + snapResult.translation.x, upperBound: CourtConstants.width),
@@ -2644,7 +2653,8 @@ struct FloorGridView: View {
             y: value.translation.height / cellSize
         )
         let snapResult = snappingResult(for: rawTranslation)
-        activeAlignmentGuides = snapResult.guides
+        activeAlignmentGuides = snapResult.alignmentGuides
+        activeMirrorGuides = snapResult.mirrorGuides
 
         store.mutateFormation(id: formationID) { formation in
             for athleteID in selectedAthleteIDs {
@@ -2707,7 +2717,7 @@ struct FloorGridView: View {
     }
 
     private func handleSelectionBoxContinued(_ value: DragGesture.Value) {
-        activeAlignmentGuides = []
+        clearActiveGuides()
         selectionRect = CGRect(
             x: min(selectionStartPoint.x, value.location.x),
             y: min(selectionStartPoint.y, value.location.y),
@@ -2879,10 +2889,10 @@ struct FloorGridView: View {
 
     private func snappingResult(for translation: CGPoint) -> SnapResult {
         guard !dragStartPositions.isEmpty else {
-            return SnapResult(translation: translation, guides: [])
+            return SnapResult(translation: translation, alignmentGuides: [], mirrorGuides: [])
         }
 
-        let result = AlignmentSnapEngine.snap(
+        return snappingResult(
             translation: translation,
             startingPositions: Array(dragStartPositions.values),
             otherAthletePositions: renderedAthletes.compactMap {
@@ -2890,7 +2900,35 @@ struct FloorGridView: View {
             },
             skipLinearGuides: renderedAthletes.count > 20
         )
-        return SnapResult(translation: result.translation, guides: result.guides)
+    }
+
+    private func snappingResult(
+        translation: CGPoint,
+        startingPositions: [CGPoint],
+        otherAthletePositions: [CGPoint],
+        skipLinearGuides: Bool
+    ) -> SnapResult {
+        guard !startingPositions.isEmpty else {
+            return SnapResult(translation: translation, alignmentGuides: [], mirrorGuides: [])
+        }
+
+        let alignmentResult = AlignmentSnapEngine.snap(
+            translation: translation,
+            startingPositions: startingPositions,
+            otherAthletePositions: otherAthletePositions,
+            skipLinearGuides: skipLinearGuides
+        )
+        let mirrorResult = FormationMirrorSnapEngine.snap(
+            translation: alignmentResult.translation,
+            startingPositions: startingPositions,
+            otherAthletePositions: otherAthletePositions
+        )
+
+        return SnapResult(
+            translation: mirrorResult.translation,
+            alignmentGuides: mirrorResult.guides.isEmpty ? alignmentResult.guides : [],
+            mirrorGuides: mirrorResult.guides
+        )
     }
 
     private func clampedCoordinate(_ value: CGFloat, upperBound: CGFloat) -> CGFloat {
@@ -3097,7 +3135,132 @@ struct FloorGridView: View {
 
 private struct SnapResult {
     let translation: CGPoint
-    let guides: [AlignmentGuideRenderItem]
+    let alignmentGuides: [AlignmentGuideRenderItem]
+    let mirrorGuides: [FormationMirrorGuideRenderItem]
+}
+
+private struct FormationMirrorSnapResult {
+    let translation: CGPoint
+    let guides: [FormationMirrorGuideRenderItem]
+}
+
+private enum FormationMirrorSnapEngine {
+    static func snap(
+        translation: CGPoint,
+        startingPositions: [CGPoint],
+        otherAthletePositions: [CGPoint],
+        threshold: CGFloat = 0.8
+    ) -> FormationMirrorSnapResult {
+        guard !startingPositions.isEmpty, !otherAthletePositions.isEmpty else {
+            return FormationMirrorSnapResult(translation: translation, guides: [])
+        }
+
+        let movingPositions = startingPositions.map {
+            CGPoint(x: $0.x + translation.x, y: $0.y + translation.y)
+        }
+
+        guard let match = bestMirrorMatch(
+            movingPositions: movingPositions,
+            otherAthletePositions: otherAthletePositions,
+            threshold: threshold
+        ) else {
+            return FormationMirrorSnapResult(translation: translation, guides: [])
+        }
+
+        let adjustedTranslation = CGPoint(
+            x: translation.x + match.delta.x,
+            y: translation.y + match.delta.y
+        )
+        let adjustedMovingPositions = startingPositions.map {
+            CGPoint(x: $0.x + adjustedTranslation.x, y: $0.y + adjustedTranslation.y)
+        }
+
+        return FormationMirrorSnapResult(
+            translation: adjustedTranslation,
+            guides: mirrorGuides(
+                movingPositions: adjustedMovingPositions,
+                otherAthletePositions: otherAthletePositions
+            )
+        )
+    }
+
+    private static func bestMirrorMatch(
+        movingPositions: [CGPoint],
+        otherAthletePositions: [CGPoint],
+        threshold: CGFloat
+    ) -> MirrorMatch? {
+        let mirrorAxisX = CourtConstants.width / 2
+        let thresholdSquared = threshold * threshold
+        var bestMatch: MirrorMatch?
+
+        for movingPosition in movingPositions {
+            for sourcePosition in otherAthletePositions {
+                guard abs(sourcePosition.x - mirrorAxisX) > 0.25 else { continue }
+
+                let targetPosition = mirroredPosition(for: sourcePosition)
+                let delta = CGPoint(
+                    x: targetPosition.x - movingPosition.x,
+                    y: targetPosition.y - movingPosition.y
+                )
+                guard abs(delta.x) <= threshold, abs(delta.y) <= threshold else { continue }
+
+                let distanceSquared = delta.x * delta.x + delta.y * delta.y
+                guard distanceSquared <= thresholdSquared else { continue }
+
+                let candidate = MirrorMatch(delta: delta, distanceSquared: distanceSquared)
+                if bestMatch == nil || candidate.distanceSquared < bestMatch!.distanceSquared {
+                    bestMatch = candidate
+                }
+            }
+        }
+
+        return bestMatch
+    }
+
+    private static func mirrorGuides(
+        movingPositions: [CGPoint],
+        otherAthletePositions: [CGPoint],
+        threshold: CGFloat = 0.35
+    ) -> [FormationMirrorGuideRenderItem] {
+        let mirrorAxisX = CourtConstants.width / 2
+        let thresholdSquared = threshold * threshold
+        var guides: [FormationMirrorGuideRenderItem] = []
+        var seenGuides = Set<FormationMirrorGuideRenderItem>()
+
+        for movingPosition in movingPositions {
+            for sourcePosition in otherAthletePositions {
+                guard abs(sourcePosition.x - mirrorAxisX) > 0.25 else { continue }
+
+                let targetPosition = mirroredPosition(for: sourcePosition)
+                let dx = targetPosition.x - movingPosition.x
+                let dy = targetPosition.y - movingPosition.y
+                guard dx * dx + dy * dy <= thresholdSquared else { continue }
+
+                let guide = FormationMirrorGuideRenderItem(
+                    sourcePosition: sourcePosition,
+                    mirroredPosition: targetPosition
+                )
+                if seenGuides.insert(guide).inserted {
+                    guides.append(guide)
+                    if guides.count >= 4 { return guides }
+                }
+            }
+        }
+
+        return guides
+    }
+
+    private static func mirroredPosition(for sourcePosition: CGPoint) -> CGPoint {
+        CGPoint(
+            x: CourtConstants.width - sourcePosition.x,
+            y: sourcePosition.y
+        )
+    }
+
+    private struct MirrorMatch {
+        let delta: CGPoint
+        let distanceSquared: CGFloat
+    }
 }
 
 // MARK: - Previews
