@@ -332,7 +332,14 @@ struct FloorCanvasView: View {
             let resolvedColor: Color = isBlinking && blinkPhase % 2 == 0 ? .white : .green
             let pathColor: Color = isColliding ? .red : (isBlinking ? resolvedColor : (isSelected ? formationColor : .green))
             let isPathHovered = hoveredPathAthleteID == item.athleteID
-            let lineWidth: CGFloat = isSelected ? (isPathHovered ? 4.5 : 3) : 1.5
+            let isSelectedPathHovered = isSelected && isPathHovered
+            let selectedLineWidth: CGFloat = 3
+            let lineWidth: CGFloat = isSelected
+                ? (isSelectedPathHovered ? selectedLineWidth * 1.6 : selectedLineWidth)
+                : 1.5
+            let pathOpacity = isSelectedPathHovered
+                ? min(1.0, 0.68 * pathOpacityMultiplier)
+                : 0.42 * pathOpacityMultiplier
 
             if !item.waypoints.isEmpty {
                 let nodes = item.nodes
@@ -357,7 +364,7 @@ struct FloorCanvasView: View {
 
                     context.stroke(
                         segment,
-                        with: .color(pathColor.opacity(0.42 * pathOpacityMultiplier)),
+                        with: .color(pathColor.opacity(pathOpacity)),
                         lineWidth: lineWidth
                     )
 
@@ -430,13 +437,7 @@ struct FloorCanvasView: View {
                 } else {
                     path.addLine(to: end)
                 }
-                let simpleLineWidth = isSelected && isPathHovered
-                    ? lineWidth * 1.6
-                    : lineWidth
-                let simpleOpacity = isSelected && isPathHovered
-                    ? min(1.0, 0.62 * pathOpacityMultiplier)
-                    : 0.42 * pathOpacityMultiplier
-                context.stroke(path, with: .color(pathColor.opacity(simpleOpacity)), lineWidth: simpleLineWidth)
+                context.stroke(path, with: .color(pathColor.opacity(pathOpacity)), lineWidth: lineWidth)
 
                 if isSelected {
                     let midpoint: CGPoint

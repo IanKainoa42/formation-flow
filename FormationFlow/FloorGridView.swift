@@ -1062,25 +1062,13 @@ struct FloorGridView: View {
                         hoveredHandlePosition = nil
                         hoveredAthleteID = athleteHit(at: scaledPoint, within: renderedAthletes, cellSize: cellSize)?.id
                         if hoveredAthleteID == nil,
-                           hasTransition,
-                           showTransitionPaths,
-                           let selectedAthleteID,
-                           let player,
-                           let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID }),
-                           let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
+                           selectedAthleteID != nil,
+                           selectedTransitionPathHit(
+                               at: scaledPoint,
+                               maxSquaredDistance: pathHitRadiusSquared(for: cellSize)
+                           ) != nil
                         {
-                            let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
-                            let pathHitRadiusSquared = interactionHitRadiusSquared(for: cellSize) * 6
-                            if let nearest = nearestPointOnTransitionPath(
-                                at: scaledPoint,
-                                transition: transition,
-                                startAthlete: startAthlete,
-                                endAthlete: endAthlete
-                            ), nearest.squaredDistance < pathHitRadiusSquared {
-                                hoveredPathAthleteID = selectedAthleteID
-                            } else {
-                                hoveredPathAthleteID = nil
-                            }
+                            hoveredPathAthleteID = selectedAthleteID
                         } else {
                             hoveredPathAthleteID = nil
                         }
@@ -1917,6 +1905,42 @@ struct FloorGridView: View {
         startAthlete: RenderedAthlete,
         endAthlete: RenderedAthlete
     ) -> (point: CGPoint, segmentIndex: Int, squaredDistance: CGFloat)? {
+        if transition.pathWaypoints.isEmpty, let controlPoint = transition.pathControlPoint {
+            var best: (point: CGPoint, segmentIndex: Int, squaredDistance: CGFloat)?
+            var previous = startAthlete.position
+            let steps = 24
+
+            for step in 1...steps {
+                let t = CGFloat(step) / CGFloat(steps)
+                let current = PathCalculations.quadraticBezierPoint(
+                    from: startAthlete.position,
+                    control: controlPoint,
+                    to: endAthlete.position,
+                    t: t
+                )
+                let dx = current.x - previous.x
+                let dy = current.y - previous.y
+                let lenSq = dx * dx + dy * dy
+                let projectionT: CGFloat
+                if lenSq < 0.0001 {
+                    projectionT = 0
+                } else {
+                    projectionT = max(0, min(1, ((point.x - previous.x) * dx + (point.y - previous.y) * dy) / lenSq))
+                }
+                let projection = CGPoint(
+                    x: previous.x + dx * projectionT,
+                    y: previous.y + dy * projectionT
+                )
+                let d2 = PathCalculations.squaredDistance(from: point, to: projection)
+                if best == nil || d2 < best!.squaredDistance {
+                    best = (projection, step - 1, d2)
+                }
+                previous = current
+            }
+
+            return best
+        }
+
         let nodes = PathCalculations.waypointNodes(
             from: startAthlete.position,
             to: endAthlete.position,
@@ -1944,6 +1968,84 @@ struct FloorGridView: View {
             }
         }
         return best
+    }
+
+    private func selectedTransitionPathHit(
+        at point: CGPoint,
+        maxSquaredDistance: CGFloat
+    ) -> (
+        point: CGPoint,
+        segmentIndex: Int,
+        squaredDistance: CGFloat,
+        transition: AthleteTransition,
+        startAthlete: RenderedAthlete,
+        endAthlete: RenderedAthlete
+    )? {
+        guard
+            hasTransition,
+            showTransitionPaths,
+            let selectedAthleteID,
+            let player,
+            let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID }),
+            let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
+        else { return nil }
+
+        let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
+        guard let nearest = nearestPointOnTransitionPath(
+            at: point,
+            transition: transition,
+            startAthlete: startAthlete,
+            endAthlete: endAthlete
+        ), nearest.squaredDistance < maxSquaredDistance else {
+            return nil
+        }
+
+        return (
+            nearest.point,
+            nearest.segmentIndex,
+            nearest.squaredDistance,
+            transition,
+            startAthlete,
+            endAthlete
+        )
+    }
+
+    private func pathHitRadiusSquared(for cellSize: CGFloat) -> CGFloat {
+        interactionHitRadiusSquared(for: cellSize) * 6
+    }
+
+    private func pathNearMissRadiusSquared(for cellSize: CGFloat) -> CGFloat {
+        interactionHitRadiusSquared(for: cellSize) * 16
+    }
+
+    private func waypointIDToMove(toward point: CGPoint, transition: AthleteTransition) -> UUID? {
+        transition.pathWaypoints.min { lhs, rhs in
+            PathCalculations.squaredDistance(from: point, to: lhs.position)
+                < PathCalculations.squaredDistance(from: point, to: rhs.position)
+        }?.id
+    }
+
+    private func beginSelectedPathHandleDrag(
+        at scaledPoint: CGPoint,
+        selectingHandleNearestTo selectionPoint: CGPoint? = nil,
+        transition: AthleteTransition
+    ) {
+        draggingWaypointID = waypointIDToMove(
+            toward: selectionPoint ?? scaledPoint,
+            transition: transition
+        )
+        isDraggingPathHandle = true
+        focusedEndpoint = currentFormationEndpoint
+        focusedPathHandle = scaledPoint
+        handlePathDragContinued(scaledPoint: scaledPoint)
+    }
+
+    private func shouldSuppressMarqueeForSelectedPathNearMiss(at point: CGPoint, cellSize: CGFloat) -> Bool {
+        guard selectedAthleteID != nil else { return false }
+        return selectedTransitionPathHit(
+            at: point,
+            maxSquaredDistance: pathNearMissRadiusSquared(for: cellSize)
+        ) != nil
     }
 
     private func endpointMarkerHit(
@@ -2065,22 +2167,24 @@ struct FloorGridView: View {
                             }
                         }
 
-                        // Legacy/no-waypoint paths only: grab anywhere on the path → drag the
-                        // control point so the curve's midpoint follows the finger.
-                        if transition.pathWaypoints.isEmpty,
-                           let startAthlete, let endAthlete,
+                        // Grab anywhere on the selected path: move the existing path handle
+                        // to the grab point and continue dragging it. Waypoint paths reuse the
+                        // nearest existing waypoint handle instead of inserting a new one.
+                        if let startAthlete, let endAthlete,
                            let nearest = nearestPointOnTransitionPath(
                                at: startScaledPoint,
                                transition: transition,
                                startAthlete: startAthlete,
                                endAthlete: endAthlete
                            ),
-                           nearest.squaredDistance < hitRadiusSquared * 6
+                           nearest.squaredDistance < pathHitRadiusSquared(for: cellSize)
                         {
                             guard dragDistanceSquared >= dragActivationDistanceSquared else { return }
-                            isDraggingPathHandle = true
-                            focusedEndpoint = currentFormationEndpoint
-                            handlePathDragContinued(scaledPoint: scaledPoint)
+                            beginSelectedPathHandleDrag(
+                                at: scaledPoint,
+                                selectingHandleNearestTo: nearest.point,
+                                transition: transition
+                            )
                             return
                         }
                     }
@@ -2164,6 +2268,10 @@ struct FloorGridView: View {
                         viewportSize: viewportSize,
                         canvasSize: canvasSize
                     )
+                    return
+                }
+
+                if shouldSuppressMarqueeForSelectedPathNearMiss(at: startScaledPoint, cellSize: cellSize) {
                     return
                 }
 
@@ -2312,6 +2420,17 @@ struct FloorGridView: View {
                     return
                 }
 
+                if let hit = selectedTransitionPathHit(
+                    at: tapPoint,
+                    maxSquaredDistance: pathHitRadiusSquared(for: cellSize)
+                ) ?? selectedTransitionPathHit(
+                    at: startScaledPoint,
+                    maxSquaredDistance: pathHitRadiusSquared(for: cellSize)
+                ) {
+                    beginSelectedPathHandleDrag(at: hit.point, transition: hit.transition)
+                    return
+                }
+
                 if showTransitionPaths {
                     if let handle = nearestPathHandle(at: tapPoint, cellSize: cellSize)
                         ?? nearestPathHandle(at: startScaledPoint, cellSize: cellSize)
@@ -2391,25 +2510,6 @@ struct FloorGridView: View {
             return true
         }
 
-        if !transition.pathWaypoints.isEmpty, let startAthlete, let endAthlete {
-            let nodes = PathCalculations.waypointNodes(
-                from: startAthlete.position,
-                to: endAthlete.position,
-                waypoints: transition.pathWaypoints
-            )
-
-            for segmentIndex in 0..<(nodes.count - 1) {
-                let midpoint = CGPoint(
-                    x: (nodes[segmentIndex].x + nodes[segmentIndex + 1].x) / 2,
-                    y: (nodes[segmentIndex].y + nodes[segmentIndex + 1].y) / 2
-                )
-
-                if PathCalculations.squaredDistance(from: point, to: midpoint) < hitRadiusSquared {
-                    return true
-                }
-            }
-        }
-
         guard transition.pathWaypoints.isEmpty, let startAthlete, let endAthlete else { return false }
 
         let midpoint: CGPoint
@@ -2442,24 +2542,6 @@ struct FloorGridView: View {
         for waypoint in transition.pathWaypoints {
             if PathCalculations.squaredDistance(from: point, to: waypoint.position) < hitRadiusSquared {
                 return waypoint.position
-            }
-        }
-
-        // Check midpoint "+" handles
-        if !transition.pathWaypoints.isEmpty, let startAthlete, let endAthlete {
-            let nodes = PathCalculations.waypointNodes(
-                from: startAthlete.position,
-                to: endAthlete.position,
-                waypoints: transition.pathWaypoints
-            )
-            for segmentIndex in 0..<(nodes.count - 1) {
-                let midpoint = CGPoint(
-                    x: (nodes[segmentIndex].x + nodes[segmentIndex + 1].x) / 2,
-                    y: (nodes[segmentIndex].y + nodes[segmentIndex + 1].y) / 2
-                )
-                if PathCalculations.squaredDistance(from: point, to: midpoint) < hitRadiusSquared {
-                    return midpoint
-                }
             }
         }
 
