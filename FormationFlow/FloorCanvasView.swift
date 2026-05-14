@@ -474,6 +474,12 @@ struct FloorCanvasView: View {
         )
     }
 
+    private func segmentUsesSmoothWaypoint(segmentIndex: Int, waypoints: [PathWaypoint]) -> Bool {
+        let waypointAtEndIsSmooth = segmentIndex < waypoints.count && waypoints[segmentIndex].isSmooth
+        let waypointAtStartIsSmooth = segmentIndex > 0 && waypoints[segmentIndex - 1].isSmooth
+        return waypointAtEndIsSmooth || waypointAtStartIsSmooth
+    }
+
     private func drawTransitionPaths(in context: inout GraphicsContext) {
         let pathOpacityMultiplier: CGFloat = focusedEndpoint != nil ? 0.5 : 1.0
         for item in transitionPaths {
@@ -496,11 +502,9 @@ struct FloorCanvasView: View {
                 for segmentIndex in 0..<(nodes.count - 1) {
                     let p0 = CGPoint(x: nodes[segmentIndex].x * cellSize, y: nodes[segmentIndex].y * cellSize)
                     let p1 = CGPoint(x: nodes[segmentIndex + 1].x * cellSize, y: nodes[segmentIndex + 1].y * cellSize)
-                    let waypointAtEnd = segmentIndex < item.waypoints.count ? item.waypoints[segmentIndex] : nil
-
                     var segment = Path()
                     segment.move(to: p0)
-                    if waypointAtEnd?.isSmooth == true {
+                    if segmentUsesSmoothWaypoint(segmentIndex: segmentIndex, waypoints: item.waypoints) {
                         let prevNode = segmentIndex > 0 ? nodes[segmentIndex - 1] : nodes[segmentIndex]
                         let nextNode = segmentIndex + 2 < nodes.count ? nodes[segmentIndex + 2] : nodes[segmentIndex + 1]
                         let prev = CGPoint(x: prevNode.x * cellSize, y: prevNode.y * cellSize)
@@ -821,11 +825,9 @@ struct FloorCanvasView: View {
                 for segmentIndex in 0..<segmentCount {
                     let p0 = CGPoint(x: nodes[segmentIndex].x * cellSize, y: nodes[segmentIndex].y * cellSize)
                     let p1 = CGPoint(x: nodes[segmentIndex + 1].x * cellSize, y: nodes[segmentIndex + 1].y * cellSize)
-                    let waypointAtEnd = segmentIndex < item.waypoints.count ? item.waypoints[segmentIndex] : nil
-
                     var segment = Path()
                     segment.move(to: p0)
-                    if waypointAtEnd?.isSmooth == true {
+                    if segmentUsesSmoothWaypoint(segmentIndex: segmentIndex, waypoints: item.waypoints) {
                         let prevNode = segmentIndex > 0 ? nodes[segmentIndex - 1] : nodes[segmentIndex]
                         let nextNode = segmentIndex + 2 < nodes.count ? nodes[segmentIndex + 2] : nodes[segmentIndex + 1]
                         let prev = CGPoint(x: prevNode.x * cellSize, y: prevNode.y * cellSize)

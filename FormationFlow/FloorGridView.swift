@@ -1957,9 +1957,8 @@ struct FloorGridView: View {
         for segIdx in 0..<(nodes.count - 1) {
             let p0 = nodes[segIdx]
             let p1 = nodes[segIdx + 1]
-            let waypointAtEnd = segIdx < transition.pathWaypoints.count ? transition.pathWaypoints[segIdx] : nil
 
-            if waypointAtEnd?.isSmooth == true {
+            if segmentUsesSmoothWaypoint(segmentIndex: segIdx, waypoints: transition.pathWaypoints) {
                 let prevNode = segIdx > 0 ? nodes[segIdx - 1] : p0
                 let nextNode = segIdx + 2 < nodes.count ? nodes[segIdx + 2] : p1
                 let (c1, c2) = PathCalculations.catmullRomControlPoints(prev: prevNode, p0: p0, p1: p1, next: nextNode)
@@ -1985,6 +1984,12 @@ struct FloorGridView: View {
             }
         }
         return best
+    }
+
+    private func segmentUsesSmoothWaypoint(segmentIndex: Int, waypoints: [PathWaypoint]) -> Bool {
+        let waypointAtEndIsSmooth = segmentIndex < waypoints.count && waypoints[segmentIndex].isSmooth
+        let waypointAtStartIsSmooth = segmentIndex > 0 && waypoints[segmentIndex - 1].isSmooth
+        return waypointAtEndIsSmooth || waypointAtStartIsSmooth
     }
 
     private func projectedPoint(onSegmentFrom start: CGPoint, to end: CGPoint, nearestTo point: CGPoint) -> CGPoint {
@@ -2906,8 +2911,7 @@ struct FloorGridView: View {
                     y: (value.location.y - offset.y) / cellSize
                 )
 
-                if let waypointID = waypointIDHit(at: scaledPoint, cellSize: cellSize) {
-                    deleteWaypoint(id: waypointID)
+                if focusWaypointByCycling(at: scaledPoint, cellSize: cellSize) {
                     return
                 }
 
@@ -2999,21 +3003,60 @@ struct FloorGridView: View {
         return waypoint.id
     }
 
-    private func waypointIDHit(at point: CGPoint, cellSize: CGFloat) -> UUID? {
-        guard hasTransition, let selectedAthleteID, let player else { return nil }
+    private func focusWaypointByCycling(at point: CGPoint, cellSize: CGFloat) -> Bool {
+        guard hasTransition, let selectedAthleteID, let player else { return false }
         let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
         let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize) * 1.5
 
-        return transition.pathWaypoints
-            .map { waypoint in
-                (
-                    id: waypoint.id,
+        let candidates = transition.pathWaypoints
+            .enumerated()
+            .compactMap { index, waypoint -> (index: Int, waypoint: PathWaypoint, distance: CGFloat)? in
+                let distance = PathCalculations.squaredDistance(from: point, to: waypoint.position)
+                guard distance < hitRadiusSquared else { return nil }
+                return (index, waypoint, distance)
+            }
+            .sorted {
+                if abs($0.distance - $1.distance) > 0.0001 {
+                    return $0.distance < $1.distance
+                }
+                return $0.index < $1.index
+            }
+
+        guard !candidates.isEmpty else { return false }
+
+        let nextCandidate: (index: Int, waypoint: PathWaypoint, distance: CGFloat)
+        if let focusedIndex = focusedWaypointIndex(in: transition) {
+            if let currentCandidateIndex = candidates.firstIndex(where: { $0.index == focusedIndex }),
+               candidates.count > 1 {
+                nextCandidate = candidates[(currentCandidateIndex + 1) % candidates.count]
+            } else if candidates.count == 1,
+                      candidates[0].index == focusedIndex,
+                      transition.pathWaypoints.count > 1 {
+                let nextIndex = (focusedIndex + 1) % transition.pathWaypoints.count
+                let waypoint = transition.pathWaypoints[nextIndex]
+                nextCandidate = (
+                    index: nextIndex,
+                    waypoint: waypoint,
                     distance: PathCalculations.squaredDistance(from: point, to: waypoint.position)
                 )
+            } else {
+                nextCandidate = candidates[0]
             }
-            .filter { $0.distance < hitRadiusSquared }
-            .min { $0.distance < $1.distance }?
-            .id
+        } else {
+            nextCandidate = candidates[0]
+        }
+
+        focusedEndpoint = currentFormationEndpoint
+        focusedPathHandle = nextCandidate.waypoint.position
+        hoveredPathAthleteID = selectedAthleteID
+        return true
+    }
+
+    private func focusedWaypointIndex(in transition: AthleteTransition) -> Int? {
+        guard let focusedPathHandle else { return nil }
+        return transition.pathWaypoints.firstIndex {
+            PathCalculations.squaredDistance(from: focusedPathHandle, to: $0.position) < 1.0
+        }
     }
 
     private func deleteWaypoint(id waypointID: UUID) {
