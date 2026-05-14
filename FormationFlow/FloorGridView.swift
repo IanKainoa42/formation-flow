@@ -68,8 +68,10 @@ struct FloorGridView: View {
     @State private var focusedEndpoint: PreviewEditableEndpoint?
     @State private var isDraggingEndpoint = false
     @State private var isDraggingPathHandle = false
+    @State private var isSketchingPath = false
     @State private var draggingWaypointID: UUID?
     @State private var pendingWaypointDeletionID: UUID?
+    @State private var pathSketchPoints: [CGPoint] = []
     @State private var endpointDragStartPosition: CGPoint?
     @State private var showingResetAllPathsConfirmation = false
     @State private var showingResetSinglePathConfirmation = false
@@ -977,6 +979,7 @@ struct FloorGridView: View {
                 ghostNextColor: nextFormationColor,
                 ghostPrevPaths: previousGhostPaths,
                 ghostNextPaths: nextGhostPaths,
+                pathSketchPoints: pathSketchPoints,
                 hoveredHandlePosition: hoveredHandlePosition,
                 hoveredAthleteID: hoveredAthleteID,
                 hoveredPathAthleteID: hoveredPathAthleteID,
@@ -1954,22 +1957,47 @@ struct FloorGridView: View {
         for segIdx in 0..<(nodes.count - 1) {
             let p0 = nodes[segIdx]
             let p1 = nodes[segIdx + 1]
-            let dx = p1.x - p0.x
-            let dy = p1.y - p0.y
-            let lenSq = dx * dx + dy * dy
-            let t: CGFloat
-            if lenSq < 0.0001 {
-                t = 0
+            let waypointAtEnd = segIdx < transition.pathWaypoints.count ? transition.pathWaypoints[segIdx] : nil
+
+            if waypointAtEnd?.isSmooth == true {
+                let prevNode = segIdx > 0 ? nodes[segIdx - 1] : p0
+                let nextNode = segIdx + 2 < nodes.count ? nodes[segIdx + 2] : p1
+                let (c1, c2) = PathCalculations.catmullRomControlPoints(prev: prevNode, p0: p0, p1: p1, next: nextNode)
+                var previous = p0
+                let steps = 20
+
+                for step in 1...steps {
+                    let t = CGFloat(step) / CGFloat(steps)
+                    let current = PathCalculations.cubicBezierPoint(p0: p0, c1: c1, c2: c2, p3: p1, t: t)
+                    let projection = projectedPoint(onSegmentFrom: previous, to: current, nearestTo: point)
+                    let d2 = PathCalculations.squaredDistance(from: point, to: projection)
+                    if best == nil || d2 < best!.squaredDistance {
+                        best = (projection, segIdx, d2)
+                    }
+                    previous = current
+                }
             } else {
-                t = max(0, min(1, ((point.x - p0.x) * dx + (point.y - p0.y) * dy) / lenSq))
-            }
-            let proj = CGPoint(x: p0.x + dx * t, y: p0.y + dy * t)
-            let d2 = PathCalculations.squaredDistance(from: point, to: proj)
-            if best == nil || d2 < best!.squaredDistance {
-                best = (proj, segIdx, d2)
+                let projection = projectedPoint(onSegmentFrom: p0, to: p1, nearestTo: point)
+                let d2 = PathCalculations.squaredDistance(from: point, to: projection)
+                if best == nil || d2 < best!.squaredDistance {
+                    best = (projection, segIdx, d2)
+                }
             }
         }
         return best
+    }
+
+    private func projectedPoint(onSegmentFrom start: CGPoint, to end: CGPoint, nearestTo point: CGPoint) -> CGPoint {
+        let dx = end.x - start.x
+        let dy = end.y - start.y
+        let lenSq = dx * dx + dy * dy
+        let t: CGFloat
+        if lenSq < 0.0001 {
+            t = 0
+        } else {
+            t = max(0, min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lenSq))
+        }
+        return CGPoint(x: start.x + dx * t, y: start.y + dy * t)
     }
 
     private func selectedTransitionPathHit(
@@ -2020,28 +2048,6 @@ struct FloorGridView: View {
         interactionHitRadiusSquared(for: cellSize) * 16
     }
 
-    private func waypointIDToMove(toward point: CGPoint, transition: AthleteTransition) -> UUID? {
-        transition.pathWaypoints.min { lhs, rhs in
-            PathCalculations.squaredDistance(from: point, to: lhs.position)
-                < PathCalculations.squaredDistance(from: point, to: rhs.position)
-        }?.id
-    }
-
-    private func beginSelectedPathHandleDrag(
-        at scaledPoint: CGPoint,
-        selectingHandleNearestTo selectionPoint: CGPoint? = nil,
-        transition: AthleteTransition
-    ) {
-        draggingWaypointID = waypointIDToMove(
-            toward: selectionPoint ?? scaledPoint,
-            transition: transition
-        )
-        isDraggingPathHandle = true
-        focusedEndpoint = currentFormationEndpoint
-        focusedPathHandle = scaledPoint
-        handlePathDragContinued(scaledPoint: scaledPoint)
-    }
-
     private func shouldSuppressMarqueeForSelectedPathNearMiss(at point: CGPoint, cellSize: CGFloat) -> Bool {
         guard selectedAthleteID != nil else { return false }
         return selectedTransitionPathHit(
@@ -2058,6 +2064,142 @@ struct FloorGridView: View {
         markers.first {
             PathCalculations.squaredDistance(from: point, to: $0.position) < hitRadiusSquared
         }
+    }
+
+    private func beginPathSketch(startingAt point: CGPoint) {
+        guard entitlementManager.isPro else {
+            showingUpgradeSheet = true
+            return
+        }
+
+        isSketchingPath = true
+        focusedEndpoint = currentFormationEndpoint
+        focusedPathHandle = nil
+        pathSketchPoints = [clampedPathPoint(point)]
+    }
+
+    private func handlePathSketchContinued(_ point: CGPoint) {
+        let clampedPoint = clampedPathPoint(point)
+        guard let lastPoint = pathSketchPoints.last else {
+            pathSketchPoints = [clampedPoint]
+            return
+        }
+
+        let minimumDistance: CGFloat = 0.5
+        let dx = clampedPoint.x - lastPoint.x
+        let dy = clampedPoint.y - lastPoint.y
+        guard dx * dx + dy * dy >= minimumDistance * minimumDistance else { return }
+        pathSketchPoints.append(clampedPoint)
+    }
+
+    private func finishPathSketch() {
+        guard
+            pathSketchPoints.count >= 2,
+            let selectedAthleteID,
+            let startFormationID,
+            let endFormationID,
+            let player,
+            let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID }),
+            let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
+        else { return }
+
+        let waypoints = smoothedWaypoints(
+            fromSketch: pathSketchPoints,
+            start: startAthlete.position,
+            end: endAthlete.position
+        )
+
+        store.mutateAthleteTransition(from: startFormationID, to: endFormationID, athleteID: selectedAthleteID) { t in
+            t.pathControlPoint = nil
+            t.pathWaypoints = waypoints
+        }
+        refreshTransitionFromStore()
+    }
+
+    private func smoothedWaypoints(
+        fromSketch sketchPoints: [CGPoint],
+        start: CGPoint,
+        end: CGPoint
+    ) -> [PathWaypoint] {
+        var points = sketchPoints.map(clampedPathPoint)
+        guard points.count >= 2 else { return [] }
+
+        let forwardDistance = PathCalculations.squaredDistance(from: points[0], to: start)
+            + PathCalculations.squaredDistance(from: points[points.count - 1], to: end)
+        let reverseDistance = PathCalculations.squaredDistance(from: points[0], to: end)
+            + PathCalculations.squaredDistance(from: points[points.count - 1], to: start)
+        if reverseDistance < forwardDistance {
+            points.reverse()
+        }
+
+        let interior = points.filter { point in
+            PathCalculations.squaredDistance(from: point, to: start) > 1
+                && PathCalculations.squaredDistance(from: point, to: end) > 1
+        }
+        let fullPath = [start] + interior + [end]
+        let simplified = simplifiedSketchPath(fullPath, tolerance: 1.35)
+        var waypointPositions = Array(simplified.dropFirst().dropLast())
+
+        if waypointPositions.isEmpty,
+           let farthest = farthestSketchPoint(from: fullPath, start: start, end: end)
+        {
+            waypointPositions = [farthest]
+        }
+
+        return downsampledWaypointPositions(waypointPositions, maxCount: 6)
+            .map { PathWaypoint(position: clampedPathPoint($0), isSmooth: true) }
+    }
+
+    private func simplifiedSketchPath(_ points: [CGPoint], tolerance: CGFloat) -> [CGPoint] {
+        guard points.count > 2 else { return points }
+
+        let start = points[0]
+        let end = points[points.count - 1]
+        var farthestIndex = 0
+        var farthestDistance = CGFloat.zero
+
+        for index in 1..<(points.count - 1) {
+            let projection = projectedPoint(onSegmentFrom: start, to: end, nearestTo: points[index])
+            let distance = PathCalculations.squaredDistance(from: points[index], to: projection)
+            if distance > farthestDistance {
+                farthestDistance = distance
+                farthestIndex = index
+            }
+        }
+
+        guard farthestDistance > tolerance * tolerance else {
+            return [start, end]
+        }
+
+        let left = simplifiedSketchPath(Array(points[0...farthestIndex]), tolerance: tolerance)
+        let right = simplifiedSketchPath(Array(points[farthestIndex..<(points.count)]), tolerance: tolerance)
+        return Array(left.dropLast()) + right
+    }
+
+    private func farthestSketchPoint(from points: [CGPoint], start: CGPoint, end: CGPoint) -> CGPoint? {
+        points.dropFirst().dropLast().max { lhs, rhs in
+            let lhsProjection = projectedPoint(onSegmentFrom: start, to: end, nearestTo: lhs)
+            let rhsProjection = projectedPoint(onSegmentFrom: start, to: end, nearestTo: rhs)
+            return PathCalculations.squaredDistance(from: lhs, to: lhsProjection)
+                < PathCalculations.squaredDistance(from: rhs, to: rhsProjection)
+        }
+    }
+
+    private func downsampledWaypointPositions(_ positions: [CGPoint], maxCount: Int) -> [CGPoint] {
+        guard positions.count > maxCount, maxCount > 1 else { return positions }
+
+        let stride = CGFloat(positions.count - 1) / CGFloat(maxCount - 1)
+        var sampled: [CGPoint] = []
+        var usedIndices = Set<Int>()
+
+        for index in 0..<maxCount {
+            let sourceIndex = min(positions.count - 1, Int((CGFloat(index) * stride).rounded()))
+            if usedIndices.insert(sourceIndex).inserted {
+                sampled.append(positions[sourceIndex])
+            }
+        }
+
+        return sampled
     }
 
     // MARK: - Unified Gesture Handler
@@ -2087,6 +2229,10 @@ struct FloorGridView: View {
                 // Priority 1: Continue in-progress drags
                 if isDraggingPathHandle {
                     handlePathDragContinued(scaledPoint: scaledPoint)
+                    return
+                }
+                if isSketchingPath {
+                    handlePathSketchContinued(scaledPoint)
                     return
                 }
                 if isDraggingEndpoint {
@@ -2168,9 +2314,8 @@ struct FloorGridView: View {
                             }
                         }
 
-                        // Grab anywhere on the selected path: move the existing path handle
-                        // to the grab point and continue dragging it. Waypoint paths reuse the
-                        // nearest existing waypoint handle instead of inserting a new one.
+                        // Drag anywhere on the selected path to sketch an approximate route.
+                        // The sketch is converted to smooth waypoints when the drag ends.
                         if let startAthlete, let endAthlete,
                            let nearest = nearestPointOnTransitionPath(
                                at: startScaledPoint,
@@ -2181,11 +2326,8 @@ struct FloorGridView: View {
                            nearest.squaredDistance < pathHitRadiusSquared(for: cellSize)
                         {
                             guard dragDistanceSquared >= dragActivationDistanceSquared else { return }
-                            beginSelectedPathHandleDrag(
-                                at: scaledPoint,
-                                selectingHandleNearestTo: nearest.point,
-                                transition: transition
-                            )
+                            beginPathSketch(startingAt: nearest.point)
+                            handlePathSketchContinued(scaledPoint)
                             return
                         }
                     }
@@ -2287,8 +2429,10 @@ struct FloorGridView: View {
                     isDraggingAthletes = false
                     isDraggingEndpoint = false
                     isDraggingPathHandle = false
+                    isSketchingPath = false
                     isPanningCanvas = false
                     draggingWaypointID = nil
+                    pathSketchPoints = []
                     isDrawingSelectionBox = false
                     selectionRect = nil
                     dragStartPositions = [:]
@@ -2337,6 +2481,11 @@ struct FloorGridView: View {
 
                 if isDraggingEndpoint {
                     refreshTransitionFromStore()
+                }
+
+                if isSketchingPath {
+                    finishPathSketch()
+                    return
                 }
 
                 if isPanningCanvas {
@@ -2428,7 +2577,12 @@ struct FloorGridView: View {
                     at: startScaledPoint,
                     maxSquaredDistance: pathHitRadiusSquared(for: cellSize)
                 ) {
-                    beginSelectedPathHandleDrag(at: hit.point, transition: hit.transition)
+                    focusedEndpoint = currentFormationEndpoint
+                    focusedPathHandle = nearestPathHandle(at: tapPoint, cellSize: cellSize)
+                        ?? nearestPathHandle(at: startScaledPoint, cellSize: cellSize)
+                    if focusedPathHandle == nil {
+                        hoveredPathAthleteID = hit.transition.athleteID
+                    }
                     return
                 }
 
@@ -2577,6 +2731,7 @@ struct FloorGridView: View {
         guard let selectedAthleteID, let player, let startFormationID, let endFormationID else { return }
         clearActiveGuides()
         let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
+        let pathPoint = clampedPathPoint(scaledPoint)
 
         if !transition.pathWaypoints.isEmpty {
             if let draggingWaypointID,
@@ -2587,7 +2742,7 @@ struct FloorGridView: View {
                     to: endFormationID,
                     athleteID: selectedAthleteID
                 ) { t in
-                    t.pathWaypoints[waypointIndex].position = scaledPoint
+                    t.pathWaypoints[waypointIndex].position = pathPoint
                 }
                 refreshTransitionFromStore()
             }
@@ -2597,8 +2752,8 @@ struct FloorGridView: View {
             let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
             if let startAthlete, let endAthlete {
                 let newControlPoint = CGPoint(
-                    x: 2 * scaledPoint.x - 0.5 * startAthlete.position.x - 0.5 * endAthlete.position.x,
-                    y: 2 * scaledPoint.y - 0.5 * startAthlete.position.y - 0.5 * endAthlete.position.y
+                    x: 2 * pathPoint.x - 0.5 * startAthlete.position.x - 0.5 * endAthlete.position.x,
+                    y: 2 * pathPoint.y - 0.5 * startAthlete.position.y - 0.5 * endAthlete.position.y
                 )
                 store.mutateAthleteTransition(
                     from: startFormationID,
@@ -2611,6 +2766,13 @@ struct FloorGridView: View {
                 refreshTransitionFromStore()
             }
         }
+    }
+
+    private func clampedPathPoint(_ point: CGPoint) -> CGPoint {
+        CGPoint(
+            x: max(0, min(CourtConstants.width, point.x)),
+            y: max(0, min(CourtConstants.height, point.y))
+        )
     }
 
     private func handleEndpointDragContinued(
@@ -2740,7 +2902,14 @@ struct FloorGridView: View {
                 )
 
                 if nearestPathHandle(at: scaledPoint, cellSize: cellSize) != nil {
-                    resetPathForSelectedAthlete()
+                    return
+                }
+
+                if let hit = selectedTransitionPathHit(
+                    at: scaledPoint,
+                    maxSquaredDistance: pathHitRadiusSquared(for: cellSize)
+                ) {
+                    _ = insertWaypoint(at: hit.point, segmentIndex: hit.segmentIndex)
                     return
                 }
 
@@ -2788,30 +2957,36 @@ struct FloorGridView: View {
             showingUpgradeSheet = true
             return
         }
-        guard let selectedAthleteID, let startFormationID, let endFormationID, let player else { return }
+        guard let selectedAthleteID, let player else { return }
         let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID })
         let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
         guard let startAthlete, let endAthlete else { return }
+        let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
+        let placement = PathWaypointPlacement.defaultPlacement(
+            transition: transition,
+            start: startAthlete.position,
+            end: endAthlete.position
+        )
+
+        _ = insertWaypoint(at: placement.point, segmentIndex: placement.index)
+    }
+
+    private func insertWaypoint(at point: CGPoint, segmentIndex: Int) -> UUID? {
+        guard entitlementManager.isPro else {
+            showingUpgradeSheet = true
+            return nil
+        }
+        guard let selectedAthleteID, let startFormationID, let endFormationID, let player else { return nil }
+        let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
+        let waypoint = PathWaypoint(position: clampedPathPoint(point), isSmooth: true)
+        let insertionIndex = max(0, min(segmentIndex, transition.pathWaypoints.count))
 
         store.mutateAthleteTransition(from: startFormationID, to: endFormationID, athleteID: selectedAthleteID) { t in
-            if t.pathWaypoints.isEmpty {
-                let point = t.pathControlPoint
-                    ?? CGPoint(
-                        x: (startAthlete.position.x + endAthlete.position.x) / 2,
-                        y: (startAthlete.position.y + endAthlete.position.y) / 2
-                    )
-                t.pathWaypoints = [PathWaypoint(position: point, isSmooth: true)]
-                t.pathControlPoint = nil
-            } else {
-                let lastNode = t.pathWaypoints.last?.position ?? startAthlete.position
-                let point = CGPoint(
-                    x: (lastNode.x + endAthlete.position.x) / 2,
-                    y: (lastNode.y + endAthlete.position.y) / 2
-                )
-                t.pathWaypoints.append(PathWaypoint(position: point, isSmooth: true))
-            }
+            t.pathControlPoint = nil
+            t.pathWaypoints.insert(waypoint, at: insertionIndex)
         }
         refreshTransitionFromStore()
+        return waypoint.id
     }
 
     private func deletePendingWaypoint() {
@@ -3130,6 +3305,54 @@ struct FloorGridView: View {
 
     private func performResetSelectedPath() {
         resetPathForSelectedAthlete()
+    }
+}
+
+enum PathWaypointPlacement {
+    static func defaultPlacement(
+        transition: AthleteTransition,
+        start: CGPoint,
+        end: CGPoint
+    ) -> (index: Int, point: CGPoint) {
+        if transition.pathWaypoints.isEmpty {
+            return (
+                0,
+                transition.pathControlPoint ?? midpoint(from: start, to: end)
+            )
+        }
+
+        let nodes = PathCalculations.waypointNodes(
+            from: start,
+            to: end,
+            waypoints: transition.pathWaypoints
+        )
+        guard nodes.count >= 2 else {
+            return (transition.pathWaypoints.count, midpoint(from: start, to: end))
+        }
+
+        var bestSegmentIndex = 0
+        var bestLengthSquared = CGFloat.zero
+        for index in 0..<(nodes.count - 1) {
+            let dx = nodes[index + 1].x - nodes[index].x
+            let dy = nodes[index + 1].y - nodes[index].y
+            let lengthSquared = dx * dx + dy * dy
+            if lengthSquared > bestLengthSquared {
+                bestLengthSquared = lengthSquared
+                bestSegmentIndex = index
+            }
+        }
+
+        return (
+            min(bestSegmentIndex, transition.pathWaypoints.count),
+            midpoint(from: nodes[bestSegmentIndex], to: nodes[bestSegmentIndex + 1])
+        )
+    }
+
+    private static func midpoint(from start: CGPoint, to end: CGPoint) -> CGPoint {
+        CGPoint(
+            x: (start.x + end.x) / 2,
+            y: (start.y + end.y) / 2
+        )
     }
 }
 

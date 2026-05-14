@@ -139,6 +139,7 @@ struct FloorCanvasView: View {
     var ghostTransitionPaths: [TransitionPathRenderItem] = []
     var ghostPrevPaths: [TransitionPathRenderItem] = []
     var ghostNextPaths: [TransitionPathRenderItem] = []
+    var pathSketchPoints: [CGPoint] = []
     var hoveredHandlePosition: CGPoint? = nil
     var hoveredAthleteID: UUID? = nil
     var hoveredPathAthleteID: UUID? = nil
@@ -172,6 +173,7 @@ struct FloorCanvasView: View {
             drawAlignmentGuides(in: &context)
             drawMirrorGuides(in: &context)
             drawTransitionPaths(in: &context)
+            drawPathSketch(in: &context)
             drawPathCollisionMarkers(in: &context)
             drawEndpointMarkers(in: &context)
             drawAthletes(in: &context)
@@ -447,6 +449,29 @@ struct FloorCanvasView: View {
         let dx = gridPosition.x - hovered.x
         let dy = gridPosition.y - hovered.y
         return dx * dx + dy * dy < 1.0
+    }
+
+    private func drawPathSketch(in context: inout GraphicsContext) {
+        guard pathSketchPoints.count >= 2 else { return }
+
+        var path = Path()
+        let first = scaledCanvasPoint(pathSketchPoints[0])
+        path.move(to: first)
+
+        for point in pathSketchPoints.dropFirst() {
+            path.addLine(to: scaledCanvasPoint(point))
+        }
+
+        context.stroke(
+            path,
+            with: .color(.black.opacity(0.7)),
+            style: StrokeStyle(lineWidth: max(5, 5.5 * markerScale), lineCap: .round, lineJoin: .round)
+        )
+        context.stroke(
+            path,
+            with: .color(.white.opacity(0.9)),
+            style: StrokeStyle(lineWidth: max(2.2, 2.6 * markerScale), lineCap: .round, lineJoin: .round, dash: [10, 5])
+        )
     }
 
     private func drawTransitionPaths(in context: inout GraphicsContext) {

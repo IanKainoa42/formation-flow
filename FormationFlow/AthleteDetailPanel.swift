@@ -720,22 +720,16 @@ struct SidebarInspectorView: View {
                     to: endFormationID,
                     athleteID: selectedAthleteID
                 ) { t in
-                    if t.pathWaypoints.isEmpty {
-                        let point = t.pathControlPoint
-                            ?? CGPoint(
-                                x: (startAthlete.position.x + endAthlete.position.x) / 2,
-                                y: (startAthlete.position.y + endAthlete.position.y) / 2
-                            )
-                        t.pathWaypoints = [PathWaypoint(position: point, isSmooth: true)]
-                        t.pathControlPoint = nil
-                    } else {
-                        let lastNode = t.pathWaypoints.last?.position ?? startAthlete.position
-                        let point = CGPoint(
-                            x: (lastNode.x + endAthlete.position.x) / 2,
-                            y: (lastNode.y + endAthlete.position.y) / 2
-                        )
-                        t.pathWaypoints.append(PathWaypoint(position: point, isSmooth: true))
-                    }
+                    let placement = PathWaypointPlacement.defaultPlacement(
+                        transition: t,
+                        start: startAthlete.position,
+                        end: endAthlete.position
+                    )
+                    t.pathControlPoint = nil
+                    t.pathWaypoints.insert(
+                        PathWaypoint(position: placement.point, isSmooth: true),
+                        at: placement.index
+                    )
                 }
                 onRefreshTransition()
             },
@@ -1046,22 +1040,16 @@ struct SelectedAthleteSidebarView: View {
                                     from: startFormationID, to: endFormationID,
                                     athleteID: selectedAthleteID
                                 ) { t in
-                                    if t.pathWaypoints.isEmpty {
-                                        let point = t.pathControlPoint
-                                            ?? CGPoint(
-                                                x: (startAthlete.position.x + endAthlete.position.x) / 2,
-                                                y: (startAthlete.position.y + endAthlete.position.y) / 2
-                                            )
-                                        t.pathWaypoints = [PathWaypoint(position: point, isSmooth: true)]
-                                        t.pathControlPoint = nil
-                                    } else {
-                                        let lastNode = t.pathWaypoints.last?.position ?? startAthlete.position
-                                        let point = CGPoint(
-                                            x: (lastNode.x + endAthlete.position.x) / 2,
-                                            y: (lastNode.y + endAthlete.position.y) / 2
-                                        )
-                                        t.pathWaypoints.append(PathWaypoint(position: point, isSmooth: true))
-                                    }
+                                    let placement = PathWaypointPlacement.defaultPlacement(
+                                        transition: t,
+                                        start: startAthlete.position,
+                                        end: endAthlete.position
+                                    )
+                                    t.pathControlPoint = nil
+                                    t.pathWaypoints.insert(
+                                        PathWaypoint(position: placement.point, isSmooth: true),
+                                        at: placement.index
+                                    )
                                 }
                                 onRefreshTransition()
                             } label: {
