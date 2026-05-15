@@ -14,12 +14,19 @@ final class EntitlementManager: ObservableObject {
 
     init() {
         Self.logger.info("EntitlementManager initializing...")
-        
+
+        #if DEBUG
+        if CommandLine.arguments.contains("-NonPro") {
+            Self.logger.info("DEBUG: -NonPro flag set, forcing isPro = false")
+            return
+        }
+        #endif
+
         // Start listening for transactions
         updateTask = Task {
             await listenForTransactions()
         }
-        
+
         // Check current entitlement status
         Task {
             await checkEntitlement()

@@ -135,6 +135,9 @@ struct FloorGridView: View {
     private var renderedAthletes: [RenderedAthlete] {
         _ = playerTick // force redraw on player updates
         if let player {
+            if !player.isPlaying, let focusedEndpoint {
+                return focusedEndpoint == .end ? player.endAthletes : player.startAthletes
+            }
             return player.currentAthletes
         }
         return store.renderedAthletes(for: formationID)
@@ -185,41 +188,52 @@ struct FloorGridView: View {
         return TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: index)
     }
 
+    // Ghost athletes and paths are anchored to startFormationID/endFormationID so they
+    // correctly show the transition BEFORE the current start and AFTER the current end,
+    // regardless of whether the selected formation is the start or end of the transition.
+
     private var previousFormationAthletes: [RenderedAthlete] {
-        guard let formationIndex, formationIndex > 0 else { return [] }
-        let prevFormation = store.routine.formations[formationIndex - 1]
-        return store.renderedAthletes(for: prevFormation)
+        guard let startFormationID,
+              let startIndex = store.formationIndex(id: startFormationID),
+              startIndex > 0 else { return [] }
+        return store.renderedAthletes(for: store.routine.formations[startIndex - 1])
     }
 
     private var nextFormationAthletes: [RenderedAthlete] {
-        guard let formationIndex, formationIndex + 1 < store.routine.formations.count else { return [] }
-        let nextFormation = store.routine.formations[formationIndex + 1]
-        return store.renderedAthletes(for: nextFormation)
+        guard let endFormationID,
+              let endIndex = store.formationIndex(id: endFormationID),
+              endIndex + 1 < store.routine.formations.count else { return [] }
+        return store.renderedAthletes(for: store.routine.formations[endIndex + 1])
     }
 
     private var previousFormationColor: Color {
-        guard let formationIndex, formationIndex > 0 else { return .white }
-        return TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: formationIndex - 1)
+        guard let startFormationID,
+              let startIndex = store.formationIndex(id: startFormationID),
+              startIndex > 0 else { return .white }
+        return TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: startIndex - 1)
     }
 
     private var nextFormationColor: Color {
-        guard let formationIndex, formationIndex + 1 < store.routine.formations.count else { return .white }
-        return TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: formationIndex + 1)
+        guard let endFormationID,
+              let endIndex = store.formationIndex(id: endFormationID),
+              endIndex + 1 < store.routine.formations.count else { return .white }
+        return TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: endIndex + 1)
     }
 
     private var previousGhostPaths: [TransitionPathRenderItem] {
-        guard let formationIndex, formationIndex > 0 else { return [] }
-        let prevFormation = store.routine.formations[formationIndex - 1]
-        let curFormation = store.routine.formations[formationIndex]
-        let spec = store.transitionSpec(for: prevFormation.id, to: curFormation.id)
+        guard let startFormationID,
+              let startIndex = store.formationIndex(id: startFormationID),
+              startIndex > 0 else { return [] }
+        let prevFormation = store.routine.formations[startIndex - 1]
+        let startFormation = store.routine.formations[startIndex]
+        let spec = store.transitionSpec(for: prevFormation.id, to: startFormation.id)
         let prevAthletes = store.renderedAthletes(for: prevFormation)
-        let curAthletes = store.renderedAthletes(for: curFormation)
-        // ⚡ Bolt: Eliminate intermediate array allocation
-        let curLookup = curAthletes.reduce(into: [UUID: RenderedAthlete]()) { result, athlete in
+        let startAthletes = store.renderedAthletes(for: startFormation)
+        let startLookup = startAthletes.reduce(into: [UUID: RenderedAthlete]()) { result, athlete in
             if result[athlete.id] == nil { result[athlete.id] = athlete }
         }
         return prevAthletes.compactMap { athlete in
-            guard let end = curLookup[athlete.id] else { return nil }
+            guard let end = startLookup[athlete.id] else { return nil }
             let transition = spec.athleteTransitions.first { $0.athleteID == athlete.id }
             return TransitionPathRenderItem(
                 athleteID: athlete.id,
@@ -233,17 +247,18 @@ struct FloorGridView: View {
     }
 
     private var nextGhostPaths: [TransitionPathRenderItem] {
-        guard let formationIndex, formationIndex + 1 < store.routine.formations.count else { return [] }
-        let curFormation = store.routine.formations[formationIndex]
-        let nextFormation = store.routine.formations[formationIndex + 1]
-        let spec = store.transitionSpec(for: curFormation.id, to: nextFormation.id)
-        let curAthletes = store.renderedAthletes(for: curFormation)
+        guard let endFormationID,
+              let endIndex = store.formationIndex(id: endFormationID),
+              endIndex + 1 < store.routine.formations.count else { return [] }
+        let endFormation = store.routine.formations[endIndex]
+        let nextFormation = store.routine.formations[endIndex + 1]
+        let spec = store.transitionSpec(for: endFormation.id, to: nextFormation.id)
+        let endAthletes = store.renderedAthletes(for: endFormation)
         let nextAthletes = store.renderedAthletes(for: nextFormation)
-        // ⚡ Bolt: Eliminate intermediate array allocation
         let nextLookup = nextAthletes.reduce(into: [UUID: RenderedAthlete]()) { result, athlete in
             if result[athlete.id] == nil { result[athlete.id] = athlete }
         }
-        return curAthletes.compactMap { athlete in
+        return endAthletes.compactMap { athlete in
             guard let end = nextLookup[athlete.id] else { return nil }
             let transition = spec.athleteTransitions.first { $0.athleteID == athlete.id }
             return TransitionPathRenderItem(
@@ -261,6 +276,14 @@ struct FloorGridView: View {
 
     private var hasTransition: Bool {
         player != nil && startFormationID != nil && endFormationID != nil
+    }
+
+    private var displayProgress: CGFloat {
+        guard let player else { return 0 }
+        if !player.isPlaying, let focusedEndpoint {
+            return focusedEndpoint == .end ? 1.0 : 0.0
+        }
+        return player.progress
     }
 
     private var transitionStartColor: Color {
@@ -318,7 +341,7 @@ struct FloorGridView: View {
     }
 
     private var currentFormationEndpoint: PreviewEditableEndpoint? {
-        guard hasTransition else { return nil }
+        guard startFormationID != nil && endFormationID != nil else { return nil }
         if formationID == startFormationID { return .start }
         if formationID == endFormationID { return .end }
         return nil
@@ -521,6 +544,12 @@ struct FloorGridView: View {
             rotationStartPositions = [:]
             clearTransitionDragState()
             selectedAthleteIDs = []
+        }
+        .onChange(of: endFormationID) { _, _ in
+            focusedEndpoint = currentFormationEndpoint
+        }
+        .onChange(of: startFormationID) { _, _ in
+            focusedEndpoint = currentFormationEndpoint
         }
         .onChange(of: isSwapMode) { _, newValue in
             if newValue, swapSourceAthleteID == nil {
@@ -971,7 +1000,7 @@ struct FloorGridView: View {
                 hasTransition: hasTransition,
                 startFormationColor: transitionStartColor,
                 endFormationColor: transitionEndColor,
-                transitionProgress: player?.progress ?? 0,
+                transitionProgress: displayProgress,
                 formationColor: currentFormationColor,
                 ghostAthletes: previousFormationAthletes,
                 ghostColor: previousFormationColor,
@@ -3345,7 +3374,7 @@ struct FloorGridView: View {
             pathCollisionMarkerProgresses: player?.cachedPathCollisionMarkerProgresses ?? [],
             startFormationColor: transitionStartColor,
             endFormationColor: transitionEndColor,
-            transitionProgress: player?.progress ?? 0
+            transitionProgress: displayProgress
         )
 
         let renderer = ImageRenderer(content: shareCard)
