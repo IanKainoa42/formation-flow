@@ -2859,7 +2859,19 @@ struct FloorGridView: View {
         activeAlignmentGuides = snapResult.alignmentGuides
         activeMirrorGuides = snapResult.mirrorGuides
 
-        store.mutateFormation(id: formationID) { formation in
+        // Resolve which formation we're actually editing. In transition preview
+        // the visible athletes come from player.startAthletes / player.endAthletes
+        // (chosen by focusedEndpoint), which may differ from formationID — the
+        // viewed formation can be either endpoint of the previewed pair.
+        let editableID: UUID = {
+            if hasTransition, let focusedEndpoint,
+               let startFormationID, let endFormationID {
+                return focusedEndpoint == .end ? endFormationID : startFormationID
+            }
+            return formationID
+        }()
+
+        store.mutateFormation(id: editableID) { formation in
             for athleteID in selectedAthleteIDs {
                 guard
                     let startPosition = dragStartPositions[athleteID],
@@ -2873,6 +2885,7 @@ struct FloorGridView: View {
                 formation.placements[placementIndex].position = nextPosition
             }
         }
+        refreshTransitionFromStore()
     }
 
     // MARK: - Rotation
