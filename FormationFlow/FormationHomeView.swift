@@ -72,9 +72,17 @@ struct RoutineWorkspaceView: View {
         return store.routine.formations[selectedFormationIndex]
     }
 
+    /// Returns the currently desired mode, auto-flipping only when the current
+    /// selection makes the user's preferred direction unavailable (first or last
+    /// formation). Otherwise preserves the user's last choice.
     private func smartPickReferenceMode() -> PreviewReferenceMode {
-        .intoSelected
+        if isFirstFormation && !isLastFormation { return .outOfSelected }
+        if isLastFormation && !isFirstFormation { return .intoSelected }
+        return previewReferenceMode
     }
+
+    private var canPreviewInto: Bool { !isFirstFormation }
+    private var canPreviewOutOf: Bool { !isLastFormation }
 
     private var previewTransitionPair: (start: Formation, end: Formation)? {
         previewReferenceMode.transitionPair(
@@ -102,6 +110,35 @@ struct RoutineWorkspaceView: View {
         }
         // Free users can have up to 2 formations
         return store.routine.formations.count < 2
+    }
+
+    @ViewBuilder
+    private var transitionDirectionPicker: some View {
+        let canInto = canPreviewInto
+        let canOut = canPreviewOutOf
+        if canInto || canOut {
+            Picker("Transition focus", selection: Binding(
+                get: { previewReferenceMode },
+                set: { newMode in
+                    switch newMode {
+                    case .intoSelected:
+                        if canInto { previewReferenceMode = .intoSelected }
+                    case .outOfSelected:
+                        if canOut { previewReferenceMode = .outOfSelected }
+                    }
+                }
+            )) {
+                Text("Into").tag(PreviewReferenceMode.intoSelected)
+                    .accessibilityLabel("Transition into selected formation")
+                Text("Out of").tag(PreviewReferenceMode.outOfSelected)
+                    .accessibilityLabel("Transition out of selected formation")
+            }
+            .pickerStyle(.segmented)
+            .disabled(!(canInto && canOut))
+            .accessibilityLabel("Transition focus")
+            .accessibilityHint("Choose whether to edit the transition into or out of the selected formation")
+            .help("Switch between editing the transition into vs out of the selected formation")
+        }
     }
 
     @ViewBuilder
@@ -156,6 +193,11 @@ struct RoutineWorkspaceView: View {
             selectedAthleteIDs = []
             isSwapMode = false
             previewReferenceMode = smartPickReferenceMode()
+            refreshPreviewSession()
+        }
+        .onChange(of: previewReferenceMode) { _, _ in
+            selectedAthleteIDs = []
+            isSwapMode = false
             refreshPreviewSession()
         }
         .confirmationDialog(
@@ -358,15 +400,22 @@ struct RoutineWorkspaceView: View {
 
                 if !isIPadPortrait, let previewTransitionPair, let player = previewSession.player {
                     Divider()
-                    SidebarTransportView(
-                        player: player,
-                        startFormationName: previewTransitionPair.start.name,
-                        endFormationName: previewTransitionPair.end.name,
-                        onSwap: { isSwapMode.toggle() },
-                        isSwapMode: isSwapMode,
-                        canSwap: selectedAthleteIDs.count == 1,
-                        canEditPath: selectedAthleteIDs.count == 1
-                    )
+                    VStack(spacing: 12) {
+                        transitionDirectionPicker
+                        SidebarTransportView(
+                            player: player,
+                            startFormationName: previewTransitionPair.start.name,
+                            endFormationName: previewTransitionPair.end.name,
+                            onSwap: { isSwapMode.toggle() },
+                            isSwapMode: isSwapMode,
+                            canSwap: selectedAthleteIDs.count == 1,
+                            canEditPath: selectedAthleteIDs.count == 1,
+                            onPreviousFormation: stepToPreviousFormation,
+                            onNextFormation: stepToNextFormation,
+                            isFirstFormation: isFirstFormation,
+                            isLastFormation: isLastFormation
+                        )
+                    }
                     .padding(16)
                     .background(.thinMaterial)
                     .layoutPriority(1)
@@ -432,6 +481,9 @@ struct RoutineWorkspaceView: View {
 
             if !isPhoneLayout, let previewTransitionPair, let player = previewSession.player {
                 Divider()
+                transitionDirectionPicker
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
                 SidebarTransportView(
                     player: player,
                     startFormationName: previewTransitionPair.start.name,
@@ -575,19 +627,22 @@ struct RoutineWorkspaceView: View {
                 }
                 .overlay(alignment: .bottom) {
                     if isIPadPortrait, let previewTransitionPair, let player = previewSession.player {
-                        SidebarTransportView(
-                            player: player,
-                            startFormationName: previewTransitionPair.start.name,
-                            endFormationName: previewTransitionPair.end.name,
-                            onSwap: { isSwapMode.toggle() },
-                            isSwapMode: isSwapMode,
-                            canSwap: selectedAthleteIDs.count == 1,
-                            canEditPath: selectedAthleteIDs.count == 1,
-                            onPreviousFormation: stepToPreviousFormation,
-                            onNextFormation: stepToNextFormation,
-                            isFirstFormation: isFirstFormation,
-                            isLastFormation: isLastFormation
-                        )
+                        VStack(spacing: 10) {
+                            transitionDirectionPicker
+                            SidebarTransportView(
+                                player: player,
+                                startFormationName: previewTransitionPair.start.name,
+                                endFormationName: previewTransitionPair.end.name,
+                                onSwap: { isSwapMode.toggle() },
+                                isSwapMode: isSwapMode,
+                                canSwap: selectedAthleteIDs.count == 1,
+                                canEditPath: selectedAthleteIDs.count == 1,
+                                onPreviousFormation: stepToPreviousFormation,
+                                onNextFormation: stepToNextFormation,
+                                isFirstFormation: isFirstFormation,
+                                isLastFormation: isLastFormation
+                            )
+                        }
                         .padding(.horizontal, 20)
                         .padding(.vertical, 12)
                         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
