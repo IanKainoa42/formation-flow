@@ -2,6 +2,24 @@
 
 Corrections, knowledge gaps, and best practices. See `/self-improvement` for format.
 
+## 2026-05-18 — SwiftUI animation needs stable view identity — opacity-gate, don't conditional-render
+
+- **Category:** correction
+- **What happened:** Built a long-press progress ring around an athlete using `Circle().trim(from: 0, to: progress)` inside an `if let armingPos = state { ... }` overlay. The user reported "it works but there's no animation." Root cause: when `armingPos` flipped from `nil` to non-nil, the overlay's body produced a brand-new view, so SwiftUI had no prior `trim(to:)` value to interpolate from. The `withAnimation(.linear(duration: 0.35)) { progress = 1.0 }` ran, but the ring rendered at the final state (1.0) immediately, not the animated 0→1 transition.
+- **Rule:** For animations on properties of a transiently-visible view (`.trim`, `.scaleEffect`, `.rotationEffect`, etc.), always render the view in the hierarchy and gate visibility with `.opacity(...)`. Conditional rendering (`if let`) destroys view identity and forfeits animation interpolation on the first appearance. Also explicitly reset the animated value to its start state BEFORE the `withAnimation` call so the from-state is unambiguous: `progress = 0; withAnimation(...) { progress = 1.0 }`. **Caveat:** A bare assignment like `progress = 0` does NOT bypass an in-flight `withAnimation` transaction — it gets folded into the existing animation and continues smoothly from the current value. If the user re-triggers (e.g., re-press during exit animation), they'll see the new ring inherit a stale partial value. Force-reset with `withTransaction(Transaction { $0.disablesAnimations = true }) { progress = 0; armingPosition = newAnchor }`, then start the new `withAnimation(...) { progress = 1.0 }`.
+
+## 2026-05-18 — "Fixed size" UI means constraining EVERY contributing variable, not just one
+
+- **Category:** correction
+- **What happened:** User said "make the badge stay the same size." First pass only fixed pip-slot widths (so the row didn't reflow on cycle). But the badge as a whole still resized because: (a) different formation names had different widths → name pushed badge wider, (b) optional sub-lines (transition preview, ghost label) appeared/disappeared → badge grew taller, (c) pip count grew with routine length → row widened. Fixing one of three variables doesn't deliver "fixed size."
+- **Rule:** When the user asks for fixed-size UI, enumerate every variable that contributes to layout and constrain each one: (1) variable-count children → scale them to fit a budget OR cap and ellipsize; (2) variable-length text → `.lineLimit(1) .truncationMode(.tail) .frame(width:)`; (3) optional sub-views → either remove them, reserve fixed slots whether or not they're populated, or accept the variance only along one axis. Hard-pin the container with `.frame(width:, height:)` after constraining its contents. Confirm by mentally cycling through all the empty/full/long/short permutations.
+
+## 2026-05-18 — When one sibling in a row differs in size, give every sibling a fixed slot
+
+- **Category:** correction
+- **What happened:** Built the formation-context pip row in `FloorGridView.formationContextBadge` with the current pip at 14pt and others at 7pt. Each pip's `.frame` was sized directly to the dot, so when the user tapped the button to cycle, the HStack reflowed (different pip became the 14pt one) and the rounded-rect background subtly resized — read by the user as the button "popping bigger" on every press. Also `.buttonStyle(.plain)` left zero press-state visual.
+- **Rule:** For rows of items where one is visually emphasized (larger/colored) and the rest are minor, give every slot a fixed outer frame matching the largest possible size, then render the smaller dot centered inside that slot. The container's measured size stays constant across state changes and you avoid implicit layout animation on the parent. Apply `.animation(nil, value: <toggleState>)` to the row as belt-and-suspenders. Separately: when you strip a button's default visual with `.buttonStyle(.plain)`, you owe the user an explicit pressed-state effect (scale + brightness) via a custom `ButtonStyle`.
+
 ## 2026-04-30 — ASC submission flow: legacy endpoint is read-only, use v2 reviewSubmissions
 
 - **Category:** knowledge_gap
@@ -139,3 +157,15 @@ Corrections, knowledge gaps, and best practices. See `/self-improvement` for for
 - **Category:** knowledge_gap
 - **What happened:** `xcrun simctl` has no rotate command. Peekaboo hotkey `cmd+right` was accepted but had no effect (Simulator window didn't rotate). AppleScript `click menu item "Rotate Left"` failed due to missing assistive access.
 - **Rule:** Landscape iPad screenshots require Simulator.app to have assistive access granted in System Settings > Privacy > Accessibility, OR manual rotation before the headless capture run. Without it, simctl captures are always portrait (2064×2752 for iPad Pro 13").
+
+## 2026-05-18 — UIKit gesture recognizers can run alongside SwiftUI gestures via overlay UIViewRepresentable
+
+- **Category:** best_practice
+- **What happened:** Needed two-finger double-tap + UILongPressGestureRecognizer on the FloorGridView canvas, but the canvas already has a unified SwiftUI `DragGesture(minimumDistance: 0)` doing athlete drag / waypoint drag / pan / marquee. SwiftUI has no native multi-finger tap, and `LongPressGesture(...).sequenced(before: DragGesture(...))` doesn't compose cleanly with the existing unified gesture.
+- **Rule:** Add a transparent `UIViewRepresentable` as an `.overlay(...)` whose UIView has `isUserInteractionEnabled = true` + `isMultipleTouchEnabled = true`. Attach `UITapGestureRecognizer` / `UILongPressGestureRecognizer` with `cancelsTouchesInView = false`, `delaysTouchesBegan = false`, `delaysTouchesEnded = false`. SwiftUI's gestures sit on an ancestor hosting view, so they continue to fire on the same touches. The overlay's recognizers fire independently for their patterns. Use a separate `@State` flag (e.g. `isLongPressSketching`) to gate the SwiftUI gesture's onChanged so it doesn't double-process while the UIKit recognizer is driving an interaction. Verify on device — if SwiftUI's recognizer is not on an ancestor of the overlay, this falls back to window-level recognizer install.
+
+## 2026-05-18 — Correction: UIViewRepresentable overlay DOES block SwiftUI gestures behind it
+
+- **Category:** correction
+- **What happened:** Earlier learning today claimed a `UIViewRepresentable` overlay with `cancelsTouchesInView = false` recognizers could coexist with the SwiftUI DragGesture beneath. Tested on ianPad — total failure: athletes could not be selected/dragged, panning didn't work, all touches were absorbed by the overlay. SwiftUI gesture recognizers are NOT attached to the overlay's parent UIView — they live in a separate subview tree. When the overlay's UIView claims hits, recognizers in sibling SwiftUI trees never see the touches.
+- **Rule:** Do NOT use an overlay UIViewRepresentable to add UIKit gesture recognizers to a SwiftUI Canvas/view that already has SwiftUI gestures. The overlay will swallow touches. Alternatives that actually work: (1) SwiftUI-native `LongPressGesture(...).sequenced(before: DragGesture(...))` attached as `.simultaneousGesture`, which composes natively. (2) UIWindow-level recognizers added on view-appear and filtered by location bounds — global, but they see all touches without claiming any. (3) Wrap the entire SwiftUI canvas inside a UIViewController-hosted parent that owns the recognizers. The advisor's suggestion to use overlay+cancelsTouchesInView was wrong for this case; supersedes the previous entry about it.

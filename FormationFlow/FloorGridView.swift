@@ -32,6 +32,7 @@ struct FloorGridView: View {
     var player: TransitionPlayer?
     var startFormationID: UUID?
     var endFormationID: UUID?
+    var onToggleTransitionDirection: (() -> Void)?
 
     @EnvironmentObject private var entitlementManager: EntitlementManager
     @State private var showingUpgradeSheet = false
@@ -69,9 +70,13 @@ struct FloorGridView: View {
     @State private var isDraggingEndpoint = false
     @State private var isDraggingPathHandle = false
     @State private var isSketchingPath = false
+    @State private var isLongPressSketching = false
     @State private var draggingWaypointID: UUID?
     @State private var pendingWaypointDeletionID: UUID?
     @State private var pathSketchPoints: [CGPoint] = []
+    @State private var pathSketchAnchorSide: PathSketchAnchorSide?
+    @State private var longPressArmingPosition: CGPoint?
+    @State private var longPressProgress: Double = 0
     @State private var endpointDragStartPosition: CGPoint?
     @State private var showingResetAllPathsConfirmation = false
     @State private var showingResetSinglePathConfirmation = false
@@ -1023,6 +1028,7 @@ struct FloorGridView: View {
                 )
             )
             .simultaneousGesture(waypointDoubleTapGesture(cellSize: cellSize, offset: offset))
+            .simultaneousGesture(longPressSketchGesture(cellSize: cellSize, offset: offset))
             .gesture(
                 MagnifyGesture()
                     .onChanged { value in
@@ -1218,6 +1224,33 @@ struct FloorGridView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             canvasContent
+                .overlay(alignment: .topLeading) {
+                    // Render the ring overlay unconditionally so SwiftUI keeps a
+                    // stable view identity for `.trim` — otherwise the first
+                    // appearance has no prior value to interpolate from and the
+                    // 0→1 fill is skipped. Opacity-gate visibility instead.
+                    let armingPos = longPressArmingPosition ?? .zero
+                    let screenPos = CGPoint(
+                        x: armingPos.x * cellSize + offset.x,
+                        y: armingPos.y * cellSize + offset.y
+                    )
+                    let diameter = max(36, cellSize * 3.0)
+                    ZStack {
+                        Circle()
+                            .stroke(.white.opacity(0.18), lineWidth: max(2.5, cellSize * 0.22))
+                        Circle()
+                            .trim(from: 0, to: longPressProgress)
+                            .stroke(
+                                .white.opacity(0.95),
+                                style: StrokeStyle(lineWidth: max(2.5, cellSize * 0.22), lineCap: .round)
+                            )
+                            .rotationEffect(.degrees(-90))
+                    }
+                    .frame(width: diameter, height: diameter)
+                    .position(screenPos)
+                    .opacity(longPressArmingPosition == nil ? 0 : 1)
+                    .allowsHitTesting(false)
+                }
                 .overlay(alignment: .bottomLeading) {
                     if !isPhoneLayout && !hideFormationContextBadge {
                         formationContextBadge
@@ -1252,57 +1285,76 @@ struct FloorGridView: View {
     // MARK: - Formation Context Badge
 
     private var formationContextBadge: some View {
-        Button {
+        let currentIndex = formationIndex ?? 0
+        let total = max(1, store.routine.formations.count)
+        let sizes = pipSizes(for: total)
+        return Button {
             onCycleFormation?()
         } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(currentFormationColor)
-                        .frame(width: 8, height: 8)
-                    Text(formationContextLabel)
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(.primary)
-                }
-
-                if hasTransition, showTransitionPaths, let startFormationName, let endFormationName {
-                    HStack(spacing: 4) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: sizes.spacing) {
+                    ForEach(0..<total, id: \.self) { index in
+                        let isCurrent = index == currentIndex
                         Circle()
-                            .fill(transitionStartColor)
-                            .frame(width: 6, height: 6)
-                        Text(startFormationName)
-                            .font(.caption2)
-                        Text("\u{2192}")
-                            .font(.caption2)
-                        Circle()
-                            .fill(transitionEndColor)
-                            .frame(width: 6, height: 6)
-                        Text(endFormationName)
-                            .font(.caption2)
-                    }
-                    .foregroundColor(.secondary)
-                }
-
-                if !previousFormationAthletes.isEmpty, let previousFormationName {
-                    HStack(spacing: 4) {
-                        Circle()
-                            .stroke(.white.opacity(0.3), lineWidth: 1)
-                            .frame(width: 6, height: 6)
-                        Text("Ghost: \(previousFormationName)")
-                            .font(.caption2)
-                            .foregroundColor(.secondary.opacity(0.7))
+                            .fill(isCurrent
+                                  ? TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: index)
+                                  : Color.secondary.opacity(0.35))
+                            .frame(width: isCurrent ? sizes.current : sizes.other,
+                                   height: isCurrent ? sizes.current : sizes.other)
+                            .frame(width: sizes.slot, height: sizes.slot)
                     }
                 }
+                .frame(width: Self.formationBadgePipRowWidth, height: 14, alignment: .leading)
+                .animation(nil, value: currentIndex)
+
+                Text(formation?.name ?? "Formation")
+                    .font(.headline.weight(.semibold))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(width: Self.formationBadgePipRowWidth, alignment: .leading)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
+            .frame(width: Self.formationBadgeWidth, alignment: .leading)
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .strokeBorder(.white.opacity(0.08))
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(FormationBadgeButtonStyle())
+        .accessibilityLabel(formationContextLabel)
+        .accessibilityHint("Double tap to advance to the next formation")
+    }
+
+    private static let formationBadgeWidth: CGFloat = 220
+    private static let formationBadgePipRowWidth: CGFloat = 200
+
+    private struct PipSizing {
+        let current: CGFloat
+        let other: CGFloat
+        let slot: CGFloat
+        let spacing: CGFloat
+    }
+
+    private func pipSizes(for total: Int) -> PipSizing {
+        let preferredCurrent: CGFloat = 14
+        let preferredOther: CGFloat = 7
+        let preferredSpacing: CGFloat = 6
+        guard total > 1 else {
+            return PipSizing(current: preferredCurrent, other: preferredOther, slot: preferredCurrent, spacing: 0)
+        }
+        let preferredWidth = preferredCurrent + preferredOther * CGFloat(total - 1) + preferredSpacing * CGFloat(total - 1)
+        if preferredWidth <= Self.formationBadgePipRowWidth {
+            return PipSizing(current: preferredCurrent, other: preferredOther, slot: preferredCurrent, spacing: preferredSpacing)
+        }
+        // Shrink uniformly to fit the row width.
+        let scale = Self.formationBadgePipRowWidth / preferredWidth
+        let current = max(8, preferredCurrent * scale)
+        let other = max(4, preferredOther * scale)
+        let spacing = max(2, preferredSpacing * scale)
+        return PipSizing(current: current, other: other, slot: current, spacing: spacing)
     }
 
     private var compactInspectorSheet: some View {
@@ -2141,10 +2193,34 @@ struct FloorGridView: View {
             let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
         else { return }
 
+        // The lift point redefines the opposite endpoint's position: dragging from the
+        // start endpoint sets a new end position; dragging from the end sets a new start.
+        var resolvedStart = startAthlete.position
+        var resolvedEnd = endAthlete.position
+        if let liftPoint = pathSketchPoints.last.map(clampedPathPoint),
+           let anchorSide = pathSketchAnchorSide {
+            switch anchorSide {
+            case .start:
+                resolvedEnd = liftPoint
+                store.mutateFormation(id: endFormationID) { formation in
+                    if let idx = formation.placements.firstIndex(where: { $0.athleteID == selectedAthleteID }) {
+                        formation.placements[idx].position = liftPoint
+                    }
+                }
+            case .end:
+                resolvedStart = liftPoint
+                store.mutateFormation(id: startFormationID) { formation in
+                    if let idx = formation.placements.firstIndex(where: { $0.athleteID == selectedAthleteID }) {
+                        formation.placements[idx].position = liftPoint
+                    }
+                }
+            }
+        }
+
         let waypoints = smoothedWaypoints(
             fromSketch: pathSketchPoints,
-            start: startAthlete.position,
-            end: endAthlete.position
+            start: resolvedStart,
+            end: resolvedEnd
         )
 
         store.mutateAthleteTransition(from: startFormationID, to: endFormationID, athleteID: selectedAthleteID) { t in
@@ -2252,6 +2328,41 @@ struct FloorGridView: View {
             .onChanged { value in
                 if isSwapMode { return }
 
+                // Long-press arming ring: track press-down on any athlete's start/end
+                // endpoint so the user sees how long the long-press needs to be held.
+                // Additive — does not affect any other gesture branch.
+                if longPressArmingPosition == nil, !isLongPressSketching {
+                    let startScaled = CGPoint(
+                        x: (value.startLocation.x - offset.x) / cellSize,
+                        y: (value.startLocation.y - offset.y) / cellSize
+                    )
+                    if let hit = athleteEndpointHit(at: startScaled, cellSize: cellSize) {
+                        // Force progress to 0 instantly — bypasses any in-flight
+                        // exit animation from a prior ring so the new fill starts clean.
+                        var noAnim = Transaction()
+                        noAnim.disablesAnimations = true
+                        withTransaction(noAnim) {
+                            longPressProgress = 0
+                            longPressArmingPosition = hit.anchor
+                        }
+                        withAnimation(.linear(duration: 0.35)) {
+                            longPressProgress = 1.0
+                        }
+                    }
+                } else if longPressArmingPosition != nil, !isLongPressSketching {
+                    // Cancel arming if the touch moves beyond the LongPressGesture
+                    // maximumDistance (12pt) — keeps ring visibility in sync with
+                    // whether the sketch will actually arm.
+                    let dx = value.translation.width
+                    let dy = value.translation.height
+                    if dx * dx + dy * dy > 144 {
+                        longPressArmingPosition = nil
+                        withAnimation(.easeOut(duration: 0.15)) { longPressProgress = 0 }
+                    }
+                }
+
+                if isLongPressSketching { return }
+
                 let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize)
                 let dragDistanceSquared = value.translation.width * value.translation.width + value.translation.height * value.translation.height
                 let dragActivationDistanceSquared = dragActivationDistance * dragActivationDistance
@@ -2352,22 +2463,10 @@ struct FloorGridView: View {
                             }
                         }
 
-                        // Drag anywhere on the selected path to sketch an approximate route.
-                        // The sketch is converted to smooth waypoints when the drag ends.
-                        if let startAthlete, let endAthlete,
-                           let nearest = nearestPointOnTransitionPath(
-                               at: startScaledPoint,
-                               transition: transition,
-                               startAthlete: startAthlete,
-                               endAthlete: endAthlete
-                           ),
-                           nearest.squaredDistance < pathHitRadiusSquared(for: cellSize)
-                        {
-                            guard dragDistanceSquared >= dragActivationDistanceSquared else { return }
-                            beginPathSketch(startingAt: nearest.point)
-                            handlePathSketchContinued(scaledPoint)
-                            return
-                        }
+                        // Sketching is now driven by long-press-on-athlete via the
+                        // CanvasMultiTouchGestureView overlay — no implicit drag-on-path.
+                        _ = startAthlete
+                        _ = endAthlete
                     }
 
                     // 2b/2c: Hovered athlete wins, then closest hit
@@ -2476,6 +2575,12 @@ struct FloorGridView: View {
                     dragStartPositions = [:]
                     endpointDragStartPosition = nil
                     clearActiveGuides()
+                    // If the press lifted before the long-press armed, fade out the ring.
+                    // endLongPressSketch() handles its own cleanup when sketching arms.
+                    if !isLongPressSketching, longPressArmingPosition != nil {
+                        longPressArmingPosition = nil
+                        withAnimation(.easeOut(duration: 0.15)) { longPressProgress = 0 }
+                    }
                     store.saveNow()
                 }
 
@@ -2980,6 +3085,116 @@ struct FloorGridView: View {
 
                 addWaypoint()
             }
+    }
+
+    // MARK: - Long-Press Sketch Gesture
+
+    /// SwiftUI long-press → drag, attached as a simultaneous gesture so it
+    /// composes with the existing unified DragGesture. When the long-press
+    /// completes on the selected athlete's endpoint, the sketch arms; the
+    /// follow-up drag traces the path. The main DragGesture early-outs when
+    /// `isLongPressSketching` is true so it doesn't try to drag the athlete.
+    private func longPressSketchGesture(cellSize: CGFloat, offset: CGPoint) -> some Gesture {
+        LongPressGesture(minimumDuration: 0.35, maximumDistance: 12)
+            .sequenced(before: DragGesture(minimumDistance: 0))
+            .onChanged { value in
+                switch value {
+                case .first:
+                    break
+                case .second(true, let drag):
+                    guard let drag else { return }
+                    if !isLongPressSketching {
+                        beginLongPressSketch(at: drag.startLocation, cellSize: cellSize, offset: offset)
+                    }
+                    if isLongPressSketching {
+                        continueLongPressSketch(at: drag.location, cellSize: cellSize, offset: offset)
+                    }
+                default:
+                    break
+                }
+            }
+            .onEnded { _ in
+                endLongPressSketch()
+            }
+    }
+
+    /// Hit-tests the touch point against every athlete's start/end endpoint and
+    /// returns the closest one. The athlete does not need to be pre-selected;
+    /// the long-press arming + sketch arm will auto-select on success.
+    private func athleteEndpointHit(
+        at scaledPoint: CGPoint,
+        cellSize: CGFloat
+    ) -> (athleteID: UUID, anchor: CGPoint, side: PathSketchAnchorSide)? {
+        guard !isSwapMode,
+              showTransitionPaths, hasTransition,
+              let player
+        else { return nil }
+
+        let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize) * 1.5
+        var bestDistSq: CGFloat = .greatestFiniteMagnitude
+        var best: (athleteID: UUID, anchor: CGPoint, side: PathSketchAnchorSide)?
+
+        for athlete in player.startAthletes {
+            let distSq = PathCalculations.squaredDistance(from: scaledPoint, to: athlete.position)
+            if distSq < hitRadiusSquared, distSq < bestDistSq {
+                bestDistSq = distSq
+                best = (athlete.id, athlete.position, .start)
+            }
+        }
+        for athlete in player.endAthletes {
+            let distSq = PathCalculations.squaredDistance(from: scaledPoint, to: athlete.position)
+            if distSq < hitRadiusSquared, distSq < bestDistSq {
+                bestDistSq = distSq
+                best = (athlete.id, athlete.position, .end)
+            }
+        }
+        return best
+    }
+
+    /// Arms a path sketch when the long-press lands on the selected athlete's
+    /// start or end position. The sketch is anchored at that endpoint so the
+    /// finger naturally traces the route to the opposite endpoint.
+    private func beginLongPressSketch(at location: CGPoint, cellSize: CGFloat, offset: CGPoint) {
+        let scaledPoint = CGPoint(
+            x: (location.x - offset.x) / cellSize,
+            y: (location.y - offset.y) / cellSize
+        )
+        guard let hit = athleteEndpointHit(at: scaledPoint, cellSize: cellSize) else { return }
+
+        if selectedAthleteIDs != [hit.athleteID] {
+            selectedAthleteIDs = [hit.athleteID]
+        }
+
+        isLongPressSketching = true
+        isSketchingPath = true
+        pathSketchPoints = [clampedPathPoint(hit.anchor)]
+        pathSketchAnchorSide = hit.side
+        longPressArmingPosition = hit.anchor
+        longPressProgress = 1.0
+
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.impactOccurred()
+    }
+
+    private func continueLongPressSketch(at location: CGPoint, cellSize: CGFloat, offset: CGPoint) {
+        guard isLongPressSketching else { return }
+        let scaledPoint = CGPoint(
+            x: (location.x - offset.x) / cellSize,
+            y: (location.y - offset.y) / cellSize
+        )
+        pathSketchPoints.append(clampedPathPoint(scaledPoint))
+    }
+
+    private func endLongPressSketch() {
+        guard isLongPressSketching else { return }
+        finishPathSketch()
+        isLongPressSketching = false
+        isSketchingPath = false
+        pathSketchPoints = []
+        pathSketchAnchorSide = nil
+        longPressArmingPosition = nil
+        withAnimation(.easeOut(duration: 0.18)) { longPressProgress = 0 }
+        store.saveNow()
     }
 
     // MARK: - Transition Actions
@@ -3488,6 +3703,25 @@ enum PathWaypointPlacement {
             x: (start.x + end.x) / 2,
             y: (start.y + end.y) / 2
         )
+    }
+}
+
+private enum PathSketchAnchorSide {
+    case start
+    case end
+}
+
+private struct FormationBadgeButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .brightness(configuration.isPressed ? 0.12 : 0)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.white.opacity(configuration.isPressed ? 0.10 : 0))
+                    .allowsHitTesting(false)
+            )
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
