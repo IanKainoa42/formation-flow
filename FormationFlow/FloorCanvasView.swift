@@ -570,7 +570,10 @@ struct FloorCanvasView: View {
                         context.stroke(handle, with: .color(pathColor), lineWidth: 2.5)
 
                         if waypoint.holdDuration > 0 {
-                            let ringSize = size + 6
+                            // Ring radius scales with hold counts (capped) so longer holds
+                            // visibly stand out without overlapping nearby handles.
+                            let clamped = min(waypoint.holdDuration, 8)
+                            let ringSize = size + 6 + clamped * 1.6
                             var ring = Path()
                             ring.addEllipse(
                                 in: CGRect(
@@ -581,6 +584,18 @@ struct FloorCanvasView: View {
                                 )
                             )
                             context.stroke(ring, with: .color(formationColor), lineWidth: 2)
+
+                            let holdLabel = "·\(TransitionCountFormatting.value(waypoint.holdDuration)) ct"
+                            let labelText = Text(holdLabel)
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(formationColor)
+                            let resolved = context.resolve(labelText)
+                            let labelSize = resolved.measure(in: CGSize(width: 80, height: 20))
+                            let labelOrigin = CGPoint(
+                                x: point.x + ringSize / 2 + 4,
+                                y: point.y - labelSize.height / 2
+                            )
+                            context.draw(resolved, at: labelOrigin, anchor: .topLeading)
                         }
                     }
                 }

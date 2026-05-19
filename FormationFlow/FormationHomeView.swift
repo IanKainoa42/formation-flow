@@ -84,6 +84,15 @@ struct RoutineWorkspaceView: View {
     private var canPreviewInto: Bool { !isFirstFormation }
     private var canPreviewOutOf: Bool { !isLastFormation }
 
+    /// Flip between editing the transition into vs out of the selected formation,
+    /// respecting first/last-formation guards. No-op if only one direction is available.
+    private func toggleTransitionDirection() {
+        let canInto = canPreviewInto
+        let canOut = canPreviewOutOf
+        guard canInto && canOut else { return }
+        previewReferenceMode = (previewReferenceMode == .intoSelected) ? .outOfSelected : .intoSelected
+    }
+
     private var previewTransitionPair: (start: Formation, end: Formation)? {
         previewReferenceMode.transitionPair(
             in: store.routine.formations,
@@ -281,7 +290,8 @@ struct RoutineWorkspaceView: View {
                 onDuplicateAsNext: duplicateSelectedFormation,
                 player: previewSession.player,
                 startFormationID: previewTransitionPair?.start.id,
-                endFormationID: previewTransitionPair?.end.id
+                endFormationID: previewTransitionPair?.end.id,
+                onToggleTransitionDirection: toggleTransitionDirection
             )
             .overlay(alignment: .topTrailing) {
                 Button {
@@ -569,7 +579,8 @@ struct RoutineWorkspaceView: View {
             onBack: compact ? { compactNavigationPath.removeAll() } : nil,
             player: previewSession.player,
             startFormationID: previewTransitionPair?.start.id,
-            endFormationID: previewTransitionPair?.end.id
+            endFormationID: previewTransitionPair?.end.id,
+            onToggleTransitionDirection: toggleTransitionDirection
         )
 
         if compact {

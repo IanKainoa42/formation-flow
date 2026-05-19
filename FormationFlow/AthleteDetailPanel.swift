@@ -286,7 +286,7 @@ struct TransitionInspectorSectionView: View {
     var onAddWaypoint: () -> Void = {}
     var onToggleWaypointSmooth: (Int) -> Void = { _ in }
     var onDeleteWaypoint: (UUID) -> Void = { _ in }
-    var onAdjustWaypointHold: (Int, CGFloat) -> Void = { _, _ in }
+    var onSetWaypointHold: (Int, CGFloat) -> Void = { _, _ in }
     var onResetAllPaths: () -> Void = {}
     var onUpgrade: () -> Void = {}
 
@@ -454,53 +454,62 @@ struct TransitionInspectorSectionView: View {
                 .buttonStyle(.bordered)
             }
 
-            if compactLayout {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Hold")
-                        Spacer()
-                        Text(TransitionCountFormatting.label(waypoint.holdCounts))
-                            .font(.system(.body, design: .monospaced))
-                            .foregroundColor(.secondary)
-                    }
-
-                    HStack(spacing: 8) {
-                        Button("- 0.5") {
-                            onAdjustWaypointHold(waypointIndex, -0.5)
-                        }
-                        .buttonStyle(.bordered)
-                        .frame(maxWidth: .infinity)
-
-                        Button("+ 0.5") {
-                            onAdjustWaypointHold(waypointIndex, 0.5)
-                        }
-                        .buttonStyle(.bordered)
-                        .frame(maxWidth: .infinity)
-                    }
-                }
-            } else {
-                HStack {
-                    Text("Hold")
-                    Spacer()
-                    Button("- 0.5") {
-                        onAdjustWaypointHold(waypointIndex, -0.5)
-                    }
-                    .buttonStyle(.bordered)
-
-                    Text(TransitionCountFormatting.label(waypoint.holdCounts))
-                        .font(.system(.body, design: .monospaced))
-                        .frame(width: 84)
-
-                    Button("+ 0.5") {
-                        onAdjustWaypointHold(waypointIndex, 0.5)
-                    }
-                    .buttonStyle(.bordered)
-                }
-            }
+            holdSection(waypointIndex: waypointIndex, waypoint: waypoint)
         }
         .padding(compactLayout ? 12 : 14)
         .background(Color.secondary.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private var transitionTotalCounts: CGFloat {
+        CGFloat(player.counts)
+    }
+
+    private var holdSliderMax: CGFloat {
+        // Cap at 8 counts (a full 8-count) or the transition's total, whichever is smaller.
+        // Holding longer than the transition itself doesn't make musical sense.
+        min(8, max(0.5, transitionTotalCounts))
+    }
+
+    @ViewBuilder
+    private func holdSection(waypointIndex: Int, waypoint: PathWaypoint) -> some View {
+        VStack(alignment: .leading, spacing: compactLayout ? 6 : 8) {
+            HStack {
+                Text("Hold")
+                    .font(.body.weight(.medium))
+                Spacer()
+                Text(TransitionCountFormatting.label(waypoint.holdCounts))
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+
+            if isPro {
+                Slider(
+                    value: Binding(
+                        get: { min(waypoint.holdCounts, holdSliderMax) },
+                        set: { onSetWaypointHold(waypointIndex, $0) }
+                    ),
+                    in: 0...holdSliderMax,
+                    step: 0.5
+                )
+                .accessibilityLabel("Hold duration for waypoint \(waypointIndex + 1)")
+            } else {
+                HStack {
+                    Slider(value: .constant(0), in: 0...holdSliderMax)
+                        .disabled(true)
+                    Button(action: onUpgrade) {
+                        Image(systemName: "lock.fill")
+                            .foregroundColor(.secondary)
+                    }
+                    .accessibilityLabel("Upgrade to Pro to adjust hold duration")
+                    .help("Upgrade to Pro to adjust hold duration")
+                }
+            }
+
+            Text("Pause at this waypoint · transition total \(TransitionCountFormatting.label(transitionTotalCounts))")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
     }
 }
 
@@ -755,7 +764,7 @@ struct SidebarInspectorView: View {
                 }
                 onRefreshTransition()
             },
-            onAdjustWaypointHold: { waypointIndex, delta in
+            onSetWaypointHold: { waypointIndex, newValue in
                 guard isPro else {
                     onUpgrade()
                     return
@@ -766,10 +775,9 @@ struct SidebarInspectorView: View {
                     to: endFormationID,
                     athleteID: selectedAthleteID
                 ) { t in
-                    let updatedValue = t.pathWaypoints[waypointIndex].holdCounts + delta
                     t.pathWaypoints[waypointIndex].holdCounts = min(
                         CGFloat(player.counts),
-                        max(0, updatedValue)
+                        max(0, newValue)
                     )
                 }
                 onRefreshTransition()
