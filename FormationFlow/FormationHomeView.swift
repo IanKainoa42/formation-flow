@@ -291,7 +291,10 @@ struct RoutineWorkspaceView: View {
                 player: previewSession.player,
                 startFormationID: previewTransitionPair?.start.id,
                 endFormationID: previewTransitionPair?.end.id,
-                onToggleTransitionDirection: toggleTransitionDirection
+                onToggleTransitionDirection: toggleTransitionDirection,
+                onBootstrapFromAthlete: { athleteID, liftPoint, waypoints in
+                    bootstrapTransition(fromFormationID: formationID, athleteID: athleteID, liftPoint: liftPoint, waypoints: waypoints)
+                }
             )
             .overlay(alignment: .topTrailing) {
                 Button {
@@ -580,7 +583,10 @@ struct RoutineWorkspaceView: View {
             player: previewSession.player,
             startFormationID: previewTransitionPair?.start.id,
             endFormationID: previewTransitionPair?.end.id,
-            onToggleTransitionDirection: toggleTransitionDirection
+            onToggleTransitionDirection: toggleTransitionDirection,
+            onBootstrapFromAthlete: { athleteID, liftPoint, waypoints in
+                bootstrapTransition(fromFormationID: formationID, athleteID: athleteID, liftPoint: liftPoint, waypoints: waypoints)
+            }
         )
 
         if compact {
@@ -1209,6 +1215,34 @@ struct RoutineWorkspaceView: View {
                 pushOnCompact: isCompactLayout && !compactNavigationPath.isEmpty
             )
         }
+    }
+
+    private func bootstrapTransition(
+        fromFormationID: UUID,
+        athleteID: UUID,
+        liftPoint: CGPoint,
+        waypoints: [PathWaypoint]
+    ) {
+        guard canAddFormation else {
+            showingUpgradeSheet = true
+            return
+        }
+        let newFormationID = store.addFormation(after: fromFormationID)
+        store.mutateFormation(id: newFormationID) { formation in
+            if let idx = formation.placements.firstIndex(where: { $0.athleteID == athleteID }) {
+                formation.placements[idx].position = liftPoint
+            }
+        }
+        store.mutateAthleteTransition(from: fromFormationID, to: newFormationID, athleteID: athleteID) { t in
+            t.pathControlPoint = nil
+            t.pathWaypoints = waypoints
+        }
+        previewReferenceMode = .outOfSelected
+        refreshPreviewSession()
+        store.saveNow()
+
+        let generator = UIImpactFeedbackGenerator(style: .rigid)
+        generator.impactOccurred()
     }
 
     private func refreshPreviewSession() {

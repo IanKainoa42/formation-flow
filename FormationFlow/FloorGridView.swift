@@ -33,6 +33,7 @@ struct FloorGridView: View {
     var startFormationID: UUID?
     var endFormationID: UUID?
     var onToggleTransitionDirection: (() -> Void)?
+    var onBootstrapFromAthlete: ((UUID, CGPoint, [PathWaypoint]) -> Void)?
 
     @EnvironmentObject private var entitlementManager: EntitlementManager
     @State private var showingUpgradeSheet = false
@@ -75,6 +76,7 @@ struct FloorGridView: View {
     @State private var pendingWaypointDeletionID: UUID?
     @State private var pathSketchPoints: [CGPoint] = []
     @State private var pathSketchAnchorSide: PathSketchAnchorSide?
+    @State private var bootstrapAthleteID: UUID?
     @State private var longPressArmingPosition: CGPoint?
     @State private var longPressProgress: Double = 0
     @State private var endpointDragStartPosition: CGPoint?
@@ -1234,7 +1236,12 @@ struct FloorGridView: View {
                         x: armingPos.x * cellSize + offset.x,
                         y: armingPos.y * cellSize + offset.y
                     )
-                    let diameter = max(36, cellSize * 3.0)
+                    // Diameter must clear the selected athlete's circle in both
+                    // modes: in formation-only mode the athlete is cellSize*3.0
+                    // wide (markerScale=cellSize/12, selectedMarkerRadius=18), so
+                    // anything ≤ that disappears behind the athlete. Bump to 4.0
+                    // for a consistent ring outside the athlete edge.
+                    let diameter = max(56, cellSize * 4.0)
                     ZStack {
                         Circle()
                             .stroke(.white.opacity(0.18), lineWidth: max(2.5, cellSize * 0.22))
@@ -2182,6 +2189,25 @@ struct FloorGridView: View {
         pathSketchPoints.append(clampedPoint)
     }
 
+    /// Returns true if the bootstrap committed (creating a new formation).
+    /// Returns false if the sketch was too short — caller should fall through
+    /// to normal tap-to-select so a slow-start tap doesn't get eaten.
+    private func commitBootstrapSketch(athleteID: UUID) -> Bool {
+        guard pathSketchPoints.count >= 2 else { return false }
+        let startPoint = clampedPathPoint(pathSketchPoints[0])
+        let liftPoint = clampedPathPoint(pathSketchPoints[pathSketchPoints.count - 1])
+        // Require meaningful travel — otherwise treat as a held-tap, not a path.
+        let travelSquared = PathCalculations.squaredDistance(from: startPoint, to: liftPoint)
+        guard travelSquared >= 4 else { return false }
+        let waypoints = smoothedWaypoints(
+            fromSketch: pathSketchPoints,
+            start: startPoint,
+            end: liftPoint
+        )
+        onBootstrapFromAthlete?(athleteID, liftPoint, waypoints)
+        return true
+    }
+
     private func finishPathSketch() {
         guard
             pathSketchPoints.count >= 2,
@@ -2336,14 +2362,22 @@ struct FloorGridView: View {
                         x: (value.startLocation.x - offset.x) / cellSize,
                         y: (value.startLocation.y - offset.y) / cellSize
                     )
+                    let anchor: CGPoint?
                     if let hit = athleteEndpointHit(at: startScaled, cellSize: cellSize) {
+                        anchor = hit.anchor
+                    } else if let bootstrap = bootstrapAthleteHit(at: startScaled, cellSize: cellSize) {
+                        anchor = bootstrap.anchor
+                    } else {
+                        anchor = nil
+                    }
+                    if let anchor {
                         // Force progress to 0 instantly — bypasses any in-flight
                         // exit animation from a prior ring so the new fill starts clean.
                         var noAnim = Transaction()
                         noAnim.disablesAnimations = true
                         withTransaction(noAnim) {
                             longPressProgress = 0
-                            longPressArmingPosition = hit.anchor
+                            longPressArmingPosition = anchor
                         }
                         withAnimation(.linear(duration: 0.35)) {
                             longPressProgress = 1.0
@@ -2632,6 +2666,15 @@ struct FloorGridView: View {
                 }
 
                 if isSketchingPath {
+                    if let athleteID = bootstrapAthleteID {
+                        if commitBootstrapSketch(athleteID: athleteID) {
+                            return
+                        }
+                        // Held-tap with no meaningful path — keep this athlete
+                        // selected and let the rest of onEnded run normally.
+                        selectedAthleteIDs = [athleteID]
+                        return
+                    }
                     finishPathSketch()
                     return
                 }
@@ -3151,6 +3194,32 @@ struct FloorGridView: View {
         return best
     }
 
+    /// When no successor formation exists, hit-tests the current formation's
+    /// athletes so a long-press can bootstrap a new formation + path to it.
+    private func bootstrapAthleteHit(
+        at scaledPoint: CGPoint,
+        cellSize: CGFloat
+    ) -> (athleteID: UUID, anchor: CGPoint)? {
+        guard !isSwapMode,
+              onBootstrapFromAthlete != nil,
+              !hasTransition,
+              let formationIndex,
+              formationIndex == store.routine.formations.count - 1
+        else { return nil }
+
+        let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize) * 1.5
+        var bestDistSq: CGFloat = .greatestFiniteMagnitude
+        var best: (athleteID: UUID, anchor: CGPoint)?
+        for athlete in renderedAthletes {
+            let distSq = PathCalculations.squaredDistance(from: scaledPoint, to: athlete.position)
+            if distSq < hitRadiusSquared, distSq < bestDistSq {
+                bestDistSq = distSq
+                best = (athlete.id, athlete.position)
+            }
+        }
+        return best
+    }
+
     /// Arms a path sketch when the long-press lands on the selected athlete's
     /// start or end position. The sketch is anchored at that endpoint so the
     /// finger naturally traces the route to the opposite endpoint.
@@ -3159,21 +3228,35 @@ struct FloorGridView: View {
             x: (location.x - offset.x) / cellSize,
             y: (location.y - offset.y) / cellSize
         )
-        guard let hit = athleteEndpointHit(at: scaledPoint, cellSize: cellSize) else { return }
-
-        if selectedAthleteIDs != [hit.athleteID] {
-            selectedAthleteIDs = [hit.athleteID]
+        if let hit = athleteEndpointHit(at: scaledPoint, cellSize: cellSize) {
+            if selectedAthleteIDs != [hit.athleteID] {
+                selectedAthleteIDs = [hit.athleteID]
+            }
+            isLongPressSketching = true
+            isSketchingPath = true
+            pathSketchPoints = [clampedPathPoint(hit.anchor)]
+            pathSketchAnchorSide = hit.side
+            longPressArmingPosition = hit.anchor
+            longPressProgress = 1.0
+            let generator = UIImpactFeedbackGenerator(style: .medium)
+            generator.impactOccurred()
+            return
         }
 
-        isLongPressSketching = true
-        isSketchingPath = true
-        pathSketchPoints = [clampedPathPoint(hit.anchor)]
-        pathSketchAnchorSide = hit.side
-        longPressArmingPosition = hit.anchor
-        longPressProgress = 1.0
-
-        let generator = UIImpactFeedbackGenerator(style: .medium)
-        generator.impactOccurred()
+        if let bootstrap = bootstrapAthleteHit(at: scaledPoint, cellSize: cellSize) {
+            if selectedAthleteIDs != [bootstrap.athleteID] {
+                selectedAthleteIDs = [bootstrap.athleteID]
+            }
+            isLongPressSketching = true
+            isSketchingPath = true
+            pathSketchPoints = [clampedPathPoint(bootstrap.anchor)]
+            pathSketchAnchorSide = .start
+            bootstrapAthleteID = bootstrap.athleteID
+            longPressArmingPosition = bootstrap.anchor
+            longPressProgress = 1.0
+            let generator = UIImpactFeedbackGenerator(style: .medium)
+            generator.impactOccurred()
+        }
     }
 
     private func continueLongPressSketch(at location: CGPoint, cellSize: CGFloat, offset: CGPoint) {
@@ -3187,11 +3270,16 @@ struct FloorGridView: View {
 
     private func endLongPressSketch() {
         guard isLongPressSketching else { return }
-        finishPathSketch()
+        if let athleteID = bootstrapAthleteID {
+            _ = commitBootstrapSketch(athleteID: athleteID)
+        } else {
+            finishPathSketch()
+        }
         isLongPressSketching = false
         isSketchingPath = false
         pathSketchPoints = []
         pathSketchAnchorSide = nil
+        bootstrapAthleteID = nil
         longPressArmingPosition = nil
         withAnimation(.easeOut(duration: 0.18)) { longPressProgress = 0 }
         store.saveNow()
