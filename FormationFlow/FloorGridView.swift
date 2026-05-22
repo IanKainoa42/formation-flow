@@ -63,6 +63,7 @@ struct FloorGridView: View {
     @State private var activeAlignmentGuides: [AlignmentGuideRenderItem] = []
     @State private var activeMirrorGuides: [FormationMirrorGuideRenderItem] = []
     @State private var rosterDeleteIDs: [UUID] = []
+    @State private var showingRosterDeleteConfirmation = false
     @State private var collisionCycleIndex: Int = 0
     @State private var pathCollisionCycleIndex: Int = 0
 
@@ -1772,7 +1773,7 @@ struct FloorGridView: View {
                             }
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                 Button(role: .destructive) {
-                                    rosterDeleteIDs = [athlete.id]
+                                    requestRosterAthleteDeletion([athlete.id])
                                 } label: {
                                     Label("Delete", systemImage: "trash")
                                 }
@@ -1780,7 +1781,9 @@ struct FloorGridView: View {
                         }
                         .onDelete { offsets in
                             let athletes = store.routine.roster
-                            rosterDeleteIDs = offsets.map { athletes[$0].id }
+                            requestRosterAthleteDeletion(
+                                offsets.compactMap { athletes.indices.contains($0) ? athletes[$0].id : nil }
+                            )
                         }
                         .onMove { from, to in
                             store.moveRoster(fromOffsets: from, toOffset: to)
@@ -1790,10 +1793,7 @@ struct FloorGridView: View {
             }
             .confirmationDialog(
                 "Delete \(rosterDeleteIDs.count == 1 ? "this athlete" : "these athletes")?",
-                isPresented: Binding(
-                    get: { !rosterDeleteIDs.isEmpty },
-                    set: { if !$0 { rosterDeleteIDs = [] } }
-                ),
+                isPresented: $showingRosterDeleteConfirmation,
                 titleVisibility: .visible
             ) {
                 Button("Delete", role: .destructive) {
@@ -1801,6 +1801,7 @@ struct FloorGridView: View {
                 }
                 Button("Cancel", role: .cancel) {
                     rosterDeleteIDs = []
+                    showingRosterDeleteConfirmation = false
                 }
             } message: {
                 Text("This will remove them from all \(store.routine.formations.count) formations and their transitions. This cannot be undone.")
@@ -3587,6 +3588,15 @@ struct FloorGridView: View {
         selectedAthleteIDs = []
     }
 
+    private func requestRosterAthleteDeletion(_ ids: [UUID]) {
+        let validRosterIDs = Set(store.routine.roster.map(\.id))
+        rosterDeleteIDs = ids.reduce(into: [UUID]()) { result, id in
+            guard validRosterIDs.contains(id), !result.contains(id) else { return }
+            result.append(id)
+        }
+        showingRosterDeleteConfirmation = !rosterDeleteIDs.isEmpty
+    }
+
     private func toggleSwapMode() {
         guard let selectedAthleteID else {
             endSwapMode()
@@ -3616,12 +3626,14 @@ struct FloorGridView: View {
 
     private func deleteRosterAthletes() {
         let toDelete = rosterDeleteIDs
-        rosterDeleteIDs = []
+        showingRosterDeleteConfirmation = false
+        selectedAthleteIDs.subtract(toDelete)
+
         DispatchQueue.main.async {
             for id in toDelete {
                 store.deleteAthlete(id: id)
             }
-            selectedAthleteIDs.subtract(toDelete)
+            rosterDeleteIDs = []
         }
     }
 
