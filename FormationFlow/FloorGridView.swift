@@ -80,6 +80,8 @@ struct FloorGridView: View {
     @State private var bootstrapAthleteID: UUID?
     @State private var longPressArmingPosition: CGPoint?
     @State private var longPressProgress: Double = 0
+    @State private var longPressArmingToken: UUID?
+    @State private var isLongPressCountdownVisible = false
     @State private var endpointDragStartPosition: CGPoint?
     @State private var showingResetAllPathsConfirmation = false
     @State private var showingResetSinglePathConfirmation = false
@@ -449,6 +451,12 @@ struct FloorGridView: View {
 
     private var dragActivationDistance: CGFloat {
         isCompactLayout ? 10 : 6
+    }
+
+    private var pathSketchLongPressDuration: Double { 0.85 }
+    private var pathSketchCountdownDelay: Double { 0.22 }
+    private var pathSketchCountdownDuration: Double {
+        max(0.1, pathSketchLongPressDuration - pathSketchCountdownDelay)
     }
 
     var body: some View {
@@ -1256,7 +1264,7 @@ struct FloorGridView: View {
                     }
                     .frame(width: diameter, height: diameter)
                     .position(screenPos)
-                    .opacity(longPressArmingPosition == nil ? 0 : 1)
+                    .opacity(isLongPressCountdownVisible ? 1 : 0)
                     .allowsHitTesting(false)
                 }
                 .overlay(alignment: .bottomLeading) {
@@ -2372,27 +2380,16 @@ struct FloorGridView: View {
                         anchor = nil
                     }
                     if let anchor {
-                        // Force progress to 0 instantly — bypasses any in-flight
-                        // exit animation from a prior ring so the new fill starts clean.
-                        var noAnim = Transaction()
-                        noAnim.disablesAnimations = true
-                        withTransaction(noAnim) {
-                            longPressProgress = 0
-                            longPressArmingPosition = anchor
-                        }
-                        withAnimation(.linear(duration: 0.35)) {
-                            longPressProgress = 1.0
-                        }
+                        armLongPressCountdown(at: anchor)
                     }
                 } else if longPressArmingPosition != nil, !isLongPressSketching {
-                    // Cancel arming if the touch moves beyond the LongPressGesture
-                    // maximumDistance (12pt) — keeps ring visibility in sync with
+                    // Cancel arming if the touch moves far enough to become an
+                    // intentional drag — keeps ring visibility in sync with
                     // whether the sketch will actually arm.
                     let dx = value.translation.width
                     let dy = value.translation.height
-                    if dx * dx + dy * dy > 144 {
-                        longPressArmingPosition = nil
-                        withAnimation(.easeOut(duration: 0.15)) { longPressProgress = 0 }
+                    if dx * dx + dy * dy > dragActivationDistance * dragActivationDistance {
+                        cancelLongPressCountdown()
                     }
                 }
 
@@ -2613,8 +2610,7 @@ struct FloorGridView: View {
                     // If the press lifted before the long-press armed, fade out the ring.
                     // endLongPressSketch() handles its own cleanup when sketching arms.
                     if !isLongPressSketching, longPressArmingPosition != nil {
-                        longPressArmingPosition = nil
-                        withAnimation(.easeOut(duration: 0.15)) { longPressProgress = 0 }
+                        cancelLongPressCountdown()
                     }
                     store.saveNow()
                 }
@@ -3133,13 +3129,13 @@ struct FloorGridView: View {
 
     // MARK: - Long-Press Sketch Gesture
 
-    /// SwiftUI long-press → drag, attached as a simultaneous gesture so it
+    /// SwiftUI long-press -> drag, attached as a simultaneous gesture so it
     /// composes with the existing unified DragGesture. When the long-press
     /// completes on the selected athlete's endpoint, the sketch arms; the
     /// follow-up drag traces the path. The main DragGesture early-outs when
     /// `isLongPressSketching` is true so it doesn't try to drag the athlete.
     private func longPressSketchGesture(cellSize: CGFloat, offset: CGPoint) -> some Gesture {
-        LongPressGesture(minimumDuration: 0.35, maximumDistance: 12)
+        LongPressGesture(minimumDuration: pathSketchLongPressDuration, maximumDistance: dragActivationDistance)
             .sequenced(before: DragGesture(minimumDistance: 0))
             .onChanged { value in
                 switch value {
@@ -3221,10 +3217,61 @@ struct FloorGridView: View {
         return best
     }
 
+    private func armLongPressCountdown(at anchor: CGPoint) {
+        let token = UUID()
+        longPressArmingToken = token
+
+        // Force progress to 0 instantly so a prior exit animation cannot make
+        // the next hold look partially complete.
+        var noAnim = Transaction()
+        noAnim.disablesAnimations = true
+        withTransaction(noAnim) {
+            longPressProgress = 0
+            longPressArmingPosition = anchor
+            isLongPressCountdownVisible = false
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + pathSketchCountdownDelay) {
+            guard longPressArmingToken == token,
+                  longPressArmingPosition != nil,
+                  !isLongPressSketching,
+                  !isDraggingAthletes,
+                  !isDraggingEndpoint,
+                  !isDraggingPathHandle,
+                  !isPanningCanvas,
+                  !isDrawingSelectionBox
+            else { return }
+
+            let generator = UISelectionFeedbackGenerator()
+            generator.selectionChanged()
+
+            withAnimation(.easeIn(duration: 0.08)) {
+                isLongPressCountdownVisible = true
+            }
+            withAnimation(.linear(duration: pathSketchCountdownDuration)) {
+                longPressProgress = 1.0
+            }
+        }
+    }
+
+    private func cancelLongPressCountdown() {
+        longPressArmingToken = nil
+        isLongPressCountdownVisible = false
+        longPressArmingPosition = nil
+        withAnimation(.easeOut(duration: 0.15)) { longPressProgress = 0 }
+    }
+
     /// Arms a path sketch when the long-press lands on the selected athlete's
     /// start or end position. The sketch is anchored at that endpoint so the
     /// finger naturally traces the route to the opposite endpoint.
     private func beginLongPressSketch(at location: CGPoint, cellSize: CGFloat, offset: CGPoint) {
+        guard !isDraggingAthletes,
+              !isDraggingEndpoint,
+              !isDraggingPathHandle,
+              !isPanningCanvas,
+              !isDrawingSelectionBox
+        else { return }
+
         let scaledPoint = CGPoint(
             x: (location.x - offset.x) / cellSize,
             y: (location.y - offset.y) / cellSize
@@ -3239,6 +3286,8 @@ struct FloorGridView: View {
             pathSketchAnchorSide = hit.side
             longPressArmingPosition = hit.anchor
             longPressProgress = 1.0
+            longPressArmingToken = nil
+            isLongPressCountdownVisible = true
             let generator = UIImpactFeedbackGenerator(style: .medium)
             generator.impactOccurred()
             return
@@ -3255,6 +3304,8 @@ struct FloorGridView: View {
             bootstrapAthleteID = bootstrap.athleteID
             longPressArmingPosition = bootstrap.anchor
             longPressProgress = 1.0
+            longPressArmingToken = nil
+            isLongPressCountdownVisible = true
             let generator = UIImpactFeedbackGenerator(style: .medium)
             generator.impactOccurred()
         }
@@ -3281,6 +3332,8 @@ struct FloorGridView: View {
         pathSketchPoints = []
         pathSketchAnchorSide = nil
         bootstrapAthleteID = nil
+        longPressArmingToken = nil
+        isLongPressCountdownVisible = false
         longPressArmingPosition = nil
         withAnimation(.easeOut(duration: 0.18)) { longPressProgress = 0 }
         store.saveNow()
