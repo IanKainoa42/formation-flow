@@ -160,32 +160,45 @@ struct FloorCanvasView: View {
     }
 
     private var mainCanvas: some View {
-        Canvas { context, _ in
-            var context = context
-            context.translateBy(x: offset.x, y: offset.y)
-            drawGrid(in: &context)
-            drawGhostPrevPaths(in: &context)
-            drawGhostAthletes(in: &context)
-            drawGhostNextPaths(in: &context)
-            drawGhostNextAthletes(in: &context)
-            drawGhostTransitionPaths(in: &context)
-            drawTrails(in: &context)
-            drawAlignmentGuides(in: &context)
-            drawMirrorGuides(in: &context)
-            drawTransitionPaths(in: &context)
-            drawPathSketch(in: &context)
-            drawPathCollisionMarkers(in: &context)
-            drawEndpointMarkers(in: &context)
-            drawAthletes(in: &context)
+        // Only tick the timeline when a path is colliding (and motion is allowed),
+        // so the collision blink animates without burning redraws when idle.
+        let blinkActive = !pathCollisionIDs.isEmpty && !reduceMotion
+        let blinkInterval: Double = 0.45
+        return TimelineView(.periodic(from: .now, by: blinkActive ? blinkInterval : 86_400)) { timeline in
+            Canvas { context, _ in
+                var context = context
+                context.translateBy(x: offset.x, y: offset.y)
 
-            if let selectionLasso {
-                let path = selectionLasso.canvasPath(offset: offset)
-                context.fill(path, with: .color(formationColor.opacity(0.1)))
-                context.stroke(
-                    path,
-                    with: .color(formationColor.opacity(0.45)),
-                    style: StrokeStyle(lineWidth: 1.5, lineJoin: .round, dash: [6, 3])
-                )
+                // Collision paths pulse red↔orange as a warning; static red when
+                // blinking is off (no collisions or Reduce Motion).
+                let collisionColor: Color = blinkActive
+                    ? (Int(timeline.date.timeIntervalSinceReferenceDate / blinkInterval) % 2 == 0 ? .red : .orange)
+                    : .red
+
+                drawGrid(in: &context)
+                drawGhostPrevPaths(in: &context)
+                drawGhostAthletes(in: &context)
+                drawGhostNextPaths(in: &context)
+                drawGhostNextAthletes(in: &context)
+                drawGhostTransitionPaths(in: &context)
+                drawTrails(in: &context)
+                drawAlignmentGuides(in: &context)
+                drawMirrorGuides(in: &context)
+                drawTransitionPaths(in: &context, collisionColor: collisionColor)
+                drawPathSketch(in: &context)
+                drawPathCollisionMarkers(in: &context)
+                drawEndpointMarkers(in: &context)
+                drawAthletes(in: &context)
+
+                if let selectionLasso {
+                    let path = selectionLasso.canvasPath(offset: offset)
+                    context.fill(path, with: .color(formationColor.opacity(0.1)))
+                    context.stroke(
+                        path,
+                        with: .color(formationColor.opacity(0.45)),
+                        style: StrokeStyle(lineWidth: 1.5, lineJoin: .round, dash: [6, 3])
+                    )
+                }
             }
         }
     }
@@ -484,21 +497,21 @@ struct FloorCanvasView: View {
         return startsAtWaypoint || endsAtWaypoint
     }
 
-    private func drawTransitionPaths(in context: inout GraphicsContext) {
+    private func drawTransitionPaths(in context: inout GraphicsContext, collisionColor: Color) {
         let pathOpacityMultiplier: CGFloat = focusedEndpoint != nil ? 0.5 : 1.0
         for item in transitionPaths {
             let start = CGPoint(x: item.startPosition.x * cellSize, y: item.startPosition.y * cellSize)
             let end = CGPoint(x: item.endPosition.x * cellSize, y: item.endPosition.y * cellSize)
             let isSelected = selectedAthleteIDs.contains(item.athleteID)
             let isColliding = pathCollisionIDs.contains(item.athleteID)
-            let isBlinking = blinkingResolvedIDs.contains(item.athleteID)
-            let resolvedColor: Color = isBlinking && blinkPhase % 2 == 0 ? .white : .green
-            let pathColor: Color = isColliding ? .red : (isBlinking ? resolvedColor : (isSelected ? formationColor : .green))
+            // Color hierarchy: collision = pulsing warning, selected = white,
+            // everything else = neutral dim (no green — Ian found it confusing).
+            let pathColor: Color = isColliding ? collisionColor : (isSelected ? .white : Color(white: 0.72))
             let isPathHovered = hoveredPathAthleteID == item.athleteID
             let isSelectedPathHovered = isSelected && isPathHovered
-            let lineWidth: CGFloat = 2
-            let basePathOpacity: CGFloat = isSelected ? 0.58 : 0.42
-            let pathOpacity = isSelectedPathHovered ? 0.68 * pathOpacityMultiplier : basePathOpacity * pathOpacityMultiplier
+            let lineWidth: CGFloat = isColliding ? 2.4 : 2
+            let basePathOpacity: CGFloat = isColliding ? 0.95 : (isSelected ? 0.85 : 0.4)
+            let pathOpacity = isSelectedPathHovered ? 0.95 * pathOpacityMultiplier : basePathOpacity * pathOpacityMultiplier
 
             if !item.waypoints.isEmpty {
                 let nodes = item.nodes
@@ -647,28 +660,102 @@ struct FloorCanvasView: View {
                 continue
             }
 
-            let angle = atan2(dy, dx)
-            let arrowLength: CGFloat = 10
-            let arrowAngle: CGFloat = .pi / 6
-            var arrow = Path()
-            arrow.move(to: end)
-            arrow.addLine(
-                to: CGPoint(
-                    x: end.x - arrowLength * cos(angle - arrowAngle),
-                    y: end.y - arrowLength * sin(angle - arrowAngle)
-                )
+            // Direction is shown by chevrons marching along the whole path
+            // (not just one arrowhead) so it stays readable amid ghost paths.
+            // Chevron brightness follows the same hierarchy as the base stroke:
+            // collision loudest, selected bright white, others dim/neutral.
+            let chevronOpacity = (isColliding ? 0.95 : (isSelected ? 0.9 : 0.55)) * pathOpacityMultiplier
+            drawDirectionChevrons(
+                in: &context,
+                along: pathPolyline(for: item),
+                color: pathColor,
+                opacity: chevronOpacity,
+                spacing: max(8, 10 * markerScale),
+                size: max(5, 6 * markerScale),
+                lineWidth: max(1.8, 2.2 * markerScale)
             )
-            arrow.move(to: end)
-            arrow.addLine(
-                to: CGPoint(
-                    x: end.x - arrowLength * cos(angle + arrowAngle),
-                    y: end.y - arrowLength * sin(angle + arrowAngle)
-                )
-            )
-            context.stroke(arrow, with: .color(pathColor.opacity(0.65 * pathOpacityMultiplier)), lineWidth: 2)
 
             drawGhostCircle(in: &context, center: start)
             drawGhostCircle(in: &context, center: end)
+        }
+    }
+
+    /// A dense screen-space polyline approximating a transition path, covering
+    /// straight, quadratic-curve, and multi-waypoint (Catmull-Rom / sharp)
+    /// shapes. Used to march directional chevrons along the entire path.
+    private func pathPolyline(for item: TransitionPathRenderItem) -> [CGPoint] {
+        let start = CGPoint(x: item.startPosition.x * cellSize, y: item.startPosition.y * cellSize)
+        let end = CGPoint(x: item.endPosition.x * cellSize, y: item.endPosition.y * cellSize)
+
+        if !item.waypoints.isEmpty {
+            let nodes = item.nodes.map { CGPoint(x: $0.x * cellSize, y: $0.y * cellSize) }
+            guard nodes.count > 1 else { return [start, end] }
+            var points: [CGPoint] = [nodes[0]]
+            let samplesPerSegment = 8
+            for segmentIndex in 0..<(nodes.count - 1) {
+                let p0 = nodes[segmentIndex]
+                let p1 = nodes[segmentIndex + 1]
+                if segmentUsesSmoothWaypoint(segmentIndex: segmentIndex, waypoints: item.waypoints) {
+                    let prevNode = segmentIndex > 0 ? nodes[segmentIndex - 1] : p0
+                    let nextNode = segmentIndex + 2 < nodes.count ? nodes[segmentIndex + 2] : p1
+                    let (c1, c2) = PathCalculations.catmullRomControlPoints(prev: prevNode, p0: p0, p1: p1, next: nextNode)
+                    for s in 1...samplesPerSegment {
+                        let t = CGFloat(s) / CGFloat(samplesPerSegment)
+                        points.append(PathCalculations.cubicBezierPoint(p0: p0, c1: c1, c2: c2, p3: p1, t: t))
+                    }
+                } else {
+                    points.append(p1)
+                }
+            }
+            return points
+        } else if let control = item.controlPoint {
+            let c = CGPoint(x: control.x * cellSize, y: control.y * cellSize)
+            let samples = 20
+            return (0...samples).map { s in
+                PathCalculations.quadraticBezierPoint(from: start, control: c, to: end, t: CGFloat(s) / CGFloat(samples))
+            }
+        } else {
+            return [start, end]
+        }
+    }
+
+    /// Stroke ">" chevrons evenly along a polyline, each pointing toward the
+    /// path's destination, conveying travel direction over the whole length.
+    private func drawDirectionChevrons(
+        in context: inout GraphicsContext,
+        along polyline: [CGPoint],
+        color: Color,
+        opacity: CGFloat,
+        spacing: CGFloat,
+        size: CGFloat,
+        lineWidth: CGFloat
+    ) {
+        guard polyline.count >= 2, spacing > 0 else { return }
+        let armAngle: CGFloat = .pi / 5
+        var traveled: CGFloat = 0
+        var nextMark = spacing * 0.5
+        let style = StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round)
+
+        for i in 1..<polyline.count {
+            let a = polyline[i - 1]
+            let b = polyline[i]
+            let segDX = b.x - a.x
+            let segDY = b.y - a.y
+            let segLen = (segDX * segDX + segDY * segDY).squareRoot()
+            guard segLen > 0.01 else { continue }
+            let angle = atan2(segDY, segDX)
+            let back = angle + .pi
+            while nextMark <= traveled + segLen {
+                let f = (nextMark - traveled) / segLen
+                let tip = CGPoint(x: a.x + segDX * f, y: a.y + segDY * f)
+                var chevron = Path()
+                chevron.move(to: CGPoint(x: tip.x + size * cos(back - armAngle), y: tip.y + size * sin(back - armAngle)))
+                chevron.addLine(to: tip)
+                chevron.addLine(to: CGPoint(x: tip.x + size * cos(back + armAngle), y: tip.y + size * sin(back + armAngle)))
+                context.stroke(chevron, with: .color(color.opacity(opacity)), style: style)
+                nextMark += spacing
+            }
+            traveled += segLen
         }
     }
 
@@ -787,6 +874,15 @@ struct FloorCanvasView: View {
                 path.addLine(to: end)
             }
             context.stroke(path, with: .color(ghostColor.opacity(0.22)), style: style)
+            drawDirectionChevrons(
+                in: &context,
+                along: pathPolyline(for: item),
+                color: ghostColor,
+                opacity: 0.32,
+                spacing: max(7, 8 * markerScale),
+                size: max(4, 5 * markerScale),
+                lineWidth: max(1.1, 1.3 * markerScale)
+            )
         }
     }
 
@@ -817,6 +913,15 @@ struct FloorCanvasView: View {
                 path.addLine(to: end)
             }
             context.stroke(path, with: .color(ghostNextColor.opacity(0.22)), style: style)
+            drawDirectionChevrons(
+                in: &context,
+                along: pathPolyline(for: item),
+                color: ghostNextColor,
+                opacity: 0.32,
+                spacing: max(7, 8 * markerScale),
+                size: max(4, 5 * markerScale),
+                lineWidth: max(1.1, 1.3 * markerScale)
+            )
         }
     }
 
@@ -876,6 +981,16 @@ struct FloorCanvasView: View {
                 // For simple paths, use a middle opacity since we can't easily gradient a single stroke
                 context.stroke(path, with: .color(.white.opacity(0.20)), style: dashStyle)
             }
+
+            drawDirectionChevrons(
+                in: &context,
+                along: pathPolyline(for: item),
+                color: .white,
+                opacity: 0.3,
+                spacing: max(7, 8 * markerScale),
+                size: max(4, 5 * markerScale),
+                lineWidth: max(1.1, 1.3 * markerScale)
+            )
         }
     }
 

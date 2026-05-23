@@ -2775,6 +2775,7 @@ final class TransitionPlayer: ObservableObject {
 
     private var animationTimer: AnimationTimer?
     private var idleResetTask: Task<Void, Never>?
+    private var rewindTimer: AnimationTimer?
 
     init(
         startAthletes: [RenderedAthlete],
@@ -2910,6 +2911,7 @@ final class TransitionPlayer: ObservableObject {
     func play() {
         guard !isPlaying else { return }
         cancelIdleReset()
+        cancelRewind()
         if progress >= 1.0 { progress = 0 }
         isPlaying = true
         animationTimer = AnimationTimer { [weak self] in
@@ -2926,6 +2928,7 @@ final class TransitionPlayer: ObservableObject {
 
     func reset() {
         cancelIdleReset()
+        cancelRewind()
         pause()
         progress = 0
         updateAthletesForProgress()
@@ -2933,6 +2936,7 @@ final class TransitionPlayer: ObservableObject {
 
     func seek(to newProgress: CGFloat) {
         cancelIdleReset()
+        cancelRewind()
         progress = max(0, min(1, newProgress))
         updateAthletesForProgress()
         if !isPlaying { scheduleIdleReset() }
@@ -2944,13 +2948,47 @@ final class TransitionPlayer: ObservableObject {
         idleResetTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(5))
             guard !Task.isCancelled else { return }
-            self?.seek(to: 0)
+            self?.animateRewindToStart()
         }
     }
 
     private func cancelIdleReset() {
         idleResetTask?.cancel()
         idleResetTask = nil
+    }
+
+    /// Smoothly animate progress back to the start so the idle auto-rewind
+    /// reads as intentional instead of an instant pop. Drives `progress` down
+    /// over ~0.5s; the canvas follows because it tracks `currentAthletes` while
+    /// `progress > 0`.
+    private func animateRewindToStart() {
+        guard !isPlaying, progress > 0 else { return }
+        cancelRewind()
+        rewindTimer = AnimationTimer { [weak self] in
+            self?.rewindStep()
+        }
+    }
+
+    private func rewindStep() {
+        let decrementPerFrame = CGFloat(1.0 / 60.0) / 1.5  // ~1.5s full rewind
+        let next = progress - decrementPerFrame
+        // Floor at a tiny epsilon (not 0) so `progress > 0` stays true and the
+        // editor keeps rendering currentAthletes (≈ the start formation) instead
+        // of the at-rest endpoint lock snapping back to the other endpoint.
+        let restFloor: CGFloat = 0.0001
+        if next <= restFloor {
+            progress = restFloor
+            updateAthletesForProgress()
+            cancelRewind()
+        } else {
+            progress = next
+            updateAthletesForProgress()
+        }
+    }
+
+    private func cancelRewind() {
+        rewindTimer?.invalidate()
+        rewindTimer = nil
     }
 
     func setSpeed(_ newSpeed: CGFloat) {

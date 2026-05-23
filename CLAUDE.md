@@ -163,6 +163,19 @@ All positions use **floor feet** (not pixels). The standard court is **72ft wide
 
 ---
 
+## UI Layout Policy — Transport Controls (ALL agents)
+
+**Exactly one transport control stack may be visible at a time.** Choose by orientation:
+
+- **Portrait → bottom controls only.** The transport lives in the floating bottom overlay on the detail/canvas pane. The sidebar/inspector must NOT render its own transport.
+- **Landscape → sidebar controls only.** The transport lives in the sidebar (`SidebarTransportView`) or the selected-athlete inspector. The bottom overlay must NOT render.
+
+iPad portrait vs landscape cannot be distinguished by size class alone (both are regular width) — use the `isIPadPortrait` flag (computed via `GeometryReader` width-vs-height in `FormationHomeView`) and thread it down to any view that embeds a transport. The selected-athlete inspector (`SelectedAthleteSidebarView` in `AthleteDetailPanel.swift`) takes `isIPadPortrait` and hides its embedded transport block in portrait so the bottom overlay is the sole control surface.
+
+**Before adding or relocating any transport/playback control: confirm it cannot co-render with another transport in the same orientation.** A duplicate transport in iPad portrait (inspector + bottom overlay) was fixed 2026-05-23; do not reintroduce it. The bottom overlay's `SidebarTransportView` is a superset (nav + reset + play + loop + slider + speed + swap + path), so hiding the inspector transport in portrait drops no functionality.
+
+---
+
 ## Known Fragile Areas
 
 `FormationFlow/Models.swift` is the entire data layer. It has been modified 6 times in a single week (4 optimization passes + 1 security migration + 1 privacy fix). Stability now matters more than micro-optimizations.

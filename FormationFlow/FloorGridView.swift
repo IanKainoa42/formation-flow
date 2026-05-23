@@ -142,10 +142,21 @@ struct FloorGridView: View {
         entitlementManager.isPro || store.routine.formations.count < FreeTierLimits.maxFormations
     }
 
+    /// The transport is "engaged" while playing OR while scrubbed/paused away
+    /// from the resting start (progress > 0). When engaged we follow
+    /// `player.currentAthletes` so the scrubber animates the floor and pause
+    /// freezes athletes in place. When at rest we lock to the formation's
+    /// endpoint so the editor shows a crisp static formation (and progress
+    /// stays 0, so the idle-reset never fires under the editor).
+    private var isTransportEngaged: Bool {
+        guard let player else { return false }
+        return player.isPlaying || player.progress > 0
+    }
+
     private var renderedAthletes: [RenderedAthlete] {
         _ = playerTick // force redraw on player updates
         if let player {
-            if !player.isPlaying, let focusedEndpoint {
+            if !isTransportEngaged, let focusedEndpoint {
                 return focusedEndpoint == .end ? player.endAthletes : player.startAthletes
             }
             return player.currentAthletes
@@ -155,7 +166,10 @@ struct FloorGridView: View {
 
     private var collisionSummary: (count: Int, ids: Set<UUID>) {
         // ⚡ Bolt: Avoid O(N^2) spatial math per frame during playback.
-        if let player, player.progress > 0 && player.progress < 1 {
+        // Lower bound is a small epsilon (not 0) so the idle-rewind rest state
+        // (progress floored at 0.0001) still computes collisions for the
+        // displayed start formation.
+        if let player, player.progress > 0.001 && player.progress < 1 {
             return (0, [])
         }
         return PathCalculations.collisionSummary(in: renderedAthletes)
@@ -290,7 +304,7 @@ struct FloorGridView: View {
 
     private var displayProgress: CGFloat {
         guard let player else { return 0 }
-        if !player.isPlaying, let focusedEndpoint {
+        if !isTransportEngaged, let focusedEndpoint {
             return focusedEndpoint == .end ? 1.0 : 0.0
         }
         return player.progress
@@ -723,9 +737,10 @@ struct FloorGridView: View {
                 }
 
                 Button(action: addAthlete) {
-                    Label(isCompactLayout ? "Add" : "Add Athlete", systemImage: "plus.circle.fill")
+                    Label("Add", systemImage: "plus.circle.fill")
                 }
                 .buttonStyle(.borderedProminent)
+                .accessibilityLabel("Add Athlete")
                 .help("Add a new athlete to this formation")
 
                 if isCompactLayout {
@@ -765,17 +780,19 @@ struct FloorGridView: View {
                         showTransitionPaths.toggle()
                     } label: {
                         Label(
-                            showTransitionPaths ? "Hide Paths" : "Show Paths",
+                            showTransitionPaths ? "Hide" : "Show",
                             systemImage: showTransitionPaths ? "eye.slash" : "eye"
                         )
                     }
                     .buttonStyle(.bordered)
+                    .accessibilityLabel(showTransitionPaths ? "Hide Paths" : "Show Paths")
                     .help(showTransitionPaths ? "Hide movement paths between formations" : "Show movement paths between formations")
 
                     Button(action: shareTransitionPreview) {
-                        Label("Share Preview", systemImage: "square.and.arrow.up")
+                        Label("Share", systemImage: "square.and.arrow.up")
                     }
                     .buttonStyle(.borderedProminent)
+                    .accessibilityLabel("Share Preview")
                     .help("Export an animated preview of this transition")
                 }
 
@@ -783,20 +800,22 @@ struct FloorGridView: View {
                     compactOverflowMenu
                 } else {
                     Button(action: { showingRosterSheet = true }) {
-                        Label("Manage Roster", systemImage: "list.bullet.rectangle")
+                        Label("Roster", systemImage: "list.bullet.rectangle")
                     }
                     .buttonStyle(.bordered)
+                    .accessibilityLabel("Manage Roster")
                     .help("Add, remove, or rename athletes on the team roster")
 
                     if hasTransition {
                         Button(action: resetSelectedPaths) {
-                            Label(selectedAthleteIDs.count == 1 ? "Reset Path" : "Reset Paths", systemImage: "arrow.counterclockwise")
+                            Label("Reset", systemImage: "arrow.counterclockwise")
                         }
                         .buttonStyle(.bordered)
+                        .accessibilityLabel(selectedAthleteIDs.count == 1 ? "Reset Path" : "Reset Paths")
                         .help(selectedAthleteIDs.count == 1 ? "Reset this athlete's path to straight" : "Reset all athlete paths to straight")
                     } else {
                         Button(action: resetView) {
-                            Label("Reset View", systemImage: "arrow.counterclockwise")
+                            Label("Reset", systemImage: "arrow.counterclockwise")
                         }
                         .buttonStyle(.bordered)
                         .accessibilityLabel("Reset View")
@@ -819,10 +838,11 @@ struct FloorGridView: View {
                     }
 
                     Button(action: undoLastMove) {
-                        Label("Undo Move", systemImage: "arrow.uturn.backward")
+                        Label("Undo", systemImage: "arrow.uturn.backward")
                     }
                     .buttonStyle(.bordered)
                     .disabled(undoStack.isEmpty)
+                    .accessibilityLabel("Undo Move")
                     .help("Undo the last athlete position change")
                 }
             }

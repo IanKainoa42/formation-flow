@@ -813,6 +813,9 @@ struct SelectedAthleteSidebarView: View {
 
     var onSwap: () -> Void = {}
     var isSwapMode: Bool = false
+    /// In iPad portrait the transport lives in the bottom overlay, so the
+    /// inspector hides its own copy to avoid two transport stacks on screen.
+    var isIPadPortrait: Bool = false
 
     @State private var labelDraft: String = ""
     @State private var showDeleteConfirmation = false
@@ -911,41 +914,43 @@ struct SelectedAthleteSidebarView: View {
                 }
                 .padding(16)
 
-                Divider()
+                // MARK: Transport (hidden in iPad portrait — bottom overlay owns it)
+                if !isIPadPortrait {
+                    Divider()
 
-                // MARK: Transport
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("\(startFormationName) \u{2192} \(endFormationName)")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("\(startFormationName) \u{2192} \(endFormationName)")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
 
-                    HStack(spacing: 8) {
-                        TransportControls.resetButton(player: player, size: 28)
-                        TransportControls.playPauseButton(player: player, size: 28)
-                        TransportControls.loopButton(player: player, size: 28)
-                        Spacer()
-                        TransportControls.swapButton(isActive: isSwapMode, size: 28, disabled: false, action: onSwap)
+                        HStack(spacing: 8) {
+                            TransportControls.resetButton(player: player, size: 28)
+                            TransportControls.playPauseButton(player: player, size: 28)
+                            TransportControls.loopButton(player: player, size: 28)
+                            Spacer()
+                            TransportControls.swapButton(isActive: isSwapMode, size: 28, disabled: false, action: onSwap)
+                        }
+
+                        TransportControls.progressSlider(player: player)
+
+                        Picker("Speed", selection: Binding(
+                            get: { player.speed },
+                            set: { player.setSpeed($0) }
+                        )) {
+                            Text("0.5x").tag(CGFloat(1.0))
+                            Text("0.75x").tag(CGFloat(1.5))
+                            Text("1x").tag(CGFloat(2.0))
+                            Text("2x").tag(CGFloat(4.0))
+                            Text("4x").tag(CGFloat(8.0))
+                        }
+                        .pickerStyle(.segmented)
+                        .accessibilityLabel("Playback Speed")
+                        .accessibilityHint("Adjust the playback speed of the transition animation")
                     }
-
-                    TransportControls.progressSlider(player: player)
-
-                    Picker("Speed", selection: Binding(
-                        get: { player.speed },
-                        set: { player.setSpeed($0) }
-                    )) {
-                        Text("0.5x").tag(CGFloat(1.0))
-                        Text("0.75x").tag(CGFloat(1.5))
-                        Text("1x").tag(CGFloat(2.0))
-                        Text("2x").tag(CGFloat(4.0))
-                        Text("4x").tag(CGFloat(8.0))
-                    }
-                    .pickerStyle(.segmented)
-                    .accessibilityLabel("Playback Speed")
-                    .accessibilityHint("Adjust the playback speed of the transition animation")
+                    .padding(16)
                 }
-                .padding(16)
 
                 // MARK: Timing + Path
                 if let transition {

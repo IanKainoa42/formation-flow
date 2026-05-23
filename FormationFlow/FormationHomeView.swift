@@ -177,6 +177,13 @@ struct RoutineWorkspaceView: View {
                 }
             }
         }
+        .onChange(of: isIPadPortrait) { _, portrait in
+            // Portrait gives the floor full width by collapsing the sidebar;
+            // landscape restores the split so the sidebar transport is reachable.
+            withAnimation(.easeInOut(duration: 0.22)) {
+                splitViewVisibility = portrait ? .detailOnly : .all
+            }
+        }
         .onAppear {
             if selectedFormationID == nil {
                 selectedFormationID = store.routine.formations.first?.id
@@ -374,7 +381,8 @@ struct RoutineWorkspaceView: View {
                     onUpgrade: { showingUpgradeSheet = true },
                     onRefreshTransition: { refreshPreviewSession() },
                     onSwap: { isSwapMode.toggle() },
-                    isSwapMode: isSwapMode
+                    isSwapMode: isSwapMode,
+                    isIPadPortrait: isIPadPortrait
                 )
             } else if !selectedAthleteIDs.isEmpty, let selectedFormationID {
                 // Single formation — no player, show basic inspector
@@ -642,7 +650,7 @@ struct RoutineWorkspaceView: View {
                     }
                     .padding(12)
                 }
-                .overlay(alignment: .bottom) {
+                .safeAreaInset(edge: .bottom) {
                     if isIPadPortrait, let previewTransitionPair, let player = previewSession.player {
                         VStack(spacing: 10) {
                             transitionDirectionPicker
