@@ -51,6 +51,7 @@ struct FloorGridView: View {
     @State private var selectionRect: CGRect? = nil
     @State private var selectionStartPoint: CGPoint = .zero
     @State private var dragStartPositions: [UUID: CGPoint] = [:]
+    @State private var draggingAthleteIDs: Set<UUID> = []
     @State private var undoStack: [[(id: UUID, position: CGPoint)]] = []
     @State private var rotationStartPositions: [UUID: CGPoint] = [:]
     @State private var zoomScale: CGFloat = 1.0
@@ -1048,7 +1049,8 @@ struct FloorGridView: View {
                 hoveredHandlePosition: hoveredHandlePosition,
                 hoveredAthleteID: hoveredAthleteID,
                 hoveredPathAthleteID: hoveredPathAthleteID,
-                focusedPathHandle: focusedPathHandle
+                focusedPathHandle: focusedPathHandle,
+                draggingAthleteIDs: draggingAthleteIDs
             )
             .gesture(
                 dragGesture(
@@ -2540,7 +2542,7 @@ struct FloorGridView: View {
                                 if result[athlete.id] == nil { result[athlete.id] = athlete.position }
                             }
                         }
-                        isDraggingAthletes = true
+                        beginAthleteDragFeedback()
                         handleFormationDragContinued(value, cellSize: cellSize)
                         return
                     }
@@ -2564,7 +2566,7 @@ struct FloorGridView: View {
                                 if result[athlete.id] == nil { result[athlete.id] = athlete.position }
                             }
                         }
-                        isDraggingAthletes = true
+                        beginAthleteDragFeedback()
                         handleFormationDragContinued(value, cellSize: cellSize)
                         return
                     }
@@ -2625,6 +2627,7 @@ struct FloorGridView: View {
                     isDrawingSelectionBox = false
                     selectionRect = nil
                     dragStartPositions = [:]
+                    draggingAthleteIDs = []
                     endpointDragStartPosition = nil
                     clearActiveGuides()
                     // If the press lifted before the long-press armed, fade out the ring.
@@ -2831,6 +2834,14 @@ struct FloorGridView: View {
     private func clearActiveGuides() {
         activeAlignmentGuides = []
         activeMirrorGuides = []
+    }
+
+    private func beginAthleteDragFeedback() {
+        guard !isDraggingAthletes else { return }
+        isDraggingAthletes = true
+        draggingAthleteIDs = selectedAthleteIDs
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred(intensity: 0.7)
     }
 
     private func clampedCanvasPanOffset(

@@ -144,6 +144,7 @@ struct FloorCanvasView: View {
     var hoveredAthleteID: UUID? = nil
     var hoveredPathAthleteID: UUID? = nil
     var focusedPathHandle: CGPoint? = nil
+    var draggingAthleteIDs: Set<UUID> = []
 
     /// Scale factor so athlete markers stay proportional to the floor.
     /// Reference cellSize of 12 matches the original fixed-pixel radii.
@@ -810,6 +811,57 @@ struct FloorCanvasView: View {
         var border = Path()
         border.addRect(CGRect(x: 0, y: 0, width: width, height: height))
         context.stroke(border, with: .color(.white.opacity(0.25)), lineWidth: 2)
+
+        drawCourtVignette(in: &context, width: width, height: height)
+    }
+
+    private func drawCourtVignette(in context: inout GraphicsContext, width: CGFloat, height: CGFloat) {
+        let edge = min(width, height) * 0.12
+        guard edge > 1 else { return }
+
+        var top = Path()
+        top.addRect(CGRect(x: 0, y: 0, width: width, height: edge))
+        context.fill(
+            top,
+            with: .linearGradient(
+                Gradient(colors: [.black.opacity(0.22), .clear]),
+                startPoint: CGPoint(x: width / 2, y: 0),
+                endPoint: CGPoint(x: width / 2, y: edge)
+            )
+        )
+
+        var bottom = Path()
+        bottom.addRect(CGRect(x: 0, y: height - edge, width: width, height: edge))
+        context.fill(
+            bottom,
+            with: .linearGradient(
+                Gradient(colors: [.clear, .black.opacity(0.2)]),
+                startPoint: CGPoint(x: width / 2, y: height - edge),
+                endPoint: CGPoint(x: width / 2, y: height)
+            )
+        )
+
+        var left = Path()
+        left.addRect(CGRect(x: 0, y: 0, width: edge, height: height))
+        context.fill(
+            left,
+            with: .linearGradient(
+                Gradient(colors: [.black.opacity(0.16), .clear]),
+                startPoint: CGPoint(x: 0, y: height / 2),
+                endPoint: CGPoint(x: edge, y: height / 2)
+            )
+        )
+
+        var right = Path()
+        right.addRect(CGRect(x: width - edge, y: 0, width: edge, height: height))
+        context.fill(
+            right,
+            with: .linearGradient(
+                Gradient(colors: [.clear, .black.opacity(0.16)]),
+                startPoint: CGPoint(x: width - edge, y: height / 2),
+                endPoint: CGPoint(x: width, y: height / 2)
+            )
+        )
     }
 
     private func drawGhostAthletes(in context: inout GraphicsContext) {
@@ -1060,62 +1112,132 @@ struct FloorCanvasView: View {
             let isSelected = selectedAthleteIDs.contains(athlete.id)
             let isColliding = collisionIDs.contains(athlete.id)
             let isHovered = athlete.id == hoveredAthleteID
-            let hoverScale: CGFloat = isHovered ? 1.3 : 1.0
+            let isDragging = draggingAthleteIDs.contains(athlete.id)
+            let interactionScale: CGFloat = isDragging ? 1.08 : (isHovered ? 1.04 : 1.0)
 
             if hasTransition {
                 // Transition mode: athletes colored by formation, blending start→end
                 let baseRadius = (isSelected ? athlete.role.markerRadius - 1 : athlete.role.markerRadius - 2) * markerScale
-                let radius = baseRadius * hoverScale
+                let radius = baseRadius * interactionScale
                 let formationColor = blendedFormationColor(progress: transitionProgress)
                 let fillColor: Color = isColliding ? .red : formationColor
-                let fillOpacity: CGFloat = isSelected ? 0.92 : (isHovered ? 0.88 : 0.78)
-                let marker = athlete.role.markerPath(center: point, radius: radius)
-                context.fill(marker, with: .color(fillColor.opacity(fillOpacity)))
-
-                if isSelected || isHovered {
-                    let strokeOpacity: CGFloat = isSelected ? 1.0 : 0.7
-                    context.stroke(marker, with: .color(.white.opacity(strokeOpacity)), lineWidth: isSelected ? 3 : (isHovered ? 2.5 : 2))
-                }
+                drawPremiumAthleteMarker(
+                    in: &context,
+                    athlete: athlete,
+                    center: point,
+                    radius: radius,
+                    fillColor: fillColor,
+                    isSelected: isSelected,
+                    isHovered: isHovered,
+                    isDragging: isDragging,
+                    isColliding: isColliding,
+                    isSwapSource: false
+                )
 
                 let label = Text(athlete.label)
-                    .font(.system(isHovered ? .caption : .caption2, design: .monospaced))
-                    .foregroundColor(.white.opacity(isSelected || isHovered ? 0.95 : 0.85))
+                    .font(.system(.caption2, design: .monospaced).weight(isSelected || isHovered || isDragging ? .bold : .semibold))
+                    .foregroundColor(.white.opacity(isSelected || isHovered || isDragging ? 0.98 : 0.9))
                 context.draw(label, at: point, anchor: .center)
             } else {
                 // Formation-only mode: colored by formation, role conveyed by shape
                 let baseColor: Color = useRoleColors ? athlete.role.color : formationColor
                 let fillColor: Color = isColliding ? .red : baseColor
                 let baseRadius = (isSelected ? athlete.role.selectedMarkerRadius : athlete.role.markerRadius) * markerScale
-                let radius = baseRadius * hoverScale
-                let marker = athlete.role.markerPath(center: point, radius: radius)
-                context.fill(marker, with: .color(fillColor.opacity(isSelected ? 0.92 : (isHovered ? 0.92 : 0.86))))
+                let radius = baseRadius * interactionScale
+                let isSwapSource = athlete.id == swapSourceID
 
-                if isSelected || isHovered {
-                    let strokeOpacity: CGFloat = isSelected ? 1.0 : 0.7
-                    context.stroke(marker, with: .color(.white.opacity(strokeOpacity)), lineWidth: isSelected ? 3.5 : (isHovered ? 3.5 : 3))
-                }
+                drawPremiumAthleteMarker(
+                    in: &context,
+                    athlete: athlete,
+                    center: point,
+                    radius: radius,
+                    fillColor: fillColor,
+                    isSelected: isSelected,
+                    isHovered: isHovered,
+                    isDragging: isDragging,
+                    isColliding: isColliding,
+                    isSwapSource: isSwapSource
+                )
 
                 if isColliding {
                     let ring = athlete.role.markerPath(center: point, radius: radius + 4 * markerScale)
-                    context.stroke(ring, with: .color(.red), lineWidth: 2 * markerScale)
+                    context.stroke(ring, with: .color(.red.opacity(0.95)), lineWidth: 2 * markerScale)
                 }
 
-                if athlete.id == swapSourceID {
+                if isSwapSource {
                     let ring = athlete.role.markerPath(center: point, radius: radius + 6 * markerScale)
                     context.stroke(
                         ring,
                         with: .color(formationColor),
-                        style: StrokeStyle(lineWidth: 3, dash: [6, 3])
+                        style: StrokeStyle(lineWidth: max(2.5, 3 * markerScale), dash: [6, 3])
                     )
                 }
 
                 let labelColor = contrastingLabelColor(for: fillColor)
                 let label = Text(athlete.label)
-                    .font(.system(isHovered ? .caption : .caption, design: .monospaced))
-                    .foregroundColor(labelColor.opacity(isSelected || isHovered ? 0.95 : 0.85))
+                    .font(.system(.caption, design: .monospaced).weight(isSelected || isHovered || isDragging ? .bold : .semibold))
+                    .foregroundColor(labelColor.opacity(isSelected || isHovered || isDragging ? 0.98 : 0.9))
                 context.draw(label, at: point, anchor: .center)
             }
         }
+    }
+
+    private func drawPremiumAthleteMarker(
+        in context: inout GraphicsContext,
+        athlete: RenderedAthlete,
+        center: CGPoint,
+        radius: CGFloat,
+        fillColor: Color,
+        isSelected: Bool,
+        isHovered: Bool,
+        isDragging: Bool,
+        isColliding: Bool,
+        isSwapSource: Bool
+    ) {
+        let marker = athlete.role.markerPath(center: center, radius: radius)
+        let lift = isDragging || isHovered
+        let shadowOffset = CGPoint(
+            x: center.x + (lift ? 2.2 : 1.4) * markerScale,
+            y: center.y + (lift ? 4.0 : 2.8) * markerScale
+        )
+        let shadowRadius = radius + (lift ? 3.5 : 2.4) * markerScale
+        let shadow = athlete.role.markerPath(center: shadowOffset, radius: shadowRadius)
+        context.fill(shadow, with: .color(.black.opacity(isDragging ? 0.38 : 0.26)))
+
+        if isSelected || isDragging || isColliding || isSwapSource {
+            let glowRadius = radius + (isDragging ? 7 : 5) * markerScale
+            let glow = athlete.role.markerPath(center: center, radius: glowRadius)
+            let glowColor: Color = isColliding ? .red : .white
+            context.fill(glow, with: .color(glowColor.opacity(isColliding ? 0.14 : 0.08)))
+        }
+
+        let rimRadius = radius + max(1.6, 2.0 * markerScale)
+        let rim = athlete.role.markerPath(center: center, radius: rimRadius)
+        context.fill(rim, with: .color(.black.opacity(isColliding ? 0.45 : 0.38)))
+        context.stroke(rim, with: .color(.white.opacity(isSelected || isDragging ? 0.82 : 0.34)), lineWidth: max(1.1, 1.3 * markerScale))
+
+        let bodyOpacity: CGFloat = isColliding ? 0.98 : (isSelected || isHovered || isDragging ? 0.97 : 0.93)
+        context.fill(marker, with: .color(fillColor.opacity(bodyOpacity)))
+
+        let topLight = athlete.role.markerPath(
+            center: CGPoint(x: center.x - radius * 0.16, y: center.y - radius * 0.2),
+            radius: radius * 0.72
+        )
+        context.fill(topLight, with: .color(.white.opacity(isColliding ? 0.12 : 0.16)))
+
+        let lowerShade = athlete.role.markerPath(
+            center: CGPoint(x: center.x + radius * 0.12, y: center.y + radius * 0.16),
+            radius: radius * 0.96
+        )
+        context.stroke(lowerShade, with: .color(.black.opacity(0.16)), lineWidth: max(1.2, 1.6 * markerScale))
+
+        let outlineColor: Color = isColliding ? .red : (isDragging || isSelected ? .white : .black)
+        let outlineOpacity: CGFloat = isColliding ? 1.0 : (isDragging || isSelected ? 0.95 : 0.28)
+        context.stroke(
+            marker,
+            with: .color(outlineColor.opacity(outlineOpacity)),
+            lineWidth: isSelected || isDragging ? max(2.5, 3.0 * markerScale) : max(1.4, 1.8 * markerScale)
+        )
     }
 
     private func blendedFormationColor(progress: CGFloat) -> Color {
