@@ -1092,19 +1092,29 @@ struct RoutineWorkspaceView: View {
         guard formations.count > 1 else { return }
         let currentIndex = store.formationIndex(id: selectedFormationID) ?? 0
         let nextIndex = (currentIndex + 1) % formations.count
-        selectedFormationID = formations[nextIndex].id
+        selectFormation(formations[nextIndex].id)
     }
 
     private func stepToPreviousFormation() {
         let formations = store.routine.formations
         guard let currentIndex = store.formationIndex(id: selectedFormationID), currentIndex > 0 else { return }
-        selectedFormationID = formations[currentIndex - 1].id
+        selectFormation(formations[currentIndex - 1].id)
     }
 
     private func stepToNextFormation() {
         let formations = store.routine.formations
         guard let currentIndex = store.formationIndex(id: selectedFormationID), currentIndex < formations.count - 1 else { return }
-        selectedFormationID = formations[currentIndex + 1].id
+        selectFormation(formations[currentIndex + 1].id)
+    }
+
+    /// Advance the displayed formation. On compact (iPhone) the editor is a
+    /// pushed `NavigationStack` destination keyed by `compactNavigationPath`, so
+    /// mutating `selectedFormationID` alone leaves the pushed editor (and the
+    /// formation badge, which reads its fixed `formationID` prop) stuck on the
+    /// original formation. Route through `showFormation` so the pushed route
+    /// advances in lockstep when the editor is on-screen.
+    private func selectFormation(_ formationID: UUID) {
+        showFormation(formationID, pushOnCompact: isCompactLayout && !compactNavigationPath.isEmpty)
     }
 
     private var isFirstFormation: Bool {

@@ -326,13 +326,21 @@ struct CompactTransitionPlaybackRailView: View {
 
             Divider()
 
+            // Two rows so the transport fits the narrow landscape rail (as little
+            // as ~116pt of content width). A single 5-button row was ~184pt wide
+            // and spilled outside the rail's rounded background.
             HStack(spacing: 8) {
                 TransportControls.previousFormationButton(size: 28, disabled: isFirstFormation, action: onPreviousFormation)
-                TransportControls.nextFormationButton(size: 28, disabled: isLastFormation, action: onNextFormation)
-                TransportControls.resetButton(player: player, size: 30)
                 TransportControls.playPauseButton(player: player, size: 36)
+                TransportControls.nextFormationButton(size: 28, disabled: isLastFormation, action: onNextFormation)
+            }
+            .frame(maxWidth: .infinity)
+
+            HStack(spacing: 8) {
+                TransportControls.resetButton(player: player, size: 30)
                 TransportControls.loopButton(player: player, size: 30)
             }
+            .frame(maxWidth: .infinity)
 
             // Swap and path buttons fill the full row width
             HStack(spacing: 8) {

@@ -1062,39 +1062,6 @@ struct FloorGridView: View {
             )
             .simultaneousGesture(waypointDoubleTapGesture(cellSize: cellSize, offset: offset))
             .simultaneousGesture(longPressSketchGesture(cellSize: cellSize, offset: offset))
-            .gesture(
-                MagnifyGesture()
-                    .onChanged { value in
-                        // While playback is engaged, two-finger pan scrubs instead of zooming.
-                        guard !(hasTransition && isTransportEngaged) else { return }
-                        let nextZoomScale = max(0.65, min(3.0, lastZoomScale * value.magnification))
-                        let nextCellSize = baseCellSize * nextZoomScale
-                        let nextCanvasSize = CGSize(
-                            width: CourtConstants.width * nextCellSize,
-                            height: CourtConstants.height * nextCellSize
-                        )
-
-                        zoomScale = nextZoomScale
-                        canvasPanOffset = clampedCanvasPanOffset(
-                            canvasPanOffset,
-                            viewportSize: geometry.size,
-                            canvasSize: nextCanvasSize
-                        )
-                    }
-                    .onEnded { _ in
-                        guard !(hasTransition && isTransportEngaged) else { return }
-                        lastZoomScale = zoomScale
-                        canvasPanOffset = clampedCanvasPanOffset(
-                            canvasPanOffset,
-                            viewportSize: geometry.size,
-                            canvasSize: CGSize(
-                                width: CourtConstants.width * baseCellSize * zoomScale,
-                                height: CourtConstants.height * baseCellSize * zoomScale
-                            )
-                        )
-                        lastCanvasPanOffset = canvasPanOffset
-                    }
-            )
             .simultaneousGesture(
                 RotationGesture()
                     .onChanged { value in
@@ -1122,12 +1089,12 @@ struct FloorGridView: View {
                     }
             )
             #if canImport(UIKit)
-            // Two-finger tap = play/pause. Two-finger pan = scrub, but only once
-            // playback is engaged (so a fresh two-finger gesture still pinch-zooms);
-            // while engaged the MagnifyGesture above no-ops so the pan scrubs instead.
+            // Two-finger tap = play/pause. Two-finger pan = scrub whenever a
+            // transition exists. (Pinch-to-zoom was removed; the two-finger pan
+            // is now exclusively a scrub gesture.)
             .background(
                 TwoFingerPlaybackGesture(
-                    scrubEnabled: hasTransition && isTransportEngaged,
+                    scrubEnabled: hasTransition,
                     onPlayToggle: {
                         guard let player, hasTransition else { return }
                         player.isPlaying ? player.pause() : player.play()
