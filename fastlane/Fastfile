@@ -28,45 +28,144 @@ platform :ios do
     )
   end
 
-  desc "Build and upload to TestFlight"
+  # --------------------------------------------------------------------------
+  # openrsync-safe build helper
+  #
+  # `xcodebuild -exportArchive` (and therefore fastlane's `build_app`/`gym`) is
+  # BROKEN on this machine: the system /usr/bin/rsync is openrsync, which lacks
+  # the `-E` flag Xcode's export uses → "Copy failed". The proven workaround
+  # (documented in CLAUDE.md) is to archive normally — only the *export* step is
+  # broken — then hand-assemble and re-sign the IPA. This helper does exactly
+  # that and returns the IPA path, so beta/release/ship_upload never touch the
+  # broken export path.
+  #
+  # Signing notes:
+  #   - The project uses Automatic signing, so the archive is dev-signed; we
+  #     strip get-task-allow and re-sign with the distribution cert.
+  #   - TWO distribution certs share the same friendly name in this keychain,
+  #     so we MUST sign by SHA1, not by name (signing by name is ambiguous).
+  #   - The App Store profile is resolved by NAME at runtime (UUIDs rotate).
+  # All three identifiers are PUBLIC (not secrets) and ENV-overridable.
+  # --------------------------------------------------------------------------
+  desc "Archive + hand-sign an App Store IPA without the broken xcodebuild -exportArchive. Returns IPA path."
+  private_lane :build_signed_ipa do
+    scheme    = ENV["SHIP_SCHEME"] || "FormationFlow"
+    cert_sha1 = ENV["SHIP_DIST_CERT_SHA1"] || "910B65DB392314A8F3FE252F5A8BB096D566FBB1"
+    prof_name = ENV["SHIP_APPSTORE_PROFILE_NAME"] || "match AppStore com.ianrichardson.formationflow"
+
+    repo    = File.expand_path("..", __dir__)
+    project = File.join(repo, "#{scheme}.xcodeproj")
+    work    = "/tmp/#{scheme}_ship"
+    archive = "#{work}/#{scheme}.xcarchive"
+    payload = "#{work}/Payload"
+    app     = "#{payload}/#{scheme}.app"
+    ipa     = "#{work}/#{scheme}.ipa"
+    ent     = "#{work}/entitlements.plist"
+
+    # Resolve the installed App Store provisioning profile by name.
+    prof_dir = File.expand_path("~/Library/Developer/Xcode/UserData/Provisioning Profiles")
+    profile  = Dir["#{prof_dir}/*.mobileprovision"].find do |p|
+      `security cms -D -i "#{p}" 2>/dev/null | plutil -extract Name raw - 2>/dev/null`.strip == prof_name
+    end
+    UI.user_error!("App Store profile '#{prof_name}' is not installed in #{prof_dir}") if profile.nil?
+    UI.message("Using App Store profile #{File.basename(profile)} (#{prof_name})")
+
+    sh("rm -rf #{work.shellescape} && mkdir -p #{payload.shellescape}")
+
+    # 1. Archive — this works; only `-exportArchive` is broken.
+    sh("xcodebuild -project #{project.shellescape} -scheme #{scheme.shellescape} " \
+       "-configuration Release -destination 'generic/platform=iOS' " \
+       "-archivePath #{archive.shellescape} -allowProvisioningUpdates archive")
+
+    # 2. Hand-assemble + re-sign the IPA (the documented openrsync workaround).
+    sh("cp -R #{"#{archive}/Products/Applications/#{scheme}.app".shellescape} #{payload.shellescape}/")
+    sh("cp #{profile.shellescape} #{"#{app}/embedded.mobileprovision".shellescape}")
+    sh("codesign -d --entitlements - --xml #{app.shellescape} > #{ent.shellescape}")
+    sh("plutil -remove get-task-allow #{ent.shellescape} || true")
+    sh("codesign --force --sign #{cert_sha1.shellescape} " \
+       "--entitlements #{ent.shellescape} --generate-entitlement-der #{app.shellescape}")
+    sh("codesign --verify --strict --verbose=2 #{app.shellescape}")
+    sh("cd #{work.shellescape} && rm -f #{"#{scheme}.ipa".shellescape} && zip -qr #{"#{scheme}.ipa".shellescape} Payload")
+
+    UI.success("Signed App Store IPA ready: #{ipa}")
+    ipa
+  end
+
+  desc "Build and upload to TestFlight (openrsync-safe build)"
   lane :beta do
-    # Sync code signing
-    sync_code_signing(type: "appstore")
-    
-    # Build the app
-    build_app(
-      scheme: "FormationFlow",
-      export_method: "app-store",
-      include_symbols: false
-    )
-    
-    # Upload to TestFlight
+    ipa = build_signed_ipa
     upload_to_testflight(
       api_key: api_key,
+      ipa: ipa,
       skip_waiting_for_build_processing: true,
       notify_external_testers: false
     )
   end
 
-  desc "Build and upload to App Store"
+  desc "Build and upload to App Store (no submit; openrsync-safe build)"
   lane :release do
-    # Sync code signing
-    sync_code_signing(type: "appstore")
-    
-    # Build the app
-    build_app(
-      scheme: "FormationFlow",
-      export_method: "app-store"
-    )
-    
-    # Upload to App Store
+    ipa = build_signed_ipa
     upload_to_app_store(
       api_key: api_key,
+      ipa: ipa,
       force: true,
-      skip_metadata: false,
-      skip_screenshots: false,
+      # Screenshots + metadata are managed out-of-band via the ASC API from
+      # AppStoreScreenshots/marketing/ — NOT from fastlane/. Skipping prevents
+      # fastlane from clobbering the good ASC listing with stale fastlane assets.
+      skip_metadata: true,
+      skip_screenshots: true,
       submit_for_review: false
     )
+  end
+
+  # ---- /ship lanes (openrsync-safe; reuse build_signed_ipa) -----------------
+
+  desc "Build + upload binary to App Store Connect. Does NOT submit. (/ship Phase 2)"
+  lane :ship_upload do
+    ipa = build_signed_ipa
+    upload_to_app_store(
+      api_key: api_key,
+      ipa: ipa,
+      force: true,
+      skip_metadata: true,      # see note in :release — managed via ASC API
+      skip_screenshots: true,
+      submit_for_review: false  # upload only — /ship gates before submit
+    )
+    # Fallback: if iTMSTransporter regresses, drop this IPA on Transporter.app.
+    UI.message("ship_upload produced IPA at #{ipa}")
+  end
+
+  desc "Submit an already-uploaded build for review, auto-release after approval. (/ship Phase 2)"
+  lane :ship_submit do
+    # ENV["SHIP_BUILD_NUMBER"] selects which uploaded build to submit.
+    upload_to_app_store(
+      api_key: api_key,
+      build_number: ENV["SHIP_BUILD_NUMBER"],
+      skip_binary_upload: true,   # binary already uploaded by ship_upload
+      skip_metadata: true,        # managed via ASC API (see :release)
+      skip_screenshots: true,
+      force: true,
+      run_precheck_before_submit: true,
+      precheck_include_in_app_purchases: true,
+      submit_for_review: true,
+      automatic_release_after_approval: true,
+      submission_information: { export_compliance_uses_encryption: false }
+    )
+  end
+
+  desc "Print latest App Store build status as JSON (read-only). Used by /ship pre-flight."
+  lane :asc_build_status do
+    require "spaceship"
+    Spaceship::ConnectAPI.token = Spaceship::ConnectAPI::Token.create(
+      key_id: api_key_config["key_id"],
+      issuer_id: api_key_config["issuer_id"],
+      key: api_key_config["key"]
+    )
+    app = Spaceship::ConnectAPI::App.find(ENV["SHIP_BUNDLE_ID"] || "com.ianrichardson.formationflow")
+    rows = app.get_builds(limit: 25, sort: "-uploadedDate").map do |b|
+      { build: b.version, processingState: b.processing_state, uploaded: b.uploaded_date }
+    end
+    UI.message("ASC_BUILD_STATUS_JSON=" + rows.to_json)
   end
 
   desc "Generate screenshots"
