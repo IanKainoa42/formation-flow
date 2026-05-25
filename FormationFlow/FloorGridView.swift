@@ -1043,8 +1043,8 @@ struct FloorGridView: View {
                 ghostColor: previousFormationColor,
                 ghostNextAthletes: nextFormationAthletes,
                 ghostNextColor: nextFormationColor,
-                ghostPrevPaths: previousGhostPaths,
-                ghostNextPaths: nextGhostPaths,
+                ghostPrevPaths: showTransitionPaths ? previousGhostPaths : [],
+                ghostNextPaths: showTransitionPaths ? nextGhostPaths : [],
                 pathSketchPoints: pathSketchPoints,
                 hoveredHandlePosition: hoveredHandlePosition,
                 hoveredAthleteID: hoveredAthleteID,
@@ -1065,6 +1065,8 @@ struct FloorGridView: View {
             .gesture(
                 MagnifyGesture()
                     .onChanged { value in
+                        // While playback is engaged, two-finger pan scrubs instead of zooming.
+                        guard !(hasTransition && isTransportEngaged) else { return }
                         let nextZoomScale = max(0.65, min(3.0, lastZoomScale * value.magnification))
                         let nextCellSize = baseCellSize * nextZoomScale
                         let nextCanvasSize = CGSize(
@@ -1080,6 +1082,7 @@ struct FloorGridView: View {
                         )
                     }
                     .onEnded { _ in
+                        guard !(hasTransition && isTransportEngaged) else { return }
                         lastZoomScale = zoomScale
                         canvasPanOffset = clampedCanvasPanOffset(
                             canvasPanOffset,
@@ -1118,6 +1121,23 @@ struct FloorGridView: View {
                         refreshTransitionFromStore()
                     }
             )
+            #if canImport(UIKit)
+            // Two-finger tap = play/pause. Two-finger pan = scrub, but only once
+            // playback is engaged (so a fresh two-finger gesture still pinch-zooms);
+            // while engaged the MagnifyGesture above no-ops so the pan scrubs instead.
+            .background(
+                TwoFingerPlaybackGesture(
+                    scrubEnabled: hasTransition && isTransportEngaged,
+                    onPlayToggle: {
+                        guard let player, hasTransition else { return }
+                        player.isPlaying ? player.pause() : player.play()
+                    },
+                    currentProgress: { player?.progress ?? 0 },
+                    onScrubBegan: { player?.pause() },
+                    onSeek: { player?.seek(to: $0) }
+                )
+            )
+            #endif
 
             let canvasContent = baseCanvasContent
             .onContinuousHover { phase in

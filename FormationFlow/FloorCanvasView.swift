@@ -869,9 +869,9 @@ struct FloorCanvasView: View {
         let ghostStyle = StrokeStyle(lineWidth: 1 * markerScale, dash: [3, 3])
         for athlete in ghostAthletes {
             let point = CGPoint(x: athlete.position.x * cellSize, y: athlete.position.y * cellSize)
-            // Previous = larger than current (formations grow as they recede into the past)
-            let innerRadius = (athlete.role.markerRadius + 4) * markerScale
-            let outerRadius = (athlete.role.markerRadius + 9) * markerScale
+            // Previous = clearly larger than current (formations grow as they recede into the past)
+            let innerRadius = (athlete.role.markerRadius + 8) * markerScale
+            let outerRadius = (athlete.role.markerRadius + 15) * markerScale
 
             // Inner circle — tinted with previous formation color
             var inner = Path()
@@ -889,8 +889,8 @@ struct FloorCanvasView: View {
         guard !ghostNextAthletes.isEmpty else { return }
         for athlete in ghostNextAthletes {
             let point = CGPoint(x: athlete.position.x * cellSize, y: athlete.position.y * cellSize)
-            // Next = smaller than current (hasn't happened yet, grows when it becomes current)
-            let radius = (athlete.role.markerRadius - 4) * markerScale
+            // Next = clearly smaller than current (hasn't happened yet, grows when it becomes current)
+            let radius = max(5, athlete.role.markerRadius - 7) * markerScale
 
             // Hollow outline — tinted with next formation color
             var ring = Path()
@@ -1317,3 +1317,133 @@ private struct AthleteAccessibilityElement: View {
             .accessibilityValue(accessibilityValue)
     }
 }
+
+#if canImport(UIKit)
+// MARK: - Two-Finger Playback Gesture (UIKit bridge)
+
+/// Installs a two-finger tap (play/pause) and an optional two-finger pan
+/// (scrub) recognizer. The recognizers are attached to the **window** — the only
+/// guaranteed ancestor of every touch — and scoped to the canvas by checking the
+/// touch lands inside this representable's own frame (`.background` lays it out to
+/// match the canvas). Attaching to the representable's immediate host doesn't work:
+/// `.background` is a *sibling* of the canvas, so its subtree never sees canvas
+/// touches and the recognizers stay dead.
+///
+/// `cancelsTouchesInView = false` + simultaneous recognition means single-finger
+/// SwiftUI gestures (athlete drag, selection, path sketch) and two-finger
+/// pinch/rotate keep working untouched. SwiftUI has no count-based tap/drag
+/// gesture, so this UIKit bridge is the only way to read a two-finger gesture.
+struct TwoFingerPlaybackGesture: UIViewRepresentable {
+    /// When false, the scrub (pan) recognizer is disabled — tap-to-toggle only.
+    var scrubEnabled: Bool
+    /// Two-finger tap: toggle play/pause.
+    var onPlayToggle: () -> Void
+    /// Read the player's current progress (0...1) at the moment a scrub begins.
+    var currentProgress: () -> CGFloat = { 0 }
+    /// Called once when a two-finger scrub begins (e.g. pause playback).
+    var onScrubBegan: () -> Void = {}
+    /// Seek to an absolute progress (0...1) during a scrub.
+    var onSeek: (CGFloat) -> Void = { _ in }
+
+    func makeUIView(context: Context) -> AnchorView {
+        let view = AnchorView()
+        view.backgroundColor = .clear
+        view.isUserInteractionEnabled = false // frame anchor only; recognizers live on the window
+        view.coordinator = context.coordinator
+        return view
+    }
+
+    func updateUIView(_ uiView: AnchorView, context: Context) {
+        context.coordinator.parent = self
+        context.coordinator.pan?.isEnabled = scrubEnabled
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    /// Reports window membership changes so the coordinator can (un)install
+    /// window-level recognizers — avoids leaking recognizers across view reuse.
+    final class AnchorView: UIView {
+        weak var coordinator: Coordinator?
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            coordinator?.windowChanged(to: window, anchor: self)
+        }
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var parent: TwoFingerPlaybackGesture
+        weak var anchor: UIView?
+        weak var installedWindow: UIWindow?
+        weak var tap: UITapGestureRecognizer?
+        weak var pan: UIPanGestureRecognizer?
+        private var scrubAnchor: CGFloat = 0
+
+        init(_ parent: TwoFingerPlaybackGesture) { self.parent = parent }
+
+        func windowChanged(to window: UIWindow?, anchor: UIView) {
+            self.anchor = anchor
+            if let old = installedWindow {
+                if let t = tap { old.removeGestureRecognizer(t) }
+                if let p = pan { old.removeGestureRecognizer(p) }
+                tap = nil; pan = nil; installedWindow = nil
+            }
+            guard let window else { return }
+
+            let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))
+            tap.numberOfTouchesRequired = 2
+            tap.delegate = self
+            tap.cancelsTouchesInView = false
+            window.addGestureRecognizer(tap)
+            self.tap = tap
+
+            let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan))
+            pan.minimumNumberOfTouches = 2
+            pan.maximumNumberOfTouches = 2
+            pan.delegate = self
+            pan.cancelsTouchesInView = false
+            pan.isEnabled = parent.scrubEnabled
+            window.addGestureRecognizer(pan)
+            self.pan = pan
+
+            installedWindow = window
+        }
+
+        /// True when a touch falls within the canvas region (this anchor's frame).
+        private func anchorContains(_ locationInWindow: CGPoint, _ window: UIWindow) -> Bool {
+            guard let anchor, anchor.window === window else { return false }
+            return anchor.convert(anchor.bounds, to: window).contains(locationInWindow)
+        }
+
+        @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
+            parent.onPlayToggle()
+        }
+
+        @objc private func handlePan(_ recognizer: UIPanGestureRecognizer) {
+            guard let window = installedWindow, let anchor, anchor.bounds.width > 0 else { return }
+            let fraction = recognizer.translation(in: window).x / anchor.bounds.width
+            switch recognizer.state {
+            case .began:
+                parent.onScrubBegan()
+                scrubAnchor = parent.currentProgress()
+            case .changed:
+                parent.onSeek(min(1, max(0, scrubAnchor + fraction)))
+            default:
+                break
+            }
+        }
+
+        // Scope the window-level recognizers to the canvas frame.
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldReceive touch: UITouch) -> Bool {
+            guard let window = installedWindow else { return false }
+            return anchorContains(touch.location(in: window), window)
+        }
+
+        // Run alongside SwiftUI's own gestures rather than blocking them.
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+            true
+        }
+    }
+}
+#endif

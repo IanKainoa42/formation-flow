@@ -39,6 +39,18 @@ struct RoutinePlaybackView: View {
                     trailPositions: player.showTrail ? player.trailPositions : [:]
                 )
                 .ignoresSafeArea()
+                #if canImport(UIKit)
+                // Two-finger tap = play/pause, two-finger horizontal drag = scrub.
+                .background(
+                    TwoFingerPlaybackGesture(
+                        scrubEnabled: true,
+                        onPlayToggle: { player.isPlaying ? player.pause() : player.play() },
+                        currentProgress: { player.progress },
+                        onScrubBegan: { player.pause() },
+                        onSeek: { player.seek(to: $0) }
+                    )
+                )
+                #endif
 
                 VStack {
                     HStack {
