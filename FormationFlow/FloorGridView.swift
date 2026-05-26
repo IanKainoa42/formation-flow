@@ -513,6 +513,10 @@ struct FloorGridView: View {
         .alert("Rename Athlete", isPresented: $showingAthleteRenamePrompt) {
             TextField("Label", text: $athleteLabelDraft)
                 .autocorrectionDisabled()
+                .onChange(of: athleteLabelDraft) { _, newValue in
+                    let clamped = String(newValue.prefix(3))
+                    if clamped != newValue { athleteLabelDraft = clamped }
+                }
 
             Button("Save") {
                 commitAthleteRename()
@@ -3650,7 +3654,7 @@ struct FloorGridView: View {
         guard !trimmedLabel.isEmpty else { return }
 
         store.mutateRosterAthlete(id: selectedAthleteID) { athlete in
-            athlete.label = String(trimmedLabel.prefix(4))
+            athlete.label = String(trimmedLabel.prefix(3))
         }
     }
 

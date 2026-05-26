@@ -118,7 +118,16 @@ struct RoutineWorkspaceView: View {
             return true
         }
         // Free users can have up to 2 formations
-        return store.routine.formations.count < 2
+        return store.routine.formations.count < FreeTierLimits.maxFormations
+    }
+
+    /// Free tier may only open/edit the first `maxFormations`; any beyond that
+    /// (e.g. created while Pro, then downgraded) are Pro-locked but kept on disk —
+    /// never deleted. Returns true if this formation should be gated for free users.
+    private func isFormationLocked(_ formationID: UUID) -> Bool {
+        guard !entitlementManager.isPro else { return false }
+        guard let index = store.formationIndex(id: formationID) else { return false }
+        return index >= FreeTierLimits.maxFormations
     }
 
     @ViewBuilder
@@ -202,7 +211,14 @@ struct RoutineWorkspaceView: View {
             previewReferenceMode = smartPickReferenceMode()
             refreshPreviewSession()
         }
-        .onChange(of: selectedFormationID) { _, new in
+        .onChange(of: selectedFormationID) { old, new in
+            // Free tier: formations beyond the cap are Pro-locked. Don't open them —
+            // revert to the prior selection and surface the upgrade sheet.
+            if let new, isFormationLocked(new) {
+                selectedFormationID = old
+                showingUpgradeSheet = true
+                return
+            }
             if let new {
                 displayedFormationID = new
             }
@@ -806,6 +822,13 @@ struct RoutineWorkspaceView: View {
                 Image(systemName: "note.text")
                     .foregroundColor(.secondary)
                     .accessibilityLabel("Has notes")
+            }
+
+            if isFormationLocked(formation.id) {
+                Image(systemName: "lock.fill")
+                    .font(.footnote)
+                    .foregroundColor(.orange)
+                    .accessibilityLabel("Locked — upgrade to Pro")
             }
 
             if showsDisclosure {

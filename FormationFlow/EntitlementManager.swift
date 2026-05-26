@@ -62,13 +62,17 @@ final class EntitlementManager: ObservableObject {
             Self.logger.info("✅ Purchase succeeded, verifying...")
             // Verify the transaction
             let transaction = try checkVerified(verification)
-            
-            // Update entitlement
-            await checkEntitlement()
-            
+
+            // Grant entitlement directly from the verified transaction.
+            // Do NOT rely on a Transaction.currentEntitlements re-query here — it can
+            // race and not yet include the just-completed purchase, leaving isPro=false
+            // so the paywall never dismisses (looks like a failed buy). This was the
+            // reported TestFlight bug: sheet appears, purchase completes, nothing unlocks.
+            setIsPro(true)
+
             // Finish the transaction
             await transaction.finish()
-            
+
             Self.logger.info("🎉 Purchase completed successfully")
             return .success
             
@@ -87,7 +91,17 @@ final class EntitlementManager: ObservableObject {
     }
 
     func restore() async {
-        Self.logger.info("Restoring purchases")
+        Self.logger.info("Restoring purchases — syncing with App Store")
+        // Force a refresh from the App Store so previously-owned non-consumables are
+        // re-delivered into Transaction.currentEntitlements. Without this, a user who
+        // already owns Pro (prior purchase) sees the paywall, and tapping Upgrade hits
+        // "You've already downloaded this" because re-buying an owned non-consumable is
+        // refused. AppStore.sync() is the canonical restore path. May prompt for sign-in.
+        do {
+            try await AppStore.sync()
+        } catch {
+            Self.logger.error("AppStore.sync failed during restore: \(error.localizedDescription, privacy: .public)")
+        }
         await checkEntitlement()
     }
 

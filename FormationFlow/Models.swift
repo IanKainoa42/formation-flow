@@ -2999,14 +2999,19 @@ final class TransitionPlayer: ObservableObject {
         guard isPlaying else { return }
         let delta = CGFloat(1.0 / 60.0) * speed / max(playbackDurationCounts, 0.5)
         progress = min(1.0, progress + delta)
-        updateAthletesForProgress()
         if progress >= 1.0 {
             if isLooping {
+                // Reset before repainting so athletes don't flash at end-positions
+                // for one frame on loop-wrap (QA 2026-05-26, owner-approved).
                 progress = 0
+                updateAthletesForProgress()
             } else {
+                updateAthletesForProgress()
                 pause()
                 onComplete?()
             }
+        } else {
+            updateAthletesForProgress()
         }
     }
 

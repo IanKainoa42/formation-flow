@@ -235,7 +235,7 @@ struct ProUpgradeSheet: View {
             switch result {
             case .success:
                 logger.info("🎉 Purchase succeeded")
-                break
+                purchaseState = .idle
             case .userCancelled:
                 logger.info("❌ Purchase cancelled by user")
                 purchaseState = .idle
@@ -248,6 +248,15 @@ struct ProUpgradeSheet: View {
             }
         } catch {
             logger.error("💥 Purchase threw error: \(error.localizedDescription, privacy: .public)")
+            // The user may already own Pro (e.g. "You've already downloaded this" when
+            // re-buying an owned non-consumable). Attempt a restore/sync before erroring —
+            // if they own it, this unlocks silently and the sheet dismisses via isPro.
+            await entitlementManager.restore()
+            if entitlementManager.isPro {
+                logger.info("Recovered via restore after purchase error")
+                purchaseState = .idle
+                return
+            }
             let message = (error as? LocalizedError)?.errorDescription
                 ?? "Something went wrong. Please try again."
             purchaseState = .error(message)

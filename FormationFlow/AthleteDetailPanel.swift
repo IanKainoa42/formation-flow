@@ -48,7 +48,7 @@ struct AthleteInspectorView: View {
                         .textFieldStyle(.roundedBorder)
                         .autocorrectionDisabled()
                         .onChange(of: labelDraft) { _, newValue in
-                            let clamped = String(newValue.prefix(4))
+                            let clamped = String(newValue.prefix(3))
                             if clamped != newValue { labelDraft = clamped }
                             let trimmed = clamped.trimmingCharacters(in: .whitespacesAndNewlines)
                             if !trimmed.isEmpty {
@@ -862,7 +862,7 @@ struct SelectedAthleteSidebarView: View {
                                 .font(.headline)
                                 .autocorrectionDisabled()
                                 .onChange(of: labelDraft) { _, newValue in
-                                    let clamped = String(newValue.prefix(4))
+                                    let clamped = String(newValue.prefix(3))
                                     if clamped != newValue { labelDraft = clamped }
                                     let trimmed = clamped.trimmingCharacters(in: .whitespacesAndNewlines)
                                     if !trimmed.isEmpty {
