@@ -470,6 +470,11 @@ struct FloorGridView: View {
 
     private var pathSketchLongPressDuration: Double { 0.85 }
     private var pathSketchCountdownDelay: Double { 0.22 }
+    /// Movement allowed during the sketch long-press hold. Must be generous: a real
+    /// finger tremors several points over an ~0.85s hold, so tying this to the tiny
+    /// `dragActivationDistance` (6–10pt) made the long-press impossible to satisfy
+    /// on-device (it only "worked" against the perfectly-still simulator touch).
+    private var pathSketchHoldTolerance: CGFloat { 30 }
     private var pathSketchCountdownDuration: Double {
         max(0.1, pathSketchLongPressDuration - pathSketchCountdownDelay)
     }
@@ -2350,7 +2355,7 @@ struct FloorGridView: View {
                     // whether the sketch will actually arm.
                     let dx = value.translation.width
                     let dy = value.translation.height
-                    if dx * dx + dy * dy > dragActivationDistance * dragActivationDistance {
+                    if dx * dx + dy * dy > pathSketchHoldTolerance * pathSketchHoldTolerance {
                         cancelLongPressCountdown()
                     }
                 }
@@ -3106,7 +3111,7 @@ struct FloorGridView: View {
     /// follow-up drag traces the path. The main DragGesture early-outs when
     /// `isLongPressSketching` is true so it doesn't try to drag the athlete.
     private func longPressSketchGesture(cellSize: CGFloat, offset: CGPoint) -> some Gesture {
-        LongPressGesture(minimumDuration: pathSketchLongPressDuration, maximumDistance: dragActivationDistance)
+        LongPressGesture(minimumDuration: pathSketchLongPressDuration, maximumDistance: pathSketchHoldTolerance)
             .sequenced(before: DragGesture(minimumDistance: 0))
             .onChanged { value in
                 switch value {
