@@ -200,7 +200,7 @@ If your task says "optimize", "cache", "reduce allocations", "O(1)", "O(N)", or 
 
 **Palette tasks targeting FloorGridView.swift are HARD STOP. This rule has been violated 3 times post-rule-addition.** PRs #129, #135 (Apr 2026), #140, #142, and #143 (May 2026) have covered all reachable accessibility improvements. PR #142 (Sentinel: autocorrection, merged 2026-05-09) and PR #143 (Palette: tooltips/hints, merged 2026-05-12) were both merged AFTER the HARD STOP was added on 2026-05-07 — confirming that this file's HARD STOP must be treated as absolute regardless of session type (Palette, Sentinel, Bolt). Comment: "Task rejected: FloorGridView.swift Palette HARD STOP (3 post-rule violations — #140, #142, #143). A user-visible a11y regression with specific repro steps is required to unlock. Feature additions require explicit owner approval."
 
-**Sentinel tasks targeting FloorGridView.swift** must NOT propose biometric authentication of any form — that entire scope was reversed 2026-04-19 (see "Biometric Authentication — REVERSED" below). `.confirmationDialog` is the agreed destructive-action UX. Post: "Task rejected: biometric authentication was deliberately removed per IAN-169. Re-adding requires explicit owner approval."
+**Sentinel tasks targeting FloorGridView.swift** must NOT propose biometric authentication of any form — that entire scope was reversed 2026-04-19 (see "Biometric Authentication — REVERSED" below). Destructive actions take effect immediately with NO confirmation (see "Destructive-Action Confirmations — REMOVED"). Post: "Task rejected: biometric authentication was deliberately removed per IAN-169. Re-adding requires explicit owner approval."
 
 ## Known Fixed Security Issues
 
@@ -210,7 +210,7 @@ Do NOT re-file these as security problems — they have already been resolved:
 
 ### Biometric Authentication — REVERSED 2026-04-19 per IAN-169
 
-**Product decision:** All Face ID / biometric authentication has been removed from the app. This is a coach-facing iPad tool used courtside under time pressure — biometric prompts on every destructive action created intolerable friction. Destructive actions are now gated by the existing `.confirmationDialog` UX only.
+**Product decision:** All Face ID / biometric authentication has been removed from the app. This is a coach-facing iPad tool used courtside under time pressure — biometric prompts on every destructive action created intolerable friction. Destructive actions have **no confirmation gate at all** (see "Destructive-Action Confirmations — REMOVED" below).
 
 **What was removed (all of it):**
 - Every `LAContext` / `evaluatePolicy` block across `FormationHomeView.swift`, `FloorGridView.swift`, `AthleteDetailPanel.swift`
@@ -224,11 +224,15 @@ Do NOT re-file these as security problems — they have already been resolved:
 **What is preserved:**
 - Hardcoded API key removal in `fastlane/Fastfile` (PR #75) — this was an unrelated secrets fix, KEEP
 - ATS / `NSAppTransportSecurity` in Info.plist — KEEP
-- `.confirmationDialog` modifiers — KEEP (these are the destructive-action UX going forward)
+- `.confirmationDialog` modifiers — REMOVED 2026-05-26 (see "Destructive-Action Confirmations — REMOVED"); the biometric reversal kept them at the time, but the owner has since decided destructive actions take effect immediately with no confirmation
 
 **HARD STOP for Sentinel agents:** Do NOT re-add biometric authentication, Face ID prompts, `LAContext`, `LocalAuthentication`, `NSFaceIDUsageDescription`, the `.blur(...)` app-switcher overlay, or any `authenticateAndX()` wrapper to this project. Reversed PRs: #76, #79, #82, #85, #88, #91, #94, #97, #100, #110, #119, #122 (PRs #119 and #122 re-added biometric after the reversal decision and were immediately reverted — this pattern has now occurred twice post-IAN-169). If your Sentinel task asks for "biometric protection of [destructive action]" or "app-switcher privacy overlay" — comment: **"Task rejected: biometric authentication was deliberately removed in IAN-169 (2026-04-19). Re-adding it requires explicit owner approval — not Sentinel scope."**
 
-The `.confirmationDialog` on every destructive action is the agreed UX. Do not propose any other authentication or confirmation layer on top of it.
+### Destructive-Action Confirmations — REMOVED 2026-05-26
+
+**Product decision (owner):** FormationFlow destructive actions take effect **immediately, with no confirmation dialog**. The data is low-stakes and trivially re-created (re-place athletes, re-add a formation), and a courtside coach wants zero friction. All `.confirmationDialog` modifiers were removed (delete athlete, delete formation, delete routine, reset routine, reset/clear paths, delete waypoint) and their triggers now call the action directly.
+
+**HARD STOP:** Do NOT add `.confirmationDialog`, alerts, Face ID, or any other confirmation/auth layer to a destructive action. Do NOT flag the *absence* of a confirmation as a bug or QA finding — it is intentional. This supersedes the earlier "`.confirmationDialog` is the agreed UX" note from the biometric reversal.
 
 ## Commit Hygiene
 

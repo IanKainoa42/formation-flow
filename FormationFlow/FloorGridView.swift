@@ -532,33 +532,6 @@ struct FloorGridView: View {
         } message: {
             Text(shareResultMessage)
         }
-        .confirmationDialog(
-            "Delete athlete?",
-            isPresented: $showingAthleteDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Delete Athlete", role: .destructive) {
-                deleteSelectedAthlete()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This removes the athlete from the roster, every formation, and all transitions. This cannot be undone.")
-        }
-        .confirmationDialog(
-            "Delete waypoint?",
-            isPresented: Binding(
-                get: { pendingWaypointDeletionID != nil },
-                set: { if !$0 { pendingWaypointDeletionID = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("Delete Waypoint", role: .destructive) {
-                deletePendingWaypoint()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This removes the waypoint and its timing hold from the selected athlete's path. This cannot be undone.")
-        }
         .onChange(of: formationID) { _, _ in
             // Batch all resets before clearing selection to avoid
             // cascading onChange triggers in the same frame.
@@ -624,30 +597,6 @@ struct FloorGridView: View {
                 triggerDeleteAthlete = false
                 deleteSelectedAthlete()
             }
-        }
-        .confirmationDialog(
-            "Reset all paths?",
-            isPresented: $showingResetAllPathsConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Reset All Paths", role: .destructive) {
-                resetAllPaths()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This removes every custom curve and waypoint and returns all athletes to straight-line travel. This cannot be undone.")
-        }
-        .confirmationDialog(
-            "Clear waypoints?",
-            isPresented: $showingResetSinglePathConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Clear Path", role: .destructive) {
-                performResetSelectedPath()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This removes all waypoints and hold timings on this path. This cannot be undone.")
         }
         .onReceive(player?.objectWillChange.eraseToAnyPublisher() ?? Empty().eraseToAnyPublisher()) { _ in
             playerTick &+= 1
@@ -1707,7 +1656,7 @@ struct FloorGridView: View {
                     }
 
                     Button(role: .destructive) {
-                        showingAthleteDeleteConfirmation = true
+                        deleteSelectedAthlete()
                     } label: {
                         Label("Delete Athlete", systemImage: "trash")
                     }
@@ -3526,7 +3475,7 @@ struct FloorGridView: View {
         if selectedAthleteIDs.count == 1, let athleteID = selectedAthleteIDs.first {
             resetPath(for: athleteID)
         } else {
-            showingResetAllPathsConfirmation = true
+            resetAllPaths()
         }
     }
 

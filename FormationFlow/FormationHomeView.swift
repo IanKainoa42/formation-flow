@@ -20,7 +20,6 @@ struct RoutineWorkspaceView: View {
     @State private var compactNavigationPath: [UUID] = []
     @State private var splitViewVisibility: NavigationSplitViewVisibility = .all
     @State private var previewReferenceMode: PreviewReferenceMode = .intoSelected
-    @State private var showingResetConfirmation = false
     @State private var showingCompactFormationPicker = false
     @State private var renamingFormationID: UUID?
     @State private var formationNameDraft = ""
@@ -34,7 +33,6 @@ struct RoutineWorkspaceView: View {
     @State private var isSwapMode = false
     @State private var triggerDeleteAthlete = false
     @State private var isIPadPortrait = false
-    @State private var showingRoutineDeleteConfirmation = false
     @State private var sidebarEditMode: EditMode = .inactive
 
     private var isCompactLayout: Bool {
@@ -231,30 +229,6 @@ struct RoutineWorkspaceView: View {
             selectedAthleteIDs = []
             isSwapMode = false
             refreshPreviewSession()
-        }
-        .confirmationDialog(
-            "Reset routine?",
-            isPresented: $showingResetConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Reset Routine", role: .destructive) {
-                resetRoutine()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This clears the roster, formations, notes, and transition data, then starts over with one empty formation.")
-        }
-        .confirmationDialog(
-            "Delete Routine?",
-            isPresented: $showingRoutineDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Delete Routine", role: .destructive) {
-                deleteCurrentRoutine()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will permanently delete the routine and all its formations. This cannot be undone.")
         }
         .alert("Rename Formation", isPresented: showingRenamePrompt) {
             TextField("Formation name", text: $formationNameDraft)
@@ -602,7 +576,7 @@ struct RoutineWorkspaceView: View {
             onDuplicateAsNext: duplicateSelectedFormation,
             onRenameFormation: { beginRenaming(formation) },
             onDeleteFormation: { requestFormationDeletion([formationID]) },
-            onResetRoutine: { showingResetConfirmation = true },
+            onResetRoutine: { resetRoutine() },
             onBack: compact ? { compactNavigationPath.removeAll() } : nil,
             player: previewSession.player,
             startFormationID: previewTransitionPair?.start.id,
@@ -926,7 +900,7 @@ struct RoutineWorkspaceView: View {
         Divider()
 
         Button(role: .destructive) {
-            showingResetConfirmation = true
+            resetRoutine()
         } label: {
             Label("Reset Routine", systemImage: "arrow.counterclockwise")
         }
@@ -1002,7 +976,7 @@ struct RoutineWorkspaceView: View {
                 }
 
                 Button(role: .destructive) {
-                    showingRoutineDeleteConfirmation = true
+                    deleteCurrentRoutine()
                 } label: {
                     Label("Delete Routine", systemImage: "trash")
                 }

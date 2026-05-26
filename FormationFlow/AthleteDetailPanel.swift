@@ -103,7 +103,7 @@ struct AthleteInspectorView: View {
                     .font(.subheadline.weight(.semibold))
 
                 Button(role: .destructive) {
-                    showDeleteConfirmation = true
+                    onDelete()
                 } label: {
                     Label("Delete Athlete", systemImage: "trash")
                         .frame(maxWidth: .infinity)
@@ -115,16 +115,6 @@ struct AthleteInspectorView: View {
         }
         .padding(compactLayout ? 16 : 20)
         .background(.thinMaterial)
-        .confirmationDialog(
-            "Delete \(athlete.label)?",
-            isPresented: $showDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Delete Athlete", role: .destructive, action: onDelete)
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will remove them from all \(formationCount) formations and their transitions. This cannot be undone.")
-        }
     }
 }
 
@@ -628,22 +618,6 @@ struct SidebarInspectorView: View {
                 }
             }
         .background(.thinMaterial)
-        .confirmationDialog(
-            "Clear waypoints?",
-            isPresented: $showingClearPathConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Clear Path", role: .destructive) {
-                guard let startFormationID, let endFormationID else { return }
-                performClearPath(
-                    startFormationID: startFormationID,
-                    endFormationID: endFormationID
-                )
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This removes all waypoints and hold timings on this path. This cannot be undone.")
-        }
     }
 
     private func performClearPath(startFormationID: UUID, endFormationID: UUID) {
@@ -687,14 +661,10 @@ struct SidebarInspectorView: View {
                 onRefreshTransition()
             },
             onClearPath: {
-                if (selectedTransition?.pathWaypoints.count ?? 0) > 0 {
-                    showingClearPathConfirmation = true
-                } else {
-                    performClearPath(
-                        startFormationID: startFormationID,
-                        endFormationID: endFormationID
-                    )
-                }
+                performClearPath(
+                    startFormationID: startFormationID,
+                    endFormationID: endFormationID
+                )
             },
             onEnsureCurve: {
                 guard let selectedAthleteID else { return }
@@ -1005,11 +975,7 @@ struct SelectedAthleteSidebarView: View {
                         VStack(spacing: 8) {
                             HStack(spacing: 8) {
                                 Button {
-                                    if transition.pathWaypoints.count > 0 {
-                                        showingClearPathConfirmation = true
-                                    } else {
-                                        clearPath()
-                                    }
+                                    clearPath()
                                 } label: {
                                     Label("Straight", systemImage: "line.diagonal")
                                         .frame(maxWidth: .infinity)
@@ -1089,7 +1055,7 @@ struct SelectedAthleteSidebarView: View {
                 // MARK: Delete (bottom)
                 Divider()
                 Button(role: .destructive) {
-                    showDeleteConfirmation = true
+                    onDeleteAthlete()
                 } label: {
                     Label("Delete Athlete", systemImage: "trash")
                         .frame(maxWidth: .infinity)
@@ -1105,26 +1071,6 @@ struct SelectedAthleteSidebarView: View {
             }
         }
         .background(.thinMaterial)
-        .confirmationDialog(
-            "Delete \(athlete?.label ?? "athlete")?",
-            isPresented: $showDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Delete Athlete", role: .destructive, action: onDeleteAthlete)
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will remove them from all \(store.routine.formations.count) formations and their transitions. This cannot be undone.")
-        }
-        .confirmationDialog(
-            "Clear waypoints?",
-            isPresented: $showingClearPathConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Clear Path", role: .destructive, action: clearPath)
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This removes all waypoints and hold timings on this path. This cannot be undone.")
-        }
     }
 
     private func clearPath() {
