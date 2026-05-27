@@ -203,10 +203,7 @@ struct FloorCanvasView: View {
                 drawAthletes(in: &context)
 
                 if pulseActive {
-                    let now = timeline.date.timeIntervalSinceReferenceDate
-                    let period = max(pulsePeriodSeconds, 0.5)
-                    let phase = CGFloat(now.truncatingRemainder(dividingBy: period) / period)
-                    drawPathPulses(in: &context, phase: phase)
+                    drawPathPulses(in: &context, time: timeline.date.timeIntervalSinceReferenceDate)
                 }
 
                 if let selectionLasso {
@@ -825,7 +822,7 @@ struct FloorCanvasView: View {
         return (r, g, b)
     }
 
-    private func drawPathPulses(in context: inout GraphicsContext, phase: CGFloat) {
+    private func drawPathPulses(in context: inout GraphicsContext, time: TimeInterval) {
         let items = transitionPaths
         guard !items.isEmpty else { return }
 
@@ -844,10 +841,12 @@ struct FloorCanvasView: View {
         let (er, eg, eb) = rgbComponents(endFormationColor)
         let endGlow = Color(red: er, green: eg, blue: eb)
 
-        // Stagger each athlete's loop by its move delay so they don't all wrap in
-        // lockstep — capped so the spread stays under a quarter cycle.
-        let maxDelay = items.reduce(CGFloat(0)) { max($0, max(0, $1.moveDelay)) }
-        let staggerSpan: CGFloat = 0.22
+        // Constant on-screen speed: a comet covers `referenceFeet` of floor in
+        // `pulsePeriodSeconds`. Longer paths therefore take proportionally longer
+        // to reach their spot, so their arrival flash lands later — they don't all
+        // flash together. Each athlete loops on its own length-based period.
+        let referenceFeet: CGFloat = 28
+        let secondsPerFoot = pulsePeriodSeconds / Double(max(referenceFeet, 1))
 
         for item in items {
             // Skip near-stationary athletes — no motion to preview.
@@ -862,11 +861,14 @@ struct FloorCanvasView: View {
             let cum = cumulativeLengths(poly)
             guard let total = cum.last, total > 0 else { continue }
 
-            // Continuous head: sweeps 0→1 and wraps every cycle (never freezes at
-            // the end). Each athlete is offset by its move-delay so wraps stagger.
-            let delayOffset = maxDelay > 0 ? (max(0, item.moveDelay) / maxDelay) * staggerSpan : 0
-            let raw = phase - delayOffset
-            let head = raw - floor(raw)   // fract → [0, 1)
+            // Continuous head at constant floor-speed: cycle length scales with the
+            // path's length in feet, so longer moves take longer (and flash later).
+            // Move delay shifts the start so staggered entrances stay staggered.
+            let lengthFeet = total / max(cellSize, 0.0001)
+            let cycleSeconds = max(0.35, Double(lengthFeet) * secondsPerFoot)
+            let delaySeconds = Double(max(0, item.moveDelay)) * 0.12
+            let raw = (time - delaySeconds) / cycleSeconds
+            let head = CGFloat(raw - floor(raw))   // fract → [0, 1)
 
             var prev = pointAtArcLength(0, pts: poly, cum: cum)
             for i in 1...samples {
