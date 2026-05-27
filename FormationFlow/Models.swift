@@ -3299,6 +3299,24 @@ final class RoutinePlayer: ObservableObject {
         }
     }
 
+    func jumpToPreviousSegment() {
+        guard !segments.isEmpty else { return }
+        let wasPlaying = isPlaying
+        cancelGap()
+        let prevIndex = (currentSegmentIndex - 1 + segments.count) % segments.count
+        currentSegmentIndex = prevIndex
+        trailPositions = [:]
+        loadSegment(at: prevIndex)
+
+        let segStart: CGFloat = prevIndex > 0 ? cumulativeFractions[prevIndex - 1] : 0
+        progress = segStart
+
+        player?.seek(to: 0)
+        if wasPlaying {
+            player?.play()
+        }
+    }
+
     // MARK: - Private
 
     private func loadSegment(at index: Int) {

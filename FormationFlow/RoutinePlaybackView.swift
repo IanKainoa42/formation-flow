@@ -53,7 +53,7 @@ struct RoutinePlaybackView: View {
                 #endif
 
                 VStack {
-                    HStack {
+                    HStack(alignment: .top) {
                         Button {
                             player.pause()
                             dismiss()
@@ -69,6 +69,19 @@ struct RoutinePlaybackView: View {
                         .help("Close routine playback")
 
                         Spacer()
+
+                        // Same pip badge as the editor; editor-only bits (Into/Out
+                        // tab, long-press rename) are omitted since linear playback
+                        // has no selected formation. Left/right = jump segments.
+                        FormationPipBadge(
+                            currentIndex: player.currentSegmentIndex,
+                            total: player.segmentCount,
+                            formationName: player.currentFormationName,
+                            onPrev: { player.jumpToPreviousSegment() },
+                            onNext: { player.jumpToNextSegment() }
+                        )
+                        .padding(.top, 16)
+                        .padding(.trailing, 16)
                     }
                     Spacer()
                 }
@@ -90,20 +103,7 @@ struct RoutinePlaybackView: View {
 
     private var routineTransportBar: some View {
         HStack(spacing: 10) {
-            Text(player.currentFormationName)
-                .font(.caption.weight(.semibold))
-                .foregroundColor(.white)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(.white.opacity(0.12), in: Capsule())
-                .onTapGesture { player.jumpToNextSegment() }
-                .accessibilityAddTraits(.isButton)
-                .accessibilityHint("Jumps to the next formation")
-                .help("Jumps to the next formation")
-                .frame(maxWidth: 160, alignment: .leading)
-
+            // Formation name + segment nav now live in the floating pip badge.
             Button {
                 player.isPlaying ? player.pause() : player.play()
             } label: {
