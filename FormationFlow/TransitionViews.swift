@@ -156,6 +156,172 @@ enum TransportControls {
     }
 }
 
+// MARK: - Formation Pip Badge
+
+/// Which transition (relative to the selected formation) the editor is focused
+/// on. Drives the Into/Out tab and the single directional arrow in the pips.
+enum TransitionBadgeDirection { case into, outOf }
+
+/// The floating formation indicator. Carries five interactions:
+/// • tap left half  → previous formation
+/// • tap right half → next formation
+/// • long-press     → rename (editor only; omit `onRename` to disable)
+/// • top tab        → toggle Into / Out of (editor only; omit `onToggleDirection`)
+/// A single arrow sits between the pips to show where the focused transition
+/// comes from (left of current = into) or goes to (right of current = out of).
+struct FormationPipBadge: View {
+    let currentIndex: Int
+    let total: Int
+    let formationName: String
+
+    var direction: TransitionBadgeDirection? = nil
+    var canInto: Bool = false
+    var canOutOf: Bool = false
+    var onToggleDirection: (() -> Void)? = nil
+
+    var onPrev: () -> Void
+    var onNext: () -> Void
+    var onRename: (() -> Void)? = nil
+
+    private static let badgeWidth: CGFloat = 220
+    private static let rowWidth: CGFloat = 200
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let direction, let onToggleDirection {
+                directionTab(active: direction, onToggle: onToggleDirection)
+            }
+            navBody
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .frame(width: Self.badgeWidth, alignment: .leading)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(.white.opacity(0.08))
+        }
+    }
+
+    // Pips + name. This is the prev/next/rename surface — the tab sits above it
+    // and keeps its own taps, so the two gesture regions never overlap.
+    private var navBody: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            pipRow
+            Text(formationName.isEmpty ? "Formation" : formationName)
+                .font(.headline.weight(.semibold))
+                .foregroundColor(.primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(width: Self.rowWidth, alignment: .leading)
+        }
+        .frame(width: Self.rowWidth, alignment: .leading)
+        .contentShape(Rectangle())   // taps on padding/whitespace still register
+        .gesture(bodyGesture)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Formation \(currentIndex + 1) of \(total), \(formationName)")
+        .accessibilityHint("Tap left for previous, right for next. Long press to rename.")
+    }
+
+    // Long-press wins if held; otherwise a spatial tap resolves to a half. Using
+    // ExclusiveGesture (not two simultaneous recognizers) avoids the tap/long-press
+    // race that has bitten dual-gesture surfaces in this project before.
+    private var bodyGesture: some Gesture {
+        ExclusiveGesture(
+            LongPressGesture(minimumDuration: 0.45)
+                .onEnded { _ in onRename?() },
+            SpatialTapGesture(coordinateSpace: .local)
+                .onEnded { value in
+                    if value.location.x < Self.rowWidth / 2 { onPrev() } else { onNext() }
+                }
+        )
+    }
+
+    private var pipRow: some View {
+        let sizes = pipSizes(for: total)
+        // Arrow gap index: the pip *after which* the arrow is drawn.
+        let arrowGap: Int? = direction.map { $0 == .into ? currentIndex - 1 : currentIndex }
+        return HStack(spacing: sizes.spacing) {
+            ForEach(0..<max(total, 1), id: \.self) { index in
+                let isCurrent = index == currentIndex
+                Circle()
+                    .fill(isCurrent
+                          ? TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: index)
+                          : Color.secondary.opacity(0.35))
+                    .frame(width: isCurrent ? sizes.current : sizes.other,
+                           height: isCurrent ? sizes.current : sizes.other)
+                    .frame(width: sizes.slot, height: sizes.slot)
+                if let arrowGap, index == arrowGap, total > 1 {
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: max(8, sizes.current * 0.85), weight: .bold))
+                        .foregroundColor(.primary.opacity(0.85))
+                }
+            }
+        }
+        .frame(width: Self.rowWidth, height: 16, alignment: .leading)
+        .animation(nil, value: currentIndex)
+    }
+
+    private func directionTab(active: TransitionBadgeDirection, onToggle: @escaping () -> Void) -> some View {
+        HStack(spacing: 2) {
+            tabSegment(title: "Into", isActive: active == .into, isEnabled: canInto) {
+                if active != .into, canInto { onToggle() }
+            }
+            tabSegment(title: "Out of", isActive: active == .outOf, isEnabled: canOutOf) {
+                if active != .outOf, canOutOf { onToggle() }
+            }
+        }
+        .padding(2)
+        .frame(width: Self.rowWidth)
+        .background(.black.opacity(0.22), in: Capsule())
+    }
+
+    private func tabSegment(title: String, isActive: Bool, isEnabled: Bool, onTap: @escaping () -> Void) -> some View {
+        Text(title)
+            .font(.caption2.weight(.semibold))
+            .foregroundColor(isActive ? .primary : .secondary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 3)
+            .background {
+                if isActive {
+                    Capsule()
+                        .fill(.ultraThinMaterial)
+                        .overlay(Capsule().strokeBorder(.white.opacity(0.12)))
+                }
+            }
+            .opacity(isEnabled ? 1 : 0.4)
+            .contentShape(Capsule())
+            .onTapGesture { if isEnabled { onTap() } }
+            .accessibilityLabel("\(title) transition")
+            .accessibilityAddTraits(isActive ? [.isSelected, .isButton] : .isButton)
+    }
+
+    private struct PipSizing {
+        let current: CGFloat
+        let other: CGFloat
+        let slot: CGFloat
+        let spacing: CGFloat
+    }
+
+    private func pipSizes(for total: Int) -> PipSizing {
+        let preferredCurrent: CGFloat = 14
+        let preferredOther: CGFloat = 7
+        let preferredSpacing: CGFloat = 6
+        guard total > 1 else {
+            return PipSizing(current: preferredCurrent, other: preferredOther, slot: preferredCurrent, spacing: 0)
+        }
+        let preferredWidth = preferredCurrent + preferredOther * CGFloat(total - 1) + preferredSpacing * CGFloat(total - 1)
+        if preferredWidth <= Self.rowWidth {
+            return PipSizing(current: preferredCurrent, other: preferredOther, slot: preferredCurrent, spacing: preferredSpacing)
+        }
+        let scale = Self.rowWidth / preferredWidth
+        let current = max(8, preferredCurrent * scale)
+        let other = max(4, preferredOther * scale)
+        let spacing = max(2, preferredSpacing * scale)
+        return PipSizing(current: current, other: other, slot: current, spacing: spacing)
+    }
+}
+
 // MARK: - Transport Sidebar
 
 struct TransitionTransportSidebarView: View {

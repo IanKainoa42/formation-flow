@@ -1271,74 +1271,24 @@ struct FloorGridView: View {
     private var formationContextBadge: some View {
         let currentIndex = formationIndex ?? 0
         let total = max(1, store.routine.formations.count)
-        let sizes = pipSizes(for: total)
-        return Button {
-            onCycleFormation?()
-        } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: sizes.spacing) {
-                    ForEach(0..<total, id: \.self) { index in
-                        let isCurrent = index == currentIndex
-                        Circle()
-                            .fill(isCurrent
-                                  ? TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: index)
-                                  : Color.secondary.opacity(0.35))
-                            .frame(width: isCurrent ? sizes.current : sizes.other,
-                                   height: isCurrent ? sizes.current : sizes.other)
-                            .frame(width: sizes.slot, height: sizes.slot)
-                    }
-                }
-                .frame(width: Self.formationBadgePipRowWidth, height: 14, alignment: .leading)
-                .animation(nil, value: currentIndex)
-
-                Text(formation?.name ?? "Formation")
-                    .font(.headline.weight(.semibold))
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(width: Self.formationBadgePipRowWidth, alignment: .leading)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .frame(width: Self.formationBadgeWidth, alignment: .leading)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(.white.opacity(0.08))
-            }
-        }
-        .buttonStyle(FormationBadgeButtonStyle())
+        // Into = selected formation is the transition's destination (end);
+        // Out of = it's the source (start). nil when there's no transition.
+        let direction: TransitionBadgeDirection? = hasTransition
+            ? (endFormationID == formationID ? .into : .outOf)
+            : nil
+        return FormationPipBadge(
+            currentIndex: currentIndex,
+            total: total,
+            formationName: formation?.name ?? "Formation",
+            direction: direction,
+            canInto: !isFirstFormation,
+            canOutOf: !isLastFormation,
+            onToggleDirection: onToggleTransitionDirection,
+            onPrev: { onCyclePreviousFormation?() },
+            onNext: { onCycleFormation?() },
+            onRename: onRenameFormation
+        )
         .accessibilityLabel(formationContextLabel)
-        .accessibilityHint("Double tap to advance to the next formation")
-    }
-
-    private static let formationBadgeWidth: CGFloat = 220
-    private static let formationBadgePipRowWidth: CGFloat = 200
-
-    private struct PipSizing {
-        let current: CGFloat
-        let other: CGFloat
-        let slot: CGFloat
-        let spacing: CGFloat
-    }
-
-    private func pipSizes(for total: Int) -> PipSizing {
-        let preferredCurrent: CGFloat = 14
-        let preferredOther: CGFloat = 7
-        let preferredSpacing: CGFloat = 6
-        guard total > 1 else {
-            return PipSizing(current: preferredCurrent, other: preferredOther, slot: preferredCurrent, spacing: 0)
-        }
-        let preferredWidth = preferredCurrent + preferredOther * CGFloat(total - 1) + preferredSpacing * CGFloat(total - 1)
-        if preferredWidth <= Self.formationBadgePipRowWidth {
-            return PipSizing(current: preferredCurrent, other: preferredOther, slot: preferredCurrent, spacing: preferredSpacing)
-        }
-        // Shrink uniformly to fit the row width.
-        let scale = Self.formationBadgePipRowWidth / preferredWidth
-        let current = max(8, preferredCurrent * scale)
-        let other = max(4, preferredOther * scale)
-        let spacing = max(2, preferredSpacing * scale)
-        return PipSizing(current: current, other: other, slot: current, spacing: spacing)
     }
 
     private var compactInspectorSheet: some View {
