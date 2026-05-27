@@ -997,6 +997,7 @@ struct FloorGridView: View {
                 endFormationColor: transitionEndColor,
                 transitionProgress: displayProgress,
                 formationColor: currentFormationColor,
+                showPathPulse: hasTransition && showTransitionPaths && !isTransportEngaged,
                 ghostAthletes: previousFormationAthletes,
                 ghostColor: previousFormationColor,
                 ghostNextAthletes: nextFormationAthletes,
