@@ -412,7 +412,7 @@ struct RoutineWorkspaceView: View {
                 if !isIPadPortrait, let previewTransitionPair, let player = previewSession.player {
                     Divider()
                     VStack(spacing: 12) {
-                        transitionDirectionPicker
+                        // Into/Out toggle now lives on the formation pip badge.
                         SidebarTransportView(
                             player: player,
                             startFormationName: previewTransitionPair.start.name,
@@ -492,9 +492,7 @@ struct RoutineWorkspaceView: View {
 
             if !isPhoneLayout, let previewTransitionPair, let player = previewSession.player {
                 Divider()
-                transitionDirectionPicker
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
+                // Into/Out toggle now lives on the formation pip badge.
                 SidebarTransportView(
                     player: player,
                     startFormationName: previewTransitionPair.start.name,
@@ -643,7 +641,7 @@ struct RoutineWorkspaceView: View {
                 .safeAreaInset(edge: .bottom) {
                     if isIPadPortrait, let previewTransitionPair, let player = previewSession.player {
                         VStack(spacing: 10) {
-                            transitionDirectionPicker
+                            // Into/Out toggle now lives on the formation pip badge.
                             SidebarTransportView(
                                 player: player,
                                 startFormationName: previewTransitionPair.start.name,
