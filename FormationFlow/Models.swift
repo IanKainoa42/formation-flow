@@ -2777,6 +2777,12 @@ final class TransitionPlayer: ObservableObject {
     private var idleResetTask: Task<Void, Never>?
     private var rewindTimer: AnimationTimer?
 
+    /// When false, pausing/finishing never schedules the 5s idle auto-rewind.
+    /// The editor wants it (a finished transition rewinds to show the start);
+    /// the full-screen RoutinePlayer does NOT — it should hold on the final
+    /// formation instead of silently rewinding the last segment after 5s.
+    var autoRewindOnIdle = true
+
     init(
         startAthletes: [RenderedAthlete],
         endAthletes: [RenderedAthlete],
@@ -2944,7 +2950,7 @@ final class TransitionPlayer: ObservableObject {
 
     private func scheduleIdleReset() {
         cancelIdleReset()
-        guard progress > 0 else { return }
+        guard autoRewindOnIdle, progress > 0 else { return }
         idleResetTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(5))
             guard !Task.isCancelled else { return }
@@ -3317,6 +3323,10 @@ final class RoutinePlayer: ObservableObject {
                 transitionSpec: seg.spec
             )
             newPlayer.speed = speed
+            // Full-screen routine playback holds on the final formation; the
+            // editor's 5s idle auto-rewind must not fire here (IAN: it only hit
+            // the last segment and read as a bug).
+            newPlayer.autoRewindOnIdle = false
             self.player = newPlayer
             subscribeToPlayer(newPlayer)
         }
