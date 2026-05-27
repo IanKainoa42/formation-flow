@@ -822,6 +822,16 @@ struct FloorCanvasView: View {
         return (r, g, b)
     }
 
+    /// Geometry + timing for one athlete's pulse within the shared group cycle.
+    private struct PulseLane {
+        let item: TransitionPathRenderItem
+        let poly: [CGPoint]
+        let cum: [CGFloat]
+        let total: CGFloat
+        let start: Double    // launch offset (move delay) in seconds
+        let travel: Double   // time to traverse the path at constant floor-speed
+    }
+
     private func drawPathPulses(in context: inout GraphicsContext, time: TimeInterval) {
         let items = transitionPaths
         guard !items.isEmpty else { return }
@@ -831,8 +841,9 @@ struct FloorCanvasView: View {
         let leadLen: CGFloat = 0.05   // sharp leading edge
         let haloWidth = max(6, 7 * markerScale)
         let coreWidth = max(2, 2.4 * markerScale)
-        // How close to the end (in cycle fraction) the arrival flash spans.
-        let flashSpan: CGFloat = 0.08
+        let restPause: Double = 0.7      // group holds, parked, before relaunching
+        let flashDecay: Double = 0.22    // arrival-burst fade
+        let restingGlow: CGFloat = 0.14  // faint "parked here, waiting" glow
 
         // Glow tint blends start→end formation color along the path so the light
         // reads directionally — trailing hue = where they came from, leading hue =
@@ -841,75 +852,82 @@ struct FloorCanvasView: View {
         let (er, eg, eb) = rgbComponents(endFormationColor)
         let endGlow = Color(red: er, green: eg, blue: eb)
 
-        // Constant on-screen speed: a comet covers `referenceFeet` of floor in
-        // `pulsePeriodSeconds`. Longer paths therefore take proportionally longer
-        // to reach their spot, so their arrival flash lands later — they don't all
-        // flash together. Each athlete loops on its own length-based period.
+        // Constant on-screen floor speed: a comet covers `referenceFeet` in one
+        // pulse period, so travel time scales with path length — longer moves take
+        // longer to arrive (and flash later).
         let referenceFeet: CGFloat = 28
         let secondsPerFoot = pulsePeriodSeconds / Double(max(referenceFeet, 1))
 
+        // First pass: geometry + per-athlete travel/launch times.
+        var lanes: [PulseLane] = []
+        lanes.reserveCapacity(items.count)
         for item in items {
-            // Skip near-stationary athletes — no motion to preview.
             let dx = item.endPosition.x - item.startPosition.x
             let dy = item.endPosition.y - item.startPosition.y
             guard dx * dx + dy * dy > 1 else { continue }
-
-            // Stroke only along the actual path polyline so the light reads as the
-            // (semi-transparent) path itself glowing, not a dot floating over it.
             let poly = pathPolyline(for: item)
             guard poly.count >= 2 else { continue }
             let cum = cumulativeLengths(poly)
             guard let total = cum.last, total > 0 else { continue }
-
-            // Continuous head at constant floor-speed: cycle length scales with the
-            // path's length in feet, so longer moves take longer (and flash later).
-            // Move delay shifts the start so staggered entrances stay staggered.
             let lengthFeet = total / max(cellSize, 0.0001)
-            let cycleSeconds = max(0.35, Double(lengthFeet) * secondsPerFoot)
-            let delaySeconds = Double(max(0, item.moveDelay)) * 0.12
-            let raw = (time - delaySeconds) / cycleSeconds
-            let head = CGFloat(raw - floor(raw))   // fract → [0, 1)
+            let travel = max(0.25, Double(lengthFeet) * secondsPerFoot)
+            let start = Double(max(0, item.moveDelay)) * 0.12
+            lanes.append(PulseLane(item: item, poly: poly, cum: cum, total: total, start: start, travel: travel))
+        }
+        guard !lanes.isEmpty else { return }
 
-            var prev = pointAtArcLength(0, pts: poly, cum: cum)
-            for i in 1...samples {
-                let f1 = CGFloat(i) / CGFloat(samples)
-                let p1 = pointAtArcLength(f1 * total, pts: poly, cum: cum)
-                let fMid = (CGFloat(i) - 0.5) / CGFloat(samples)
-                let d = fMid - head
-                // Comet: bright at the head, exponential trail behind, crisp ahead.
-                let intensity = d <= 0 ? exp(d / tailLen) : exp(-d / leadLen)
+        // One shared cycle for the whole group: everyone launches together, each
+        // parks on arrival and waits until the slowest lands, then all relaunch.
+        let lastArrival = lanes.map { $0.start + $0.travel }.max() ?? pulsePeriodSeconds
+        let cycle = lastArrival + restPause
+        let cycleT = time.truncatingRemainder(dividingBy: cycle)
 
-                if intensity > 0.05 {
-                    var seg = Path()
-                    seg.move(to: prev)
-                    seg.addLine(to: p1)
-                    let t = min(max(fMid, 0), 1)
-                    let glow = Color(
-                        red: sr + (er - sr) * t,
-                        green: sg + (eg - sg) * t,
-                        blue: sb + (eb - sb) * t
-                    )
-                    context.stroke(
-                        seg,
-                        with: .color(glow.opacity(0.5 * intensity)),
-                        style: StrokeStyle(lineWidth: haloWidth, lineCap: .round)
-                    )
-                    context.stroke(
-                        seg,
-                        with: .color(.white.opacity(0.95 * intensity)),
-                        style: StrokeStyle(lineWidth: coreWidth, lineCap: .round)
-                    )
+        for lane in lanes {
+            let localT = cycleT - lane.start
+            let progress = lane.travel > 0 ? min(max(localT / lane.travel, 0), 1) : (localT >= 0 ? 1 : 0)
+            let head = CGFloat(progress)
+
+            // Moving comet only while en route — not before launch, and not after
+            // arrival, so it never sits frozen at the end during the group wait.
+            if localT >= 0, progress < 1 {
+                var prev = pointAtArcLength(0, pts: lane.poly, cum: lane.cum)
+                for i in 1...samples {
+                    let f1 = CGFloat(i) / CGFloat(samples)
+                    let p1 = pointAtArcLength(f1 * lane.total, pts: lane.poly, cum: lane.cum)
+                    let fMid = (CGFloat(i) - 0.5) / CGFloat(samples)
+                    let d = fMid - head
+                    let intensity = d <= 0 ? exp(d / tailLen) : exp(-d / leadLen)
+                    if intensity > 0.05 {
+                        var seg = Path()
+                        seg.move(to: prev)
+                        seg.addLine(to: p1)
+                        let t = min(max(fMid, 0), 1)
+                        let glow = Color(
+                            red: sr + (er - sr) * t,
+                            green: sg + (eg - sg) * t,
+                            blue: sb + (eb - sb) * t
+                        )
+                        context.stroke(
+                            seg,
+                            with: .color(glow.opacity(0.5 * intensity)),
+                            style: StrokeStyle(lineWidth: haloWidth, lineCap: .round)
+                        )
+                        context.stroke(
+                            seg,
+                            with: .color(.white.opacity(0.95 * intensity)),
+                            style: StrokeStyle(lineWidth: coreWidth, lineCap: .round)
+                        )
+                    }
+                    prev = p1
                 }
-                prev = p1
             }
 
-            // Arrival flash: the destination "wall" lights up as the head reaches
-            // the end (head→1) and just after it wraps through (head→0). distToEnd
-            // is 0 at the wrap boundary on either side.
-            let distToEnd = min(1 - head, head)
-            let flash = exp(-distToEnd / flashSpan)
-            if flash > 0.04 {
-                drawArrivalFlash(in: &context, at: item.endPosition, intensity: flash, color: endGlow)
+            // Arrival flash, then a faint resting glow held until the group
+            // relaunches — so you can see who's already parked and waiting.
+            let sinceArrival = cycleT - (lane.start + lane.travel)
+            if sinceArrival >= 0 {
+                let flash = max(restingGlow, CGFloat(exp(-sinceArrival / flashDecay)))
+                drawArrivalFlash(in: &context, at: lane.item.endPosition, intensity: flash, color: endGlow)
             }
         }
     }
