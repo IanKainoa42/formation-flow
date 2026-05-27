@@ -780,96 +780,6 @@ struct FloorCanvasView: View {
 
     // MARK: - Ambient Path Pulse (preview, idle)
 
-    /// Per-path timing used to place a light pulse exactly where each athlete
-    /// would be at a given timeline progress. Mirrors the player/collision
-    /// sampler by *calling* the same `PathCalculations` helpers — no motion math
-    /// is reimplemented here, so the pulse can't drift from real playback.
-    private struct PulseTiming {
-        let item: TransitionPathRenderItem
-        let effectiveTime: CGFloat
-        let travel: CGFloat
-        let hold: CGFloat
-        let thresholds: [CGFloat]
-        let nodes: [CGPoint]
-        let lengths: [CGFloat]
-        let totalLength: CGFloat
-    }
-
-    /// Global timing scale (counts). Absolute value is irrelevant for an ambient
-    /// loop — only the *relative* stagger/holds between athletes read on screen.
-    private var pulseCounts: CGFloat { 8 }
-
-    private func buildPulseTimings() -> (timings: [PulseTiming], maxEffectiveTime: CGFloat, playbackDurationCounts: CGFloat) {
-        let effectiveCounts = max(pulseCounts, 0.5)
-        let timings: [PulseTiming] = transitionPaths.map { item in
-            let transition = AthleteTransition(
-                athleteID: item.athleteID,
-                moveDelay: item.moveDelay,
-                pathControlPoint: item.controlPoint,
-                pathWaypoints: item.waypoints
-            )
-            let travel = PathCalculations.travelDistance(from: item.startPosition, to: item.endPosition, transition: transition)
-            let hold = item.waypoints.reduce(CGFloat(0)) { $0 + $1.holdCounts }
-            let thresholds = item.waypoints.isEmpty
-                ? []
-                : PathCalculations.waypointProgressThresholds(from: item.startPosition, to: item.endPosition, waypoints: item.waypoints)
-            let nodes = PathCalculations.waypointNodes(from: item.startPosition, to: item.endPosition, waypoints: item.waypoints)
-            let lengths = PathCalculations.segmentLengths(nodes)
-            let totalLength = lengths.reduce(0, +)
-            return PulseTiming(
-                item: item,
-                effectiveTime: travel + hold,
-                travel: travel,
-                hold: hold,
-                thresholds: thresholds,
-                nodes: nodes,
-                lengths: lengths,
-                totalLength: totalLength
-            )
-        }
-
-        let maxEffectiveTime = timings.max(by: { $0.effectiveTime < $1.effectiveTime })?.effectiveTime ?? 1
-        let playbackDurationCounts = timings.reduce(effectiveCounts) { currentMax, timing in
-            let durationFraction = maxEffectiveTime > 0 ? timing.effectiveTime / maxEffectiveTime : 1
-            let activeDurationCounts = durationFraction * effectiveCounts
-            return max(currentMax, max(0, timing.item.moveDelay) + activeDurationCounts)
-        }
-        return (timings, maxEffectiveTime, playbackDurationCounts)
-    }
-
-    /// The athlete's 0→1 position *along its own path* (by arc length) at this
-    /// timeline progress — honoring move delay and waypoint holds. Used as the
-    /// head of the travelling light, mapped onto the path polyline below.
-    private func pulseHeadProgress(
-        for timing: PulseTiming,
-        timelineProgress: CGFloat,
-        maxEffectiveTime: CGFloat,
-        playbackDurationCounts: CGFloat
-    ) -> CGFloat {
-        let effectiveCounts = max(pulseCounts, 0.5)
-        let durationFraction = maxEffectiveTime > 0 ? timing.effectiveTime / maxEffectiveTime : 1
-        let activeDurationCounts = durationFraction * effectiveCounts
-        let athleteProgress = PathCalculations.delayedMovementProgress(
-            timelineProgress: timelineProgress,
-            moveDelayCounts: timing.item.moveDelay,
-            moveDurationCounts: activeDurationCounts,
-            playbackDurationCounts: playbackDurationCounts
-        )
-
-        let item = timing.item
-        if !item.waypoints.isEmpty, timing.hold > 0 {
-            let moveDuration = activeDurationCounts * (timing.travel / max(timing.effectiveTime, 0.001))
-            return PathCalculations.holdAdjustedPathProgress(
-                wallProgress: athleteProgress,
-                waypoints: item.waypoints,
-                thresholds: timing.thresholds,
-                moveDuration: moveDuration,
-                totalHoldTime: timing.hold
-            )
-        }
-        return athleteProgress
-    }
-
     /// Cumulative arc length at each polyline vertex (cum[0] == 0).
     private func cumulativeLengths(_ pts: [CGPoint]) -> [CGFloat] {
         var cum: [CGFloat] = [0]
@@ -916,40 +826,47 @@ struct FloorCanvasView: View {
     }
 
     private func drawPathPulses(in context: inout GraphicsContext, phase: CGFloat) {
-        let (timings, maxEffectiveTime, playbackDurationCounts) = buildPulseTimings()
-        guard !timings.isEmpty else { return }
+        let items = transitionPaths
+        guard !items.isEmpty else { return }
 
         let samples = 36
-        let tailLen: CGFloat = 0.10   // comet trail length, as fraction of path
-        let leadLen: CGFloat = 0.04   // sharp leading edge
+        let tailLen: CGFloat = 0.12   // comet trail length, as fraction of path
+        let leadLen: CGFloat = 0.05   // sharp leading edge
         let haloWidth = max(6, 7 * markerScale)
         let coreWidth = max(2, 2.4 * markerScale)
+        // How close to the end (in cycle fraction) the arrival flash spans.
+        let flashSpan: CGFloat = 0.08
 
         // Glow tint blends start→end formation color along the path so the light
         // reads directionally — trailing hue = where they came from, leading hue =
         // where they're going. Extract endpoints once; lerp per segment is cheap.
         let (sr, sg, sb) = rgbComponents(startFormationColor)
         let (er, eg, eb) = rgbComponents(endFormationColor)
+        let endGlow = Color(red: er, green: eg, blue: eb)
 
-        for timing in timings {
+        // Stagger each athlete's loop by its move delay so they don't all wrap in
+        // lockstep — capped so the spread stays under a quarter cycle.
+        let maxDelay = items.reduce(CGFloat(0)) { max($0, max(0, $1.moveDelay)) }
+        let staggerSpan: CGFloat = 0.22
+
+        for item in items {
             // Skip near-stationary athletes — no motion to preview.
-            let dx = timing.item.endPosition.x - timing.item.startPosition.x
-            let dy = timing.item.endPosition.y - timing.item.startPosition.y
+            let dx = item.endPosition.x - item.startPosition.x
+            let dy = item.endPosition.y - item.startPosition.y
             guard dx * dx + dy * dy > 1 else { continue }
 
             // Stroke only along the actual path polyline so the light reads as the
             // (semi-transparent) path itself glowing, not a dot floating over it.
-            let poly = pathPolyline(for: timing.item)
+            let poly = pathPolyline(for: item)
             guard poly.count >= 2 else { continue }
             let cum = cumulativeLengths(poly)
             guard let total = cum.last, total > 0 else { continue }
 
-            let head = pulseHeadProgress(
-                for: timing,
-                timelineProgress: phase,
-                maxEffectiveTime: maxEffectiveTime,
-                playbackDurationCounts: playbackDurationCounts
-            )
+            // Continuous head: sweeps 0→1 and wraps every cycle (never freezes at
+            // the end). Each athlete is offset by its move-delay so wraps stagger.
+            let delayOffset = maxDelay > 0 ? (max(0, item.moveDelay) / maxDelay) * staggerSpan : 0
+            let raw = phase - delayOffset
+            let head = raw - floor(raw)   // fract → [0, 1)
 
             var prev = pointAtArcLength(0, pts: poly, cum: cum)
             for i in 1...samples {
@@ -964,7 +881,6 @@ struct FloorCanvasView: View {
                     var seg = Path()
                     seg.move(to: prev)
                     seg.addLine(to: p1)
-                    // Soft halo carries the directional start→end gradient...
                     let t = min(max(fMid, 0), 1)
                     let glow = Color(
                         red: sr + (er - sr) * t,
@@ -976,7 +892,6 @@ struct FloorCanvasView: View {
                         with: .color(glow.opacity(0.5 * intensity)),
                         style: StrokeStyle(lineWidth: haloWidth, lineCap: .round)
                     )
-                    // ...and a bright white core stays on the path itself.
                     context.stroke(
                         seg,
                         with: .color(.white.opacity(0.95 * intensity)),
@@ -985,7 +900,38 @@ struct FloorCanvasView: View {
                 }
                 prev = p1
             }
+
+            // Arrival flash: the destination "wall" lights up as the head reaches
+            // the end (head→1) and just after it wraps through (head→0). distToEnd
+            // is 0 at the wrap boundary on either side.
+            let distToEnd = min(1 - head, head)
+            let flash = exp(-distToEnd / flashSpan)
+            if flash > 0.04 {
+                drawArrivalFlash(in: &context, at: item.endPosition, intensity: flash, color: endGlow)
+            }
         }
+    }
+
+    /// A short radial burst at the destination so the light reads as passing
+    /// "through the wall" rather than stopping dead at the path end.
+    private func drawArrivalFlash(in context: inout GraphicsContext, at gridPosition: CGPoint, intensity: CGFloat, color: Color) {
+        let center = CGPoint(x: gridPosition.x * cellSize, y: gridPosition.y * cellSize)
+        let glowR = (10 + 10 * intensity) * markerScale
+        var glow = Path()
+        glow.addEllipse(in: CGRect(x: center.x - glowR, y: center.y - glowR, width: glowR * 2, height: glowR * 2))
+        context.fill(
+            glow,
+            with: .radialGradient(
+                Gradient(colors: [color.opacity(0.6 * intensity), color.opacity(0.18 * intensity), .clear]),
+                center: center,
+                startRadius: 0,
+                endRadius: glowR
+            )
+        )
+        let coreR = (2.5 + 2 * intensity) * markerScale
+        var core = Path()
+        core.addEllipse(in: CGRect(x: center.x - coreR, y: center.y - coreR, width: coreR * 2, height: coreR * 2))
+        context.fill(core, with: .color(.white.opacity(0.9 * intensity)))
     }
 
     private func drawGrid(in context: inout GraphicsContext) {
