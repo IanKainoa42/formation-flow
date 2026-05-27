@@ -34,6 +34,9 @@ struct RoutineWorkspaceView: View {
     @State private var triggerDeleteAthlete = false
     @State private var isIPadPortrait = false
     @State private var sidebarEditMode: EditMode = .inactive
+    // iPad portrait has no sidebar — the selected-athlete inspector opens as a
+    // sheet from the bottom transport's edit-path button instead.
+    @State private var showingPortraitInspector = false
 
     private var isCompactLayout: Bool {
         let isPhone: Bool
@@ -167,8 +170,57 @@ struct RoutineWorkspaceView: View {
             }
         } else if isCompactLayout {
             compactWorkspace
+        } else if isIPadPortrait {
+            iPadPortraitWorkspace
         } else {
             regularWorkspace
+        }
+    }
+
+    // iPad portrait drops the formation sidebar entirely (and with it the
+    // split-view reveal toggle): the floating pip badge handles formation
+    // nav + rename, and the bottom transport's edit-path button opens the
+    // athlete inspector as a sheet.
+    private var iPadPortraitWorkspace: some View {
+        NavigationStack {
+            regularDetailView
+        }
+        .sheet(isPresented: $showingPortraitInspector) {
+            portraitInspectorSheet
+        }
+        .onChange(of: selectedAthleteIDs) { _, ids in
+            if ids.isEmpty { showingPortraitInspector = false }
+        }
+    }
+
+    @ViewBuilder
+    private var portraitInspectorSheet: some View {
+        if let selectedFormationID, let player = previewSession.player {
+            NavigationStack {
+                SelectedAthleteSidebarView(
+                    store: store,
+                    formationID: selectedFormationID,
+                    selectedAthleteIDs: $selectedAthleteIDs,
+                    onDeleteAthlete: { triggerDeleteAthlete = true },
+                    player: player,
+                    startFormationID: previewTransitionPair?.start.id,
+                    endFormationID: previewTransitionPair?.end.id,
+                    isPro: entitlementManager.isPro,
+                    onUpgrade: { showingUpgradeSheet = true },
+                    onRefreshTransition: { refreshPreviewSession() },
+                    onSwap: { isSwapMode.toggle() },
+                    isSwapMode: isSwapMode,
+                    isIPadPortrait: true
+                )
+                .navigationTitle("Athlete")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Done") { showingPortraitInspector = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
         }
     }
 
@@ -647,6 +699,7 @@ struct RoutineWorkspaceView: View {
                                 startFormationName: previewTransitionPair.start.name,
                                 endFormationName: previewTransitionPair.end.name,
                                 onSwap: { isSwapMode.toggle() },
+                                onPath: { showingPortraitInspector = true },
                                 isSwapMode: isSwapMode,
                                 canSwap: selectedAthleteIDs.count == 1,
                                 canEditPath: selectedAthleteIDs.count == 1,
