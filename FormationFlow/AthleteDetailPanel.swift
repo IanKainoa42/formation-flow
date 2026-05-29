@@ -123,6 +123,17 @@ struct MultiSelectionInspectorView: View {
     var compactLayout: Bool = false
     var onClearSelection: () -> Void
 
+    // Optional bulk-delay context. When all of these are provided, render a
+    // Start Delay slider that sets the delay on every selected athlete at once.
+    var store: RoutineStore? = nil
+    var selectedAthleteIDs: Set<UUID> = []
+    var player: TransitionPlayer? = nil
+    var startFormationID: UUID? = nil
+    var endFormationID: UUID? = nil
+    var isPro: Bool = true
+    var onUpgrade: () -> Void = {}
+    var onRefreshTransition: () -> Void = {}
+
     var body: some View {
         VStack(alignment: .leading, spacing: compactLayout ? 12 : 16) {
             Text("Selection")
@@ -132,12 +143,122 @@ struct MultiSelectionInspectorView: View {
             Text("Drag on the floor to move the selected athletes together. Use Swap for one athlete at a time.")
                 .font(.body)
                 .foregroundColor(.secondary)
+
+            if let store, let player, let startFormationID, let endFormationID, !selectedAthleteIDs.isEmpty {
+                Divider()
+                BulkDelayControl(
+                    store: store,
+                    player: player,
+                    selectedAthleteIDs: selectedAthleteIDs,
+                    startFormationID: startFormationID,
+                    endFormationID: endFormationID,
+                    isPro: isPro,
+                    onUpgrade: onUpgrade,
+                    onRefreshTransition: onRefreshTransition
+                )
+            }
+
             Button("Clear Selection", action: onClearSelection)
                 .buttonStyle(.bordered)
             Spacer()
         }
         .padding(compactLayout ? 16 : 20)
         .background(.thinMaterial)
+    }
+}
+
+private struct BulkDelayControl: View {
+    @ObservedObject var store: RoutineStore
+    @ObservedObject var player: TransitionPlayer
+    let selectedAthleteIDs: Set<UUID>
+    let startFormationID: UUID
+    let endFormationID: UUID
+    let isPro: Bool
+    let onUpgrade: () -> Void
+    let onRefreshTransition: () -> Void
+
+    @State private var sliderValue: CGFloat = 0
+    @State private var isEditing = false
+
+    private var selectedDelays: [CGFloat] {
+        selectedAthleteIDs.map {
+            player.transitionSpec.athleteTransition(for: $0).moveDelayCounts
+        }
+    }
+
+    private var commonDelay: CGFloat? {
+        let delays = selectedDelays
+        guard let first = delays.first else { return nil }
+        return delays.allSatisfy({ $0 == first }) ? first : nil
+    }
+
+    private var displayedValue: CGFloat {
+        isEditing ? sliderValue : (commonDelay ?? selectedDelays.first ?? 0)
+    }
+
+    private var valueLabel: String {
+        if !isEditing, commonDelay == nil {
+            return "Mixed"
+        }
+        return TransitionCountFormatting.label(displayedValue)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Start Delay (\(selectedAthleteIDs.count))")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(valueLabel)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+            if isPro {
+                Slider(
+                    value: Binding(
+                        get: { displayedValue },
+                        set: { newValue in
+                            sliderValue = newValue
+                            applyBulkDelay(newValue)
+                        }
+                    ),
+                    in: 0...CGFloat(player.counts),
+                    step: 0.5,
+                    onEditingChanged: { editing in
+                        isEditing = editing
+                        if editing {
+                            sliderValue = commonDelay ?? selectedDelays.first ?? 0
+                        }
+                    }
+                )
+                .accessibilityLabel("Start Delay for \(selectedAthleteIDs.count) selected athletes")
+            } else {
+                HStack {
+                    Slider(value: .constant(0), in: 0...CGFloat(player.counts))
+                        .disabled(true)
+                    Button(action: onUpgrade) {
+                        Image(systemName: "lock.fill")
+                            .foregroundColor(.secondary)
+                    }
+                    .accessibilityLabel("Upgrade to Pro to adjust start delay")
+                    .help("Upgrade to Pro to adjust start delay")
+                }
+            }
+            Text("Applies to all selected athletes.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private func applyBulkDelay(_ newValue: CGFloat) {
+        let clamped = min(CGFloat(player.counts), max(0, newValue))
+        let ids = selectedAthleteIDs
+        store.mutateTransitionSpec(from: startFormationID, to: endFormationID) { spec in
+            for index in spec.athleteTransitions.indices where ids.contains(spec.athleteTransitions[index].athleteID) {
+                spec.athleteTransitions[index].moveDelayCounts = clamped
+            }
+        }
+        onRefreshTransition()
     }
 }
 
@@ -607,7 +728,15 @@ struct SidebarInspectorView: View {
                     MultiSelectionInspectorView(
                         count: selectedAthleteIDs.count,
                         compactLayout: isCompactLayout,
-                        onClearSelection: { selectedAthleteIDs = [] }
+                        onClearSelection: { selectedAthleteIDs = [] },
+                        store: store,
+                        selectedAthleteIDs: selectedAthleteIDs,
+                        player: player,
+                        startFormationID: startFormationID,
+                        endFormationID: endFormationID,
+                        isPro: isPro,
+                        onUpgrade: onUpgrade,
+                        onRefreshTransition: onRefreshTransition
                     )
                 } else {
                     EmptyInspectorView(
@@ -1066,7 +1195,15 @@ struct SelectedAthleteSidebarView: View {
                 MultiSelectionInspectorView(
                     count: selectedAthleteIDs.count,
                     compactLayout: true,
-                    onClearSelection: { selectedAthleteIDs = [] }
+                    onClearSelection: { selectedAthleteIDs = [] },
+                    store: store,
+                    selectedAthleteIDs: selectedAthleteIDs,
+                    player: player,
+                    startFormationID: startFormationID,
+                    endFormationID: endFormationID,
+                    isPro: isPro,
+                    onUpgrade: onUpgrade,
+                    onRefreshTransition: onRefreshTransition
                 )
             }
         }
