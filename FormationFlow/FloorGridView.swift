@@ -200,8 +200,9 @@ struct FloorGridView: View {
             // Without this, focusedEndpoint is nil on appear → currentAthletes
             // (= start positions), and the first tap snapped the canvas to the
             // edited formation's real positions ("selecting changes formations").
-            if !isTransportEngaged, let endpoint = focusedEndpoint ?? currentFormationEndpoint {
-                return endpoint == .end ? player.endAthletes : player.startAthletes
+            if !isTransportEngaged,
+               let endpointAthletes = athletes(for: displayedFormationEndpoint) {
+                return endpointAthletes
             }
             return player.currentAthletes
         }
@@ -350,7 +351,7 @@ struct FloorGridView: View {
         guard let player else { return 0 }
         // Same nil-window guard as renderedAthletes — keep the formation color
         // blend in sync with the edited formation on the first frame.
-        if !isTransportEngaged, let endpoint = focusedEndpoint ?? currentFormationEndpoint {
+        if !isTransportEngaged, let endpoint = displayedFormationEndpoint {
             return endpoint == .end ? 1.0 : 0.0
         }
         return player.progress
@@ -447,6 +448,10 @@ struct FloorGridView: View {
         return nil
     }
 
+    private var displayedFormationEndpoint: PreviewEditableEndpoint? {
+        focusedEndpoint ?? currentFormationEndpoint
+    }
+
     private var editableFormationID: UUID? {
         guard hasTransition, let focusedEndpoint else { return nil }
         return focusedEndpoint == .start ? startFormationID : endFormationID
@@ -455,6 +460,11 @@ struct FloorGridView: View {
     private var editableAthletes: [RenderedAthlete] {
         guard let player, let focusedEndpoint else { return [] }
         return focusedEndpoint == .start ? player.startAthletes : player.endAthletes
+    }
+
+    private func athletes(for endpoint: PreviewEditableEndpoint?) -> [RenderedAthlete]? {
+        guard let player, let endpoint else { return nil }
+        return endpoint == .start ? player.startAthletes : player.endAthletes
     }
 
     private var selectedTransition: AthleteTransition? {
@@ -2557,12 +2567,14 @@ struct FloorGridView: View {
                         return athleteHit(at: startScaledPoint, within: renderedAthletes, cellSize: cellSize)
                     }()
                     if let hitAthlete = targetAthlete {
-                        focusedEndpoint = currentFormationEndpoint
+                        let dragEndpoint = displayedFormationEndpoint
+                        focusedEndpoint = dragEndpoint
                         guard dragDistanceSquared >= dragActivationDistanceSquared else { return }
                         if !selectedAthleteIDs.contains(hitAthlete.id) {
                             selectedAthleteIDs = [hitAthlete.id]
                         }
-                        dragStartPositions = renderedAthletes.reduce(into: [UUID: CGPoint]()) { result, athlete in
+                        let dragAthletes = athletes(for: dragEndpoint) ?? renderedAthletes
+                        dragStartPositions = dragAthletes.reduce(into: [UUID: CGPoint]()) { result, athlete in
                             if selectedAthleteIDs.contains(athlete.id) {
                                 if result[athlete.id] == nil { result[athlete.id] = athlete.position }
                             }
@@ -2607,8 +2619,6 @@ struct FloorGridView: View {
                         selectedAthleteIDs = [hitMarker.athleteID]
                         focusedEndpoint = hitMarker.endpoint
                         endpointDragStartPosition = hitMarker.position
-                        // Only allow dragging if the marker belongs to the current formation
-                        guard hitMarker.endpoint == currentFormationEndpoint else { return }
                         guard dragDistanceSquared >= dragActivationDistanceSquared else { return }
                         isDraggingEndpoint = true
                         handleEndpointDragContinued(value, cellSize: cellSize, offset: offset)
@@ -2787,7 +2797,7 @@ struct FloorGridView: View {
                 if let hoveredID = hoveredAthleteID,
                    renderedAthletes.contains(where: { $0.id == hoveredID }) {
                     selectedAthleteIDs = [hoveredID]
-                    focusedEndpoint = hasTransition ? currentFormationEndpoint : nil
+                    focusedEndpoint = hasTransition ? displayedFormationEndpoint : nil
                     focusedPathHandle = nil
                     return
                 }
@@ -2802,7 +2812,7 @@ struct FloorGridView: View {
                     cellSize: cellSize
                 ) {
                     selectedAthleteIDs = [athlete.id]
-                    focusedEndpoint = hasTransition ? currentFormationEndpoint : nil
+                    focusedEndpoint = hasTransition ? displayedFormationEndpoint : nil
                     focusedPathHandle = nil
                     return
                 }
