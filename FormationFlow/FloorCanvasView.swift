@@ -1001,7 +1001,7 @@ struct FloorCanvasView: View {
     ) -> PulseMarkerInfluence? {
         guard !lights.isEmpty else { return nil }
 
-        let reach = max(30, markerRadius + 30 * markerScale)
+        let reach = max(46, markerRadius + 46 * markerScale)
         let reachSquared = reach * reach
         var bestStrength: CGFloat = 0
         var bestDirection = CGPoint.zero
@@ -1035,7 +1035,7 @@ struct FloorCanvasView: View {
         let clampedIntensity = min(max(intensity, 0), 1)
         guard clampedIntensity > 0.02 else { return }
 
-        let spillRadius = max(24, 30 * markerScale)
+        let spillRadius = max(72, 90 * markerScale)
         var spill = Path()
         spill.addEllipse(
             in: CGRect(
@@ -1049,8 +1049,9 @@ struct FloorCanvasView: View {
             spill,
             with: .radialGradient(
                 Gradient(colors: [
-                    color.opacity(0.055 * clampedIntensity),
-                    Color.white.opacity(0.014 * clampedIntensity),
+                    color.opacity(0.028 * clampedIntensity),
+                    color.opacity(0.014 * clampedIntensity),
+                    Color.white.opacity(0.006 * clampedIntensity),
                     .clear
                 ]),
                 center: center,
@@ -1068,9 +1069,9 @@ struct FloorCanvasView: View {
         let seamSpacing = 8 * cellSize
         guard seamSpacing > 1 else { return }
 
-        let reach = max(10, 12 * markerScale)
-        let halfLength = max(16, 22 * markerScale)
-        let lineWidth = max(0.55, 0.75 * markerScale)
+        let reach = max(22, 26 * markerScale)
+        let halfLength = max(34, 44 * markerScale)
+        let lineWidth = max(0.55, 0.7 * markerScale)
 
         let nearestVertical = (center.x / seamSpacing).rounded() * seamSpacing
         if nearestVertical > 0, nearestVertical < width {
@@ -1082,7 +1083,7 @@ struct FloorCanvasView: View {
                 seam.addLine(to: CGPoint(x: nearestVertical, y: min(height, center.y + halfLength)))
                 context.stroke(
                     seam,
-                    with: .color(color.opacity(0.065 * falloff * intensity)),
+                    with: .color(color.opacity(0.045 * falloff * intensity)),
                     style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
                 )
             }
@@ -1098,7 +1099,7 @@ struct FloorCanvasView: View {
                 seam.addLine(to: CGPoint(x: min(width, center.x + halfLength), y: nearestHorizontal))
                 context.stroke(
                     seam,
-                    with: .color(color.opacity(0.055 * falloff * intensity)),
+                    with: .color(color.opacity(0.04 * falloff * intensity)),
                     style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
                 )
             }
@@ -1209,7 +1210,8 @@ struct FloorCanvasView: View {
             fine.move(to: CGPoint(x: 0, y: y))
             fine.addLine(to: CGPoint(x: width, y: y))
         }
-        context.stroke(fine, with: .color(.white.opacity(0.04)), lineWidth: 0.5)
+        context.stroke(fine, with: .color(.black.opacity(0.07)), lineWidth: 0.8)
+        context.stroke(fine, with: .color(floorLiftColor.opacity(0.07)), lineWidth: 0.45)
 
         // Vertical panel dividers
         var verticalPanels = Path()
@@ -1218,7 +1220,13 @@ struct FloorCanvasView: View {
             verticalPanels.move(to: CGPoint(x: x, y: 0))
             verticalPanels.addLine(to: CGPoint(x: x, y: height))
         }
-        context.stroke(verticalPanels, with: .color(.white.opacity(0.12)), lineWidth: 1)
+        var verticalPanelShadows = verticalPanels
+        verticalPanelShadows = verticalPanelShadows.offsetBy(dx: 0.55 * markerScale, dy: 0.85 * markerScale)
+        context.stroke(verticalPanelShadows, with: .color(.black.opacity(0.22)), lineWidth: max(1.0, 1.25 * markerScale))
+        context.stroke(verticalPanels, with: .color(floorLiftColor.opacity(0.18)), lineWidth: max(0.8, 0.95 * markerScale))
+        var verticalPanelHighlights = verticalPanels
+        verticalPanelHighlights = verticalPanelHighlights.offsetBy(dx: -0.25 * markerScale, dy: -0.35 * markerScale)
+        context.stroke(verticalPanelHighlights, with: .color(.white.opacity(0.08)), lineWidth: max(0.45, 0.55 * markerScale))
 
         // Horizontal panel lines (low opacity — like floor seams)
         var horizontalPanels = Path()
@@ -1227,7 +1235,13 @@ struct FloorCanvasView: View {
             horizontalPanels.move(to: CGPoint(x: 0, y: y))
             horizontalPanels.addLine(to: CGPoint(x: width, y: y))
         }
-        context.stroke(horizontalPanels, with: .color(.white.opacity(0.08)), lineWidth: 1)
+        var horizontalPanelShadows = horizontalPanels
+        horizontalPanelShadows = horizontalPanelShadows.offsetBy(dx: 0.45 * markerScale, dy: 0.75 * markerScale)
+        context.stroke(horizontalPanelShadows, with: .color(.black.opacity(0.18)), lineWidth: max(1.0, 1.2 * markerScale))
+        context.stroke(horizontalPanels, with: .color(floorLiftColor.opacity(0.14)), lineWidth: max(0.75, 0.9 * markerScale))
+        var horizontalPanelHighlights = horizontalPanels
+        horizontalPanelHighlights = horizontalPanelHighlights.offsetBy(dx: -0.2 * markerScale, dy: -0.3 * markerScale)
+        context.stroke(horizontalPanelHighlights, with: .color(.white.opacity(0.065)), lineWidth: max(0.45, 0.5 * markerScale))
 
         // Border
         var border = Path()
@@ -1235,6 +1249,18 @@ struct FloorCanvasView: View {
         context.stroke(border, with: .color(.white.opacity(0.25)), lineWidth: 2)
 
         drawCourtVignette(in: &context, width: width, height: height)
+    }
+
+    private var floorLiftColor: Color {
+        let baseColor = hasTransition
+            ? blendedFormationColor(progress: transitionProgress)
+            : formationColor
+        let (r, g, b) = rgbComponents(baseColor)
+        return Color(
+            red: min(1, r * 0.7 + 0.18),
+            green: min(1, g * 0.7 + 0.22),
+            blue: min(1, b * 0.7 + 0.28)
+        )
     }
 
     private func drawCourtVignette(in context: inout GraphicsContext, width: CGFloat, height: CGFloat) {
