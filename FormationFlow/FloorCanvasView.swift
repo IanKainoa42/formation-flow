@@ -198,8 +198,9 @@ struct FloorCanvasView: View {
                 let pulseState = pulseActive
                     ? pathPulseRenderState(time: timeline.date.timeIntervalSinceReferenceDate)
                     : nil
-                if let pulseState {
-                    drawPathPulseEnvironment(in: &context, state: pulseState)
+                let pulseLights = pulseState.map { activePulseLights(in: $0) } ?? []
+                if !pulseLights.isEmpty {
+                    drawPathPulseEnvironment(in: &context, lights: pulseLights)
                 }
                 drawGhostPrevPaths(in: &context)
                 drawGhostAthletes(in: &context)
@@ -213,7 +214,7 @@ struct FloorCanvasView: View {
                 drawPathSketch(in: &context)
                 drawPathCollisionMarkers(in: &context)
                 drawEndpointMarkers(in: &context)
-                drawAthletes(in: &context)
+                drawAthletes(in: &context, pulseLights: pulseLights)
 
                 if let pulseState {
                     drawPathPulses(in: &context, state: pulseState)
@@ -857,6 +858,20 @@ struct FloorCanvasView: View {
         let endGlow: Color
     }
 
+    private struct PulseLight {
+        let athleteID: UUID
+        let center: CGPoint
+        let color: Color
+        let intensity: CGFloat
+    }
+
+    private struct PulseMarkerInfluence {
+        /// Unit vector pointing away from the light source.
+        let shadowDirection: CGPoint
+        let color: Color
+        let strength: CGFloat
+    }
+
     private func pulseGlowColor(progress: CGFloat, state: PulseRenderState) -> Color {
         let t = min(max(progress, 0), 1)
         return Color(
@@ -929,10 +944,12 @@ struct FloorCanvasView: View {
         )
     }
 
-    private func drawPathPulseEnvironment(in context: inout GraphicsContext, state: PulseRenderState) {
+    private func activePulseLights(in state: PulseRenderState) -> [PulseLight] {
         let flashDecay: Double = 0.32
         let restingGlow: CGFloat = 0.08
         let laneDensityDamping = min(CGFloat(1), CGFloat(3 / sqrt(Double(max(state.lanes.count, 1)))))
+        var lights: [PulseLight] = []
+        lights.reserveCapacity(state.lanes.count)
 
         for lane in state.lanes {
             let localT = state.cycleT - lane.start
@@ -942,16 +959,76 @@ struct FloorCanvasView: View {
                 let head = CGFloat(progress)
                 let center = pointAtArcLength(head * lane.total, pts: lane.poly, cum: lane.cum)
                 let color = pulseGlowColor(progress: head, state: state)
-                drawPulseFloorSpill(in: &context, center: center, intensity: laneDensityDamping, color: color)
+                lights.append(
+                    PulseLight(
+                        athleteID: lane.item.athleteID,
+                        center: center,
+                        color: color,
+                        intensity: laneDensityDamping
+                    )
+                )
             }
 
             let sinceArrival = state.cycleT - (lane.start + lane.travel)
             if sinceArrival >= 0 {
                 let flash = max(restingGlow, CGFloat(exp(-sinceArrival / flashDecay)))
                 let center = CGPoint(x: lane.item.endPosition.x * cellSize, y: lane.item.endPosition.y * cellSize)
-                drawPulseFloorSpill(in: &context, center: center, intensity: flash * laneDensityDamping, color: state.endGlow)
+                lights.append(
+                    PulseLight(
+                        athleteID: lane.item.athleteID,
+                        center: center,
+                        color: state.endGlow,
+                        intensity: flash * laneDensityDamping
+                    )
+                )
             }
         }
+
+        return lights
+    }
+
+    private func drawPathPulseEnvironment(in context: inout GraphicsContext, lights: [PulseLight]) {
+        for light in lights {
+            drawPulseFloorSpill(in: &context, center: light.center, intensity: light.intensity, color: light.color)
+        }
+    }
+
+    private func pulseInfluence(
+        for athleteID: UUID,
+        at center: CGPoint,
+        markerRadius: CGFloat,
+        lights: [PulseLight]
+    ) -> PulseMarkerInfluence? {
+        guard !lights.isEmpty else { return nil }
+
+        let reach = max(30, markerRadius + 30 * markerScale)
+        let reachSquared = reach * reach
+        var bestStrength: CGFloat = 0
+        var bestDirection = CGPoint.zero
+        var bestColor = Color.white
+
+        for light in lights where light.athleteID != athleteID {
+            let dx = center.x - light.center.x
+            let dy = center.y - light.center.y
+            let distanceSquared = dx * dx + dy * dy
+            guard distanceSquared > 0.25, distanceSquared < reachSquared else { continue }
+
+            let distance = distanceSquared.squareRoot()
+            let falloff = 1 - (distance / reach)
+            let strength = light.intensity * falloff * falloff
+            if strength > bestStrength {
+                bestStrength = strength
+                bestDirection = CGPoint(x: dx / distance, y: dy / distance)
+                bestColor = light.color
+            }
+        }
+
+        guard bestStrength > 0.025 else { return nil }
+        return PulseMarkerInfluence(
+            shadowDirection: bestDirection,
+            color: bestColor,
+            strength: min(bestStrength, 1)
+        )
     }
 
     private func drawPulseFloorSpill(in context: inout GraphicsContext, center: CGPoint, intensity: CGFloat, color: Color) {
@@ -1433,7 +1510,7 @@ struct FloorCanvasView: View {
         }
     }
 
-    private func drawAthletes(in context: inout GraphicsContext) {
+    private func drawAthletes(in context: inout GraphicsContext, pulseLights: [PulseLight]) {
         for athlete in athletes {
             let point = CGPoint(x: athlete.position.x * cellSize, y: athlete.position.y * cellSize)
             let isSelected = selectedAthleteIDs.contains(athlete.id)
@@ -1455,6 +1532,12 @@ struct FloorCanvasView: View {
                 let radius = baseRadius * interactionScale
                 let formationColor = blendedFormationColor(progress: transitionProgress)
                 let fillColor: Color = isColliding ? .red : formationColor
+                let markerPulseInfluence = pulseInfluence(
+                    for: athlete.id,
+                    at: point,
+                    markerRadius: radius,
+                    lights: pulseLights
+                )
                 drawPremiumAthleteMarker(
                     in: &context,
                     athlete: athlete,
@@ -1465,7 +1548,8 @@ struct FloorCanvasView: View {
                     isHovered: isHovered,
                     isDragging: isDragging,
                     isColliding: isColliding,
-                    isSwapSource: false
+                    isSwapSource: false,
+                    pulseInfluence: markerPulseInfluence
                 )
 
                 let label = Text(athlete.label)
@@ -1479,6 +1563,12 @@ struct FloorCanvasView: View {
                 let baseRadius = (isSelected ? athlete.role.selectedMarkerRadius : athlete.role.markerRadius) * markerScale
                 let radius = baseRadius * interactionScale
                 let isSwapSource = athlete.id == swapSourceID
+                let markerPulseInfluence = pulseInfluence(
+                    for: athlete.id,
+                    at: point,
+                    markerRadius: radius,
+                    lights: pulseLights
+                )
 
                 drawPremiumAthleteMarker(
                     in: &context,
@@ -1490,7 +1580,8 @@ struct FloorCanvasView: View {
                     isHovered: isHovered,
                     isDragging: isDragging,
                     isColliding: isColliding,
-                    isSwapSource: isSwapSource
+                    isSwapSource: isSwapSource,
+                    pulseInfluence: markerPulseInfluence
                 )
 
                 if isColliding {
@@ -1526,10 +1617,24 @@ struct FloorCanvasView: View {
         isHovered: Bool,
         isDragging: Bool,
         isColliding: Bool,
-        isSwapSource: Bool
+        isSwapSource: Bool,
+        pulseInfluence: PulseMarkerInfluence?
     ) {
         let marker = athlete.role.markerPath(center: center, radius: radius)
         let lift = isDragging || isHovered
+
+        if let pulseInfluence {
+            let strength = pulseInfluence.strength
+            let castDistance = (3.2 + 7.0 * strength) * markerScale
+            let castCenter = CGPoint(
+                x: center.x + pulseInfluence.shadowDirection.x * castDistance,
+                y: center.y + pulseInfluence.shadowDirection.y * castDistance
+            )
+            let castRadius = radius + (2.0 + 4.5 * strength) * markerScale
+            let castShadow = athlete.role.markerPath(center: castCenter, radius: castRadius)
+            context.fill(castShadow, with: .color(.black.opacity(0.13 * strength)))
+        }
+
         let shadowOffset = CGPoint(
             x: center.x + (lift ? 2.2 : 1.4) * markerScale,
             y: center.y + (lift ? 4.0 : 2.8) * markerScale
@@ -1558,6 +1663,26 @@ struct FloorCanvasView: View {
             radius: radius * 0.72
         )
         context.fill(topLight, with: .color(.white.opacity(isColliding ? 0.12 : 0.16)))
+
+        if let pulseInfluence {
+            let strength = pulseInfluence.strength
+            let litCenter = CGPoint(
+                x: center.x - pulseInfluence.shadowDirection.x * radius * 0.22,
+                y: center.y - pulseInfluence.shadowDirection.y * radius * 0.22
+            )
+            let catchlight = athlete.role.markerPath(center: litCenter, radius: radius * 0.62)
+            context.fill(catchlight, with: .color(pulseInfluence.color.opacity(0.11 * strength)))
+
+            let rimLift = athlete.role.markerPath(
+                center: litCenter,
+                radius: radius + max(1.2, 1.5 * markerScale)
+            )
+            context.stroke(
+                rimLift,
+                with: .color(.white.opacity(0.14 * strength)),
+                lineWidth: max(0.7, 0.9 * markerScale)
+            )
+        }
 
         let lowerShade = athlete.role.markerPath(
             center: CGPoint(x: center.x + radius * 0.12, y: center.y + radius * 0.16),
