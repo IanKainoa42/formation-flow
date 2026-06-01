@@ -90,6 +90,7 @@ struct FloorGridView: View {
     @State private var draggingAthleteIDs: Set<UUID> = []
     @State private var undoStack: [[(id: UUID, position: CGPoint)]] = []
     @State private var rotationStartPositions: [UUID: CGPoint] = [:]
+    @State private var lastRotationDetent: Int = 0
     @State private var zoomScale: CGFloat = 1.0
     @State private var lastZoomScale: CGFloat = 1.0
     @State private var canvasPanOffset: CGSize = .zero
@@ -629,6 +630,7 @@ struct FloorGridView: View {
             canvasPanOffset = .zero
             lastCanvasPanOffset = .zero
             rotationStartPositions = [:]
+            lastRotationDetent = 0
             clearTransitionDragState()
             selectedAthleteIDs = []
         }
@@ -1112,19 +1114,32 @@ struct FloorGridView: View {
                                     if result[athlete.id] == nil { result[athlete.id] = athlete.position }
                                 }
                             }
+                            lastRotationDetent = 0
                         }
-                        applyRotation(angle: value.radians)
+                        // Hard-cut to 45° detents — the formation only ever lands on a
+                        // clean grid-aligned orientation, never an awkward in-between.
+                        let detent = rotationDetent(for: value.radians)
+                        guard detent != lastRotationDetent else { return }
+                        lastRotationDetent = detent
+                        UISelectionFeedbackGenerator().selectionChanged()
+                        applyRotation(angle: CGFloat(detent) * rotationSnapIncrement)
                     }
                     .onEnded { value in
                         guard selectedAthleteIDs.count >= 2, !rotationStartPositions.isEmpty else {
                             rotationStartPositions = [:]
+                            lastRotationDetent = 0
                             return
                         }
-                        // Final snap + push undo
-                        applyRotation(angle: value.radians)
-                        undoStack.append(rotationStartPositions.map { ($0.key, $0.value) })
+                        let detent = rotationDetent(for: value.radians)
+                        // A net rotation of zero is a no-op — don't reset positions or
+                        // push a useless undo entry for an incidental two-finger twitch.
+                        if detent != 0 {
+                            applyRotation(angle: CGFloat(detent) * rotationSnapIncrement)
+                            undoStack.append(rotationStartPositions.map { ($0.key, $0.value) })
+                            refreshTransitionFromStore()
+                        }
                         rotationStartPositions = [:]
-                        refreshTransitionFromStore()
+                        lastRotationDetent = 0
                     }
             )
             #if canImport(UIKit)
@@ -2684,6 +2699,11 @@ struct FloorGridView: View {
                 if isDraggingAthletes, !dragStartPositions.isEmpty {
                     undoStack.append(dragStartPositions.map { ($0.key, $0.value) })
                     refreshTransitionFromStore()
+                    // A real move happened (drag cleared the activation threshold) —
+                    // keep the moved selection intact. Falling through to tap-handling
+                    // below would collapse a multi-athlete group down to the single
+                    // athlete under the finger.
+                    return
                 }
 
                 if isDraggingEndpoint {
@@ -3063,6 +3083,14 @@ struct FloorGridView: View {
     }
 
     // MARK: - Rotation
+
+    /// Rotation snaps in 45° steps so groups never land at an off-grid angle.
+    private var rotationSnapIncrement: CGFloat { .pi / 4 }
+
+    /// Nearest 45° detent index for a raw gesture angle (…, -1, 0, 1, 2, …).
+    private func rotationDetent(for radians: CGFloat) -> Int {
+        Int((radians / rotationSnapIncrement).rounded())
+    }
 
     private func applyRotation(angle: CGFloat) {
         guard !rotationStartPositions.isEmpty else { return }
