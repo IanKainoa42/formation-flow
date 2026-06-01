@@ -139,6 +139,10 @@ struct FloorCanvasView: View {
     /// Seconds for the pulse to traverse a full transition (slowest athlete).
     /// Deliberately quicker than real playback — it's an ambient teaser, not a rehearsal.
     var pulsePeriodSeconds: Double = 1.3
+    /// The transition's total length in counts (== seconds at 1× playback). Used
+    /// to scale each athlete's pulse launch delay so a comet waits the same
+    /// FRACTION of the transition that the athlete waits in real playback.
+    var transitionCounts: Double = 4
     var ghostAthletes: [RenderedAthlete] = []
     var ghostColor: Color = .white
     var ghostNextAthletes: [RenderedAthlete] = []
@@ -153,6 +157,9 @@ struct FloorCanvasView: View {
     var hoveredPathAthleteID: UUID? = nil
     var focusedPathHandle: CGPoint? = nil
     var draggingAthleteIDs: Set<UUID> = []
+    /// When true, non-selected athletes render faintly (path-focus mode) so the
+    /// selected athlete and its route are the only things that read as active.
+    var dimUnselectedAthletes: Bool = false
 
     /// Scale factor so athlete markers stay proportional to the floor.
     /// Reference cellSize of 12 matches the original fixed-pixel radii.
@@ -871,7 +878,14 @@ struct FloorCanvasView: View {
             guard let total = cum.last, total > 0 else { continue }
             let lengthFeet = total / max(cellSize, 0.0001)
             let travel = max(0.25, Double(lengthFeet) * secondsPerFoot)
-            let start = Double(max(0, item.moveDelay)) * 0.12
+            // Launch delay = the same fraction of the transition the athlete waits
+            // in real playback (moveDelay counts out of `transitionCounts`), mapped
+            // onto the pulse's own "one full move" time unit. A full-transition
+            // delay therefore parks the comet for one whole reference traverse and,
+            // because it pushes out lastArrival below, lengthens the group cycle —
+            // mirroring how a delayed athlete extends the real transition.
+            let delayFraction = Double(max(0, item.moveDelay)) / max(transitionCounts, 0.5)
+            let start = delayFraction * pulsePeriodSeconds
             lanes.append(PulseLane(item: item, poly: poly, cum: cum, total: total, start: start, travel: travel))
         }
         guard !lanes.isEmpty else { return }
@@ -1119,16 +1133,7 @@ struct FloorCanvasView: View {
             } else {
                 path.addLine(to: end)
             }
-            context.stroke(path, with: .color(ghostColor.opacity(0.22)), style: style)
-            drawDirectionChevrons(
-                in: &context,
-                along: pathPolyline(for: item),
-                color: ghostColor,
-                opacity: 0.32,
-                spacing: max(7, 8 * markerScale),
-                size: max(4, 5 * markerScale),
-                lineWidth: max(1.1, 1.3 * markerScale)
-            )
+            context.stroke(path, with: .color(ghostColor.opacity(0.12)), style: style)
         }
     }
 
@@ -1158,16 +1163,7 @@ struct FloorCanvasView: View {
             } else {
                 path.addLine(to: end)
             }
-            context.stroke(path, with: .color(ghostNextColor.opacity(0.22)), style: style)
-            drawDirectionChevrons(
-                in: &context,
-                along: pathPolyline(for: item),
-                color: ghostNextColor,
-                opacity: 0.32,
-                spacing: max(7, 8 * markerScale),
-                size: max(4, 5 * markerScale),
-                lineWidth: max(1.1, 1.3 * markerScale)
-            )
+            context.stroke(path, with: .color(ghostNextColor.opacity(0.12)), style: style)
         }
     }
 
@@ -1308,6 +1304,13 @@ struct FloorCanvasView: View {
             let isHovered = athlete.id == hoveredAthleteID
             let isDragging = draggingAthleteIDs.contains(athlete.id)
             let interactionScale: CGFloat = isDragging ? 1.08 : (isHovered ? 1.04 : 1.0)
+
+            // Path-focus mode: everything that isn't the selected athlete recedes
+            // to a faint, frozen-looking ghost (still tappable to switch focus).
+            var context = context
+            if dimUnselectedAthletes && !isSelected {
+                context.opacity = 0.11
+            }
 
             if hasTransition {
                 // Transition mode: athletes colored by formation, blending start→end

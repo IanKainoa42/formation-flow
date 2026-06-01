@@ -7,6 +7,36 @@ enum SwapFormationTarget: String, CaseIterable {
     case end = "End"
 }
 
+/// How many transition paths the editor draws at once. Persisted as a user
+/// preference so coaches can dial down clutter. Default is `.selectedOnly` —
+/// only the selected athlete's path shows, everything else recedes.
+enum PathDisplayScope: String, CaseIterable, Identifiable {
+    case off
+    case selectedOnly
+    case currentFormation
+    case allFormations
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .off: return "Hidden"
+        case .selectedOnly: return "Selected Athlete"
+        case .currentFormation: return "This Formation"
+        case .allFormations: return "All Formations"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .off: return "eye.slash"
+        case .selectedOnly: return "scope"
+        case .currentFormation: return "point.topleft.down.curvedto.point.bottomright.up"
+        case .allFormations: return "square.stack.3d.up.fill"
+        }
+    }
+}
+
 // MARK: - Floor Grid View
 
 struct FloorGridView: View {
@@ -44,7 +74,13 @@ struct FloorGridView: View {
     @State private var showingAthleteRenamePrompt = false
     @State private var athleteLabelDraft = ""
     @State private var showingAthleteDeleteConfirmation = false
-    @State private var showTransitionPaths = true
+    @AppStorage("pathDisplayScope") private var pathDisplayScopeRaw = PathDisplayScope.selectedOnly.rawValue
+    private var pathDisplayScope: PathDisplayScope {
+        PathDisplayScope(rawValue: pathDisplayScopeRaw) ?? .selectedOnly
+    }
+    // Kept as a computed convenience so the many gesture sites that gate on
+    // "are paths visible at all" don't need to learn about scope.
+    private var showTransitionPaths: Bool { pathDisplayScope != .off }
     @State private var isDraggingAthletes = false
     @State private var isPanningCanvas = false
     @State private var isDrawingSelectionBox = false
@@ -157,8 +193,14 @@ struct FloorGridView: View {
     private var renderedAthletes: [RenderedAthlete] {
         _ = playerTick // force redraw on player updates
         if let player {
-            if !isTransportEngaged, let focusedEndpoint {
-                return focusedEndpoint == .end ? player.endAthletes : player.startAthletes
+            // Idle display follows the formation being edited, falling back to
+            // currentFormationEndpoint so the very first frame (before any
+            // gesture sets focusedEndpoint) already shows the right formation.
+            // Without this, focusedEndpoint is nil on appear → currentAthletes
+            // (= start positions), and the first tap snapped the canvas to the
+            // edited formation's real positions ("selecting changes formations").
+            if !isTransportEngaged, let endpoint = focusedEndpoint ?? currentFormationEndpoint {
+                return endpoint == .end ? player.endAthletes : player.startAthletes
             }
             return player.currentAthletes
         }
@@ -305,8 +347,10 @@ struct FloorGridView: View {
 
     private var displayProgress: CGFloat {
         guard let player else { return 0 }
-        if !isTransportEngaged, let focusedEndpoint {
-            return focusedEndpoint == .end ? 1.0 : 0.0
+        // Same nil-window guard as renderedAthletes — keep the formation color
+        // blend in sync with the edited formation on the first frame.
+        if !isTransportEngaged, let endpoint = focusedEndpoint ?? currentFormationEndpoint {
+            return endpoint == .end ? 1.0 : 0.0
         }
         return player.progress
     }
@@ -324,6 +368,36 @@ struct FloorGridView: View {
     private var transitionPaths: [TransitionPathRenderItem] {
         guard let player else { return [] }
         return player.cachedTransitionPaths
+    }
+
+    // MARK: - Path display scope
+
+    /// Current-transition paths filtered by the user's display-scope preference.
+    private var displayedTransitionPaths: [TransitionPathRenderItem] {
+        switch pathDisplayScope {
+        case .off:
+            return []
+        case .selectedOnly:
+            guard !selectedAthleteIDs.isEmpty else { return [] }
+            return transitionPaths.filter { selectedAthleteIDs.contains($0.athleteID) }
+        case .currentFormation, .allFormations:
+            return transitionPaths
+        }
+    }
+
+    /// Prev/next ghosts only render in All Formations mode.
+    private var displayedPrevGhostPaths: [TransitionPathRenderItem] {
+        pathDisplayScope == .allFormations ? previousGhostPaths : []
+    }
+
+    private var displayedNextGhostPaths: [TransitionPathRenderItem] {
+        pathDisplayScope == .allFormations ? nextGhostPaths : []
+    }
+
+    /// Fade the non-selected athletes when focusing a single athlete's path so
+    /// the only thing that reads as editable is the selected athlete's route.
+    private var dimUnselectedAthletes: Bool {
+        pathDisplayScope == .selectedOnly && hasTransition && !selectedAthleteIDs.isEmpty
     }
 
     private var endpointMarkers: [TransitionEndpointMarkerRenderItem] {
@@ -735,17 +809,21 @@ struct FloorGridView: View {
                 }
 
                 if hasTransition {
-                    Button {
-                        showTransitionPaths.toggle()
+                    Menu {
+                        Picker("Paths", selection: Binding(
+                            get: { pathDisplayScope },
+                            set: { pathDisplayScopeRaw = $0.rawValue }
+                        )) {
+                            ForEach(PathDisplayScope.allCases) { scope in
+                                Label(scope.label, systemImage: scope.systemImage).tag(scope)
+                            }
+                        }
                     } label: {
-                        Label(
-                            showTransitionPaths ? "Hide" : "Show",
-                            systemImage: showTransitionPaths ? "eye.slash" : "eye"
-                        )
+                        Label("Paths", systemImage: pathDisplayScope.systemImage)
                     }
                     .buttonStyle(.bordered)
-                    .accessibilityLabel(showTransitionPaths ? "Hide Paths" : "Show Paths")
-                    .help(showTransitionPaths ? "Hide movement paths between formations" : "Show movement paths between formations")
+                    .accessibilityLabel("Path display: \(pathDisplayScope.label)")
+                    .help("Choose how many transition paths to show")
 
                     Button(action: shareTransitionPreview) {
                         Label("Share", systemImage: "square.and.arrow.up")
@@ -979,7 +1057,7 @@ struct FloorGridView: View {
             let baseCanvasContent = FloorCanvasView(
                 athletes: renderedAthletes,
                 selectedAthleteIDs: selectedAthleteIDs,
-                transitionPaths: showTransitionPaths ? transitionPaths : [],
+                transitionPaths: displayedTransitionPaths,
                 endpointMarkers: endpointMarkers,
                 alignmentGuides: activeAlignmentGuides,
                 mirrorGuides: activeMirrorGuides,
@@ -998,18 +1076,20 @@ struct FloorGridView: View {
                 transitionProgress: displayProgress,
                 formationColor: currentFormationColor,
                 showPathPulse: hasTransition && showTransitionPaths && !isTransportEngaged,
-                ghostAthletes: previousFormationAthletes,
+                transitionCounts: player?.counts ?? 4,
+                ghostAthletes: pathDisplayScope == .allFormations ? previousFormationAthletes : [],
                 ghostColor: previousFormationColor,
-                ghostNextAthletes: nextFormationAthletes,
+                ghostNextAthletes: pathDisplayScope == .allFormations ? nextFormationAthletes : [],
                 ghostNextColor: nextFormationColor,
-                ghostPrevPaths: showTransitionPaths ? previousGhostPaths : [],
-                ghostNextPaths: showTransitionPaths ? nextGhostPaths : [],
+                ghostPrevPaths: displayedPrevGhostPaths,
+                ghostNextPaths: displayedNextGhostPaths,
                 pathSketchPoints: pathSketchPoints,
                 hoveredHandlePosition: hoveredHandlePosition,
                 hoveredAthleteID: hoveredAthleteID,
                 hoveredPathAthleteID: hoveredPathAthleteID,
                 focusedPathHandle: focusedPathHandle,
-                draggingAthleteIDs: draggingAthleteIDs
+                draggingAthleteIDs: draggingAthleteIDs,
+                dimUnselectedAthletes: dimUnselectedAthletes
             )
             .gesture(
                 dragGesture(
@@ -2364,7 +2444,9 @@ struct FloorGridView: View {
                     return athleteHit(at: startScaledPoint, within: renderedAthletes, cellSize: cellSize)
                 }()
 
-                // Priority 2: Focused path handle gets a large grab area
+                // Priority 2: Focused waypoint handle gets a large grab area.
+                // (Only waypoints are draggable — the legacy midpoint bend handle
+                // was removed; path shape is edited via waypoints + long-press sketch.)
                 if athleteAtStart == nil,
                    let focusedPathHandle,
                    let selectedAthleteID, let player,
@@ -2372,18 +2454,17 @@ struct FloorGridView: View {
                 {
                     let focusedHitRadius = hitRadiusSquared * 2
                     if PathCalculations.squaredDistance(from: startScaledPoint, to: focusedPathHandle) < focusedHitRadius {
-                        guard dragDistanceSquared >= dragActivationDistanceSquared else { return }
                         let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
-                        // Match to a waypoint if possible
                         if let waypoint = transition.pathWaypoints.first(where: {
                             PathCalculations.squaredDistance(from: focusedPathHandle, to: $0.position) < 1.0
                         }) {
+                            guard dragDistanceSquared >= dragActivationDistanceSquared else { return }
                             draggingWaypointID = waypoint.id
+                            isDraggingPathHandle = true
+                            focusedEndpoint = currentFormationEndpoint
+                            handlePathDragContinued(scaledPoint: scaledPoint)
+                            return
                         }
-                        isDraggingPathHandle = true
-                        focusedEndpoint = currentFormationEndpoint
-                        handlePathDragContinued(scaledPoint: scaledPoint)
-                        return
                     }
                 }
 
@@ -2399,10 +2480,12 @@ struct FloorGridView: View {
                         let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID })
                         let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
 
-                        // Check existing waypoint handles first
+                        // Check existing waypoint handles first. Generous grab
+                        // radius so the bend handles are easy to catch.
+                        let waypointGrabRadius = hitRadiusSquared * 2.5
                         for waypoint in transition.pathWaypoints {
                             if PathCalculations.squaredDistance(from: startScaledPoint, to: waypoint.position)
-                                < hitRadiusSquared
+                                < waypointGrabRadius
                             {
                                 guard dragDistanceSquared >= dragActivationDistanceSquared else { return }
                                 draggingWaypointID = waypoint.id
@@ -2413,10 +2496,41 @@ struct FloorGridView: View {
                             }
                         }
 
-                        // Sketching is now driven by long-press-on-athlete via the
-                        // CanvasMultiTouchGestureView overlay — no implicit drag-on-path.
-                        _ = startAthlete
-                        _ = endAthlete
+                        // No waypoints yet → the midpoint "bend" handle on the
+                        // selected athlete's path creates a waypoint on drag, so
+                        // you can grab the path and bend it without sketching.
+                        if transition.pathWaypoints.isEmpty,
+                           athleteAtStart == nil,
+                           let startAthlete,
+                           let endAthlete
+                        {
+                            let midpoint = CGPoint(
+                                x: (startAthlete.position.x + endAthlete.position.x) / 2,
+                                y: (startAthlete.position.y + endAthlete.position.y) / 2
+                            )
+                            if PathCalculations.squaredDistance(from: startScaledPoint, to: midpoint) < waypointGrabRadius,
+                               let startFormationID, let endFormationID {
+                                guard dragDistanceSquared >= dragActivationDistanceSquared else { return }
+                                // Free, like the old control-point bend: materialize
+                                // a single waypoint at the grab point and drag it.
+                                let newWaypoint = PathWaypoint(position: clampedPathPoint(scaledPoint), isSmooth: true)
+                                store.mutateAthleteTransition(
+                                    from: startFormationID,
+                                    to: endFormationID,
+                                    athleteID: selectedAthleteID
+                                ) { t in
+                                    t.pathControlPoint = nil
+                                    t.pathWaypoints = [newWaypoint]
+                                }
+                                refreshTransitionFromStore()
+                                draggingWaypointID = newWaypoint.id
+                                isDraggingPathHandle = true
+                                focusedEndpoint = currentFormationEndpoint
+                                focusedPathHandle = scaledPoint
+                                handlePathDragContinued(scaledPoint: scaledPoint)
+                                return
+                            }
+                        }
                     }
 
                     // 2b/2c: Hovered athlete wins, then closest hit
@@ -2643,28 +2757,11 @@ struct FloorGridView: View {
                     y: (value.startLocation.y - offset.y) / cellSize
                 )
 
-                if showTransitionPaths {
-                    if let handle = nearestPathHandle(at: tapPoint, cellSize: cellSize)
-                        ?? nearestPathHandle(at: startScaledPoint, cellSize: cellSize)
-                    {
-                        focusedEndpoint = currentFormationEndpoint
-                        focusedPathHandle = handle
-                        return
-                    }
-
-                    if let hit = selectedTransitionPathHit(
-                        at: tapPoint,
-                        maxSquaredDistance: pathHitRadiusSquared(for: cellSize)
-                    ) ?? selectedTransitionPathHit(
-                        at: startScaledPoint,
-                        maxSquaredDistance: pathHitRadiusSquared(for: cellSize)
-                    ) {
-                        focusedEndpoint = currentFormationEndpoint
-                        focusedPathHandle = nil
-                        hoveredPathAthleteID = hit.transition.athleteID
-                        return
-                    }
-                }
+                // Athletes always win taps. Selecting an athlete is how you
+                // choose whose path to edit, so it must never be blocked by the
+                // currently-selected athlete's path handle or path line sitting
+                // nearby (the old "force field"). Tap an athlete → it's selected;
+                // its waypoint handles are then dragged directly.
 
                 // If an athlete is hovered, tapping selects exactly that athlete
                 if let hoveredID = hoveredAthleteID,
@@ -2688,6 +2785,31 @@ struct FloorGridView: View {
                     focusedEndpoint = hasTransition ? currentFormationEndpoint : nil
                     focusedPathHandle = nil
                     return
+                }
+
+                // No athlete under the tap — now allow focusing the selected
+                // athlete's path / waypoint handle (empty-space taps on the line).
+                if showTransitionPaths {
+                    if let handle = nearestPathHandle(at: tapPoint, cellSize: cellSize)
+                        ?? nearestPathHandle(at: startScaledPoint, cellSize: cellSize)
+                    {
+                        focusedEndpoint = currentFormationEndpoint
+                        focusedPathHandle = handle
+                        return
+                    }
+
+                    if let hit = selectedTransitionPathHit(
+                        at: tapPoint,
+                        maxSquaredDistance: pathHitRadiusSquared(for: cellSize)
+                    ) ?? selectedTransitionPathHit(
+                        at: startScaledPoint,
+                        maxSquaredDistance: pathHitRadiusSquared(for: cellSize)
+                    ) {
+                        focusedEndpoint = currentFormationEndpoint
+                        focusedPathHandle = nil
+                        hoveredPathAthleteID = hit.transition.athleteID
+                        return
+                    }
                 }
 
                 if endpointMarkerHit(at: tapPoint, within: endpointMarkers, hitRadiusSquared: hitRadiusSquared) != nil
@@ -2808,34 +2930,14 @@ struct FloorGridView: View {
         let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize) * 1.5
 
         let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
-        let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID })
-        let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
 
-        // Check waypoint handles
+        // Only waypoint handles are grabbable. The legacy midpoint bend handle
+        // was removed — it created a "force field" near the selected athlete and
+        // overlapped neighbors. Path shape is edited via waypoints + sketch.
         for waypoint in transition.pathWaypoints {
             if PathCalculations.squaredDistance(from: point, to: waypoint.position) < hitRadiusSquared {
                 return waypoint.position
             }
-        }
-
-        // Legacy control point handle
-        guard transition.pathWaypoints.isEmpty, let startAthlete, let endAthlete else { return nil }
-        let midpoint: CGPoint
-        if let controlPoint = transition.pathControlPoint {
-            midpoint = PathCalculations.quadraticBezierPoint(
-                from: startAthlete.position,
-                control: controlPoint,
-                to: endAthlete.position,
-                t: 0.5
-            )
-        } else {
-            midpoint = CGPoint(
-                x: (startAthlete.position.x + endAthlete.position.x) / 2,
-                y: (startAthlete.position.y + endAthlete.position.y) / 2
-            )
-        }
-        if PathCalculations.squaredDistance(from: point, to: midpoint) < hitRadiusSquared {
-            return midpoint
         }
         return nil
     }
