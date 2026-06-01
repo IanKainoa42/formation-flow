@@ -195,6 +195,12 @@ struct FloorCanvasView: View {
                     : .red
 
                 drawGrid(in: &context)
+                let pulseState = pulseActive
+                    ? pathPulseRenderState(time: timeline.date.timeIntervalSinceReferenceDate)
+                    : nil
+                if let pulseState {
+                    drawPathPulseEnvironment(in: &context, state: pulseState)
+                }
                 drawGhostPrevPaths(in: &context)
                 drawGhostAthletes(in: &context)
                 drawGhostNextPaths(in: &context)
@@ -209,8 +215,8 @@ struct FloorCanvasView: View {
                 drawEndpointMarkers(in: &context)
                 drawAthletes(in: &context)
 
-                if pulseActive {
-                    drawPathPulses(in: &context, time: timeline.date.timeIntervalSinceReferenceDate)
+                if let pulseState {
+                    drawPathPulses(in: &context, state: pulseState)
                 }
 
                 if let selectionLasso {
@@ -839,18 +845,32 @@ struct FloorCanvasView: View {
         let travel: Double   // time to traverse the path at constant floor-speed
     }
 
-    private func drawPathPulses(in context: inout GraphicsContext, time: TimeInterval) {
-        let items = transitionPaths
-        guard !items.isEmpty else { return }
+    private struct PulseRenderState {
+        let lanes: [PulseLane]
+        let cycleT: Double
+        let startRed: CGFloat
+        let startGreen: CGFloat
+        let startBlue: CGFloat
+        let endRed: CGFloat
+        let endGreen: CGFloat
+        let endBlue: CGFloat
+        let endGlow: Color
+    }
 
-        let samples = 36
-        let tailLen: CGFloat = 0.12   // comet trail length, as fraction of path
-        let leadLen: CGFloat = 0.05   // sharp leading edge
-        let haloWidth = max(6, 7 * markerScale)
-        let coreWidth = max(2, 2.4 * markerScale)
+    private func pulseGlowColor(progress: CGFloat, state: PulseRenderState) -> Color {
+        let t = min(max(progress, 0), 1)
+        return Color(
+            red: state.startRed + (state.endRed - state.startRed) * t,
+            green: state.startGreen + (state.endGreen - state.startGreen) * t,
+            blue: state.startBlue + (state.endBlue - state.startBlue) * t
+        )
+    }
+
+    private func pathPulseRenderState(time: TimeInterval) -> PulseRenderState? {
+        let items = transitionPaths
+        guard !items.isEmpty else { return nil }
+
         let restPause: Double = 0.7      // group holds, parked, before relaunching
-        let flashDecay: Double = 0.22    // arrival-burst fade
-        let restingGlow: CGFloat = 0.14  // faint "parked here, waiting" glow
 
         // Glow tint blends start→end formation color along the path so the light
         // reads directionally — trailing hue = where they came from, leading hue =
@@ -888,7 +908,7 @@ struct FloorCanvasView: View {
             let start = delayFraction * pulsePeriodSeconds
             lanes.append(PulseLane(item: item, poly: poly, cum: cum, total: total, start: start, travel: travel))
         }
-        guard !lanes.isEmpty else { return }
+        guard !lanes.isEmpty else { return nil }
 
         // One shared cycle for the whole group: everyone launches together, each
         // parks on arrival and waits until the slowest lands, then all relaunch.
@@ -896,8 +916,129 @@ struct FloorCanvasView: View {
         let cycle = lastArrival + restPause
         let cycleT = time.truncatingRemainder(dividingBy: cycle)
 
-        for lane in lanes {
-            let localT = cycleT - lane.start
+        return PulseRenderState(
+            lanes: lanes,
+            cycleT: cycleT,
+            startRed: sr,
+            startGreen: sg,
+            startBlue: sb,
+            endRed: er,
+            endGreen: eg,
+            endBlue: eb,
+            endGlow: endGlow
+        )
+    }
+
+    private func drawPathPulseEnvironment(in context: inout GraphicsContext, state: PulseRenderState) {
+        let flashDecay: Double = 0.32
+        let restingGlow: CGFloat = 0.08
+        let laneDensityDamping = min(CGFloat(1), CGFloat(3 / sqrt(Double(max(state.lanes.count, 1)))))
+
+        for lane in state.lanes {
+            let localT = state.cycleT - lane.start
+            let progress = lane.travel > 0 ? min(max(localT / lane.travel, 0), 1) : (localT >= 0 ? 1 : 0)
+
+            if localT >= 0, progress < 1 {
+                let head = CGFloat(progress)
+                let center = pointAtArcLength(head * lane.total, pts: lane.poly, cum: lane.cum)
+                let color = pulseGlowColor(progress: head, state: state)
+                drawPulseFloorSpill(in: &context, center: center, intensity: laneDensityDamping, color: color)
+            }
+
+            let sinceArrival = state.cycleT - (lane.start + lane.travel)
+            if sinceArrival >= 0 {
+                let flash = max(restingGlow, CGFloat(exp(-sinceArrival / flashDecay)))
+                let center = CGPoint(x: lane.item.endPosition.x * cellSize, y: lane.item.endPosition.y * cellSize)
+                drawPulseFloorSpill(in: &context, center: center, intensity: flash * laneDensityDamping, color: state.endGlow)
+            }
+        }
+    }
+
+    private func drawPulseFloorSpill(in context: inout GraphicsContext, center: CGPoint, intensity: CGFloat, color: Color) {
+        let clampedIntensity = min(max(intensity, 0), 1)
+        guard clampedIntensity > 0.02 else { return }
+
+        let spillRadius = max(24, 30 * markerScale)
+        var spill = Path()
+        spill.addEllipse(
+            in: CGRect(
+                x: center.x - spillRadius,
+                y: center.y - spillRadius,
+                width: spillRadius * 2,
+                height: spillRadius * 2
+            )
+        )
+        context.fill(
+            spill,
+            with: .radialGradient(
+                Gradient(colors: [
+                    color.opacity(0.055 * clampedIntensity),
+                    Color.white.opacity(0.014 * clampedIntensity),
+                    .clear
+                ]),
+                center: center,
+                startRadius: 0,
+                endRadius: spillRadius
+            )
+        )
+
+        drawPulseSeamGlint(in: &context, center: center, intensity: clampedIntensity, color: color)
+    }
+
+    private func drawPulseSeamGlint(in context: inout GraphicsContext, center: CGPoint, intensity: CGFloat, color: Color) {
+        let width = CourtConstants.width * cellSize
+        let height = CourtConstants.height * cellSize
+        let seamSpacing = 8 * cellSize
+        guard seamSpacing > 1 else { return }
+
+        let reach = max(10, 12 * markerScale)
+        let halfLength = max(16, 22 * markerScale)
+        let lineWidth = max(0.55, 0.75 * markerScale)
+
+        let nearestVertical = (center.x / seamSpacing).rounded() * seamSpacing
+        if nearestVertical > 0, nearestVertical < width {
+            let distance = abs(center.x - nearestVertical)
+            if distance < reach {
+                let falloff = 1 - (distance / reach)
+                var seam = Path()
+                seam.move(to: CGPoint(x: nearestVertical, y: max(0, center.y - halfLength)))
+                seam.addLine(to: CGPoint(x: nearestVertical, y: min(height, center.y + halfLength)))
+                context.stroke(
+                    seam,
+                    with: .color(color.opacity(0.065 * falloff * intensity)),
+                    style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
+                )
+            }
+        }
+
+        let nearestHorizontal = (center.y / seamSpacing).rounded() * seamSpacing
+        if nearestHorizontal > 0, nearestHorizontal < height {
+            let distance = abs(center.y - nearestHorizontal)
+            if distance < reach {
+                let falloff = 1 - (distance / reach)
+                var seam = Path()
+                seam.move(to: CGPoint(x: max(0, center.x - halfLength), y: nearestHorizontal))
+                seam.addLine(to: CGPoint(x: min(width, center.x + halfLength), y: nearestHorizontal))
+                context.stroke(
+                    seam,
+                    with: .color(color.opacity(0.055 * falloff * intensity)),
+                    style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
+                )
+            }
+        }
+    }
+
+    private func drawPathPulses(in context: inout GraphicsContext, state: PulseRenderState) {
+        let samples = 36
+        let tailLen: CGFloat = 0.12   // comet trail length, as fraction of path
+        let leadLen: CGFloat = 0.05   // sharp leading edge
+        let haloWidth = max(5, 6.2 * markerScale)
+        let coreWidth = max(1.7, 2.0 * markerScale)
+        let flashDecay: Double = 0.22    // arrival-burst fade
+        let restingGlow: CGFloat = 0.1   // faint "parked here, waiting" glow
+
+        for lane in state.lanes {
+            let localT = state.cycleT - lane.start
             let progress = lane.travel > 0 ? min(max(localT / lane.travel, 0), 1) : (localT >= 0 ? 1 : 0)
             let head = CGFloat(progress)
 
@@ -916,19 +1057,15 @@ struct FloorCanvasView: View {
                         seg.move(to: prev)
                         seg.addLine(to: p1)
                         let t = min(max(fMid, 0), 1)
-                        let glow = Color(
-                            red: sr + (er - sr) * t,
-                            green: sg + (eg - sg) * t,
-                            blue: sb + (eb - sb) * t
-                        )
+                        let glow = pulseGlowColor(progress: t, state: state)
                         context.stroke(
                             seg,
-                            with: .color(glow.opacity(0.5 * intensity)),
+                            with: .color(glow.opacity(0.38 * intensity)),
                             style: StrokeStyle(lineWidth: haloWidth, lineCap: .round)
                         )
                         context.stroke(
                             seg,
-                            with: .color(.white.opacity(0.95 * intensity)),
+                            with: .color(.white.opacity(0.72 * intensity)),
                             style: StrokeStyle(lineWidth: coreWidth, lineCap: .round)
                         )
                     }
@@ -938,10 +1075,10 @@ struct FloorCanvasView: View {
 
             // Arrival flash, then a faint resting glow held until the group
             // relaunches — so you can see who's already parked and waiting.
-            let sinceArrival = cycleT - (lane.start + lane.travel)
+            let sinceArrival = state.cycleT - (lane.start + lane.travel)
             if sinceArrival >= 0 {
                 let flash = max(restingGlow, CGFloat(exp(-sinceArrival / flashDecay)))
-                drawArrivalFlash(in: &context, at: lane.item.endPosition, intensity: flash, color: endGlow)
+                drawArrivalFlash(in: &context, at: lane.item.endPosition, intensity: flash, color: state.endGlow)
             }
         }
     }
@@ -956,7 +1093,7 @@ struct FloorCanvasView: View {
         context.fill(
             glow,
             with: .radialGradient(
-                Gradient(colors: [color.opacity(0.6 * intensity), color.opacity(0.18 * intensity), .clear]),
+                Gradient(colors: [color.opacity(0.42 * intensity), color.opacity(0.12 * intensity), .clear]),
                 center: center,
                 startRadius: 0,
                 endRadius: glowR
@@ -965,7 +1102,7 @@ struct FloorCanvasView: View {
         let coreR = (2.5 + 2 * intensity) * markerScale
         var core = Path()
         core.addEllipse(in: CGRect(x: center.x - coreR, y: center.y - coreR, width: coreR * 2, height: coreR * 2))
-        context.fill(core, with: .color(.white.opacity(0.9 * intensity)))
+        context.fill(core, with: .color(.white.opacity(0.64 * intensity)))
     }
 
     private func drawGrid(in context: inout GraphicsContext) {
