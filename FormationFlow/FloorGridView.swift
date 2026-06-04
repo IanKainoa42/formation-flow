@@ -115,6 +115,10 @@ struct FloorGridView: View {
     @State private var pendingWaypointDeletionID: UUID?
     @State private var pathSketchPoints: [CGPoint] = []
     @State private var pathSketchAnchorSide: PathSketchAnchorSide?
+    /// The athlete whose endpoint the active long-press sketch is anchored to.
+    /// Distinct from `selectedAthleteID` because group sketches preserve the
+    /// full multi-selection while still tracking which athlete owns the anchor.
+    @State private var longPressSketchAnchorAthleteID: UUID?
     @State private var bootstrapAthleteID: UUID?
     @State private var longPressArmingPosition: CGPoint?
     @State private var longPressProgress: Double = 0
@@ -2243,47 +2247,95 @@ struct FloorGridView: View {
     private func finishPathSketch() {
         guard
             pathSketchPoints.count >= 2,
-            let selectedAthleteID,
             let startFormationID,
             let endFormationID,
-            let player,
-            let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID }),
-            let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
+            let player
         else { return }
 
-        // The lift point redefines the opposite endpoint's position: dragging from the
-        // start endpoint sets a new end position; dragging from the end sets a new start.
-        var resolvedStart = startAthlete.position
-        var resolvedEnd = endAthlete.position
-        if let liftPoint = pathSketchPoints.last.map(clampedPathPoint),
+        // Resolve the anchor athlete: in single-select this is the only selected
+        // athlete; in group sketches it's whichever endpoint the long-press
+        // landed on (tracked separately so the whole group stays selected).
+        let anchorAthleteID = longPressSketchAnchorAthleteID
+            ?? (selectedAthleteIDs.count == 1 ? selectedAthleteIDs.first : nil)
+        guard
+            let anchorAthleteID,
+            let anchorStartAthlete = player.startAthletes.first(where: { $0.id == anchorAthleteID }),
+            let anchorEndAthlete = player.endAthletes.first(where: { $0.id == anchorAthleteID })
+        else { return }
+
+        let isGroupSketch = selectedAthleteIDs.count > 1 && selectedAthleteIDs.contains(anchorAthleteID)
+
+        // The lift point redefines the opposite endpoint's position in the
+        // single-athlete sketch flow. In a group sketch we keep every athlete's
+        // existing endpoints and only apply the drawn shape — the user asked
+        // for a relative path, not a wholesale position rewrite.
+        var resolvedStart = anchorStartAthlete.position
+        var resolvedEnd = anchorEndAthlete.position
+        if !isGroupSketch,
+           let liftPoint = pathSketchPoints.last.map(clampedPathPoint),
            let anchorSide = pathSketchAnchorSide {
             switch anchorSide {
             case .start:
                 resolvedEnd = liftPoint
                 store.mutateFormation(id: endFormationID) { formation in
-                    if let idx = formation.placements.firstIndex(where: { $0.athleteID == selectedAthleteID }) {
+                    if let idx = formation.placements.firstIndex(where: { $0.athleteID == anchorAthleteID }) {
                         formation.placements[idx].position = liftPoint
                     }
                 }
             case .end:
                 resolvedStart = liftPoint
                 store.mutateFormation(id: startFormationID) { formation in
-                    if let idx = formation.placements.firstIndex(where: { $0.athleteID == selectedAthleteID }) {
+                    if let idx = formation.placements.firstIndex(where: { $0.athleteID == anchorAthleteID }) {
                         formation.placements[idx].position = liftPoint
                     }
                 }
             }
         }
 
-        let waypoints = smoothedWaypoints(
+        let anchorWaypoints = smoothedWaypoints(
             fromSketch: pathSketchPoints,
             start: resolvedStart,
             end: resolvedEnd
         )
 
-        store.mutateAthleteTransition(from: startFormationID, to: endFormationID, athleteID: selectedAthleteID) { t in
-            t.pathControlPoint = nil
-            t.pathWaypoints = waypoints
+        if isGroupSketch {
+            // Translate the anchor's waypoint shape by each athlete's offset from
+            // the anchor's start. Everyone walks the same shape; nobody's
+            // start/end position changes. Single mutateTransitionSpec call to
+            // avoid the multi-mutation iOS 26 List storm noted in memory.
+            let anchorStart = anchorStartAthlete.position
+            let startsByID: [UUID: CGPoint] = Dictionary(
+                uniqueKeysWithValues: player.startAthletes.map { ($0.id, $0.position) }
+            )
+            let ids = selectedAthleteIDs
+            store.mutateTransitionSpec(from: startFormationID, to: endFormationID) { spec in
+                for index in spec.athleteTransitions.indices {
+                    let athleteID = spec.athleteTransitions[index].athleteID
+                    guard ids.contains(athleteID), let athleteStart = startsByID[athleteID] else { continue }
+                    let dx = athleteStart.x - anchorStart.x
+                    let dy = athleteStart.y - anchorStart.y
+                    let translated = anchorWaypoints.map { wp -> PathWaypoint in
+                        // Each athlete gets fresh waypoint IDs — sharing IDs
+                        // across athletes would collide downstream identity work.
+                        // The anchor reuses its original ids for visual continuity.
+                        let shifted = CGPoint(x: wp.position.x + dx, y: wp.position.y + dy)
+                        let newID = athleteID == anchorAthleteID ? wp.id : UUID()
+                        return PathWaypoint(
+                            id: newID,
+                            position: clampedPathPoint(shifted),
+                            isSmooth: wp.isSmooth,
+                            holdDuration: wp.holdDuration
+                        )
+                    }
+                    spec.athleteTransitions[index].pathControlPoint = nil
+                    spec.athleteTransitions[index].pathWaypoints = translated
+                }
+            }
+        } else {
+            store.mutateAthleteTransition(from: startFormationID, to: endFormationID, athleteID: anchorAthleteID) { t in
+                t.pathControlPoint = nil
+                t.pathWaypoints = anchorWaypoints
+            }
         }
         refreshTransitionFromStore()
     }
@@ -3344,9 +3396,14 @@ struct FloorGridView: View {
             y: (location.y - offset.y) / cellSize
         )
         if let hit = athleteEndpointHit(at: scaledPoint, cellSize: cellSize) {
-            if selectedAthleteIDs != [hit.athleteID] {
+            // Preserve an existing multi-selection when the long-press lands on
+            // one of the selected athletes — that athlete becomes the anchor
+            // and the drawn shape will be applied to the whole group on commit.
+            let preserveGroup = selectedAthleteIDs.count > 1 && selectedAthleteIDs.contains(hit.athleteID)
+            if !preserveGroup, selectedAthleteIDs != [hit.athleteID] {
                 selectedAthleteIDs = [hit.athleteID]
             }
+            longPressSketchAnchorAthleteID = hit.athleteID
             isLongPressSketching = true
             isSketchingPath = true
             pathSketchPoints = [clampedPathPoint(hit.anchor)]
@@ -3398,6 +3455,7 @@ struct FloorGridView: View {
         isSketchingPath = false
         pathSketchPoints = []
         pathSketchAnchorSide = nil
+        longPressSketchAnchorAthleteID = nil
         bootstrapAthleteID = nil
         longPressArmingToken = nil
         isLongPressCountdownVisible = false
