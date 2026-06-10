@@ -1,0 +1,4 @@
+• Draw paths for multiple athletes at once with group path sketching
+• Formation drag preview stays pinned during transitions
+• Group rotation snaps to clean angle increments
+• Improved path pulse lighting and shadows
