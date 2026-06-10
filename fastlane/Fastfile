@@ -146,10 +146,11 @@ platform :ios do
       skip_metadata: true,        # managed via ASC API (see :release)
       skip_screenshots: true,
       force: true,
+      skip_app_version_update: true,  # binary already uploaded at correct version; don't let deliver read a stray IPA
       run_precheck_before_submit: true,
-      precheck_include_in_app_purchases: true,
+      precheck_include_in_app_purchases: false,
       submit_for_review: true,
-      automatic_release_after_approval: true,
+      automatic_release: true,
       submission_information: { export_compliance_uses_encryption: false }
     )
   end
