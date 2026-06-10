@@ -127,9 +127,10 @@ platform :ios do
       api_key: api_key,
       ipa: ipa,
       force: true,
-      skip_metadata: true,      # see note in :release — managed via ASC API
+      skip_binary_upload: false,  # override Deliverfile default which has this true
+      skip_metadata: true,        # see note in :release — managed via ASC API
       skip_screenshots: true,
-      submit_for_review: false  # upload only — /ship gates before submit
+      submit_for_review: false    # upload only — /ship gates before submit
     )
     # Fallback: if iTMSTransporter regresses, drop this IPA on Transporter.app.
     UI.message("ship_upload produced IPA at #{ipa}")

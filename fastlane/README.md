@@ -29,7 +29,7 @@ Run tests
 [bundle exec] fastlane ios beta
 ```
 
-Build and upload to TestFlight
+Build and upload to TestFlight (openrsync-safe build)
 
 ### ios release
 
@@ -37,7 +37,31 @@ Build and upload to TestFlight
 [bundle exec] fastlane ios release
 ```
 
-Build and upload to App Store
+Build and upload to App Store (no submit; openrsync-safe build)
+
+### ios ship_upload
+
+```sh
+[bundle exec] fastlane ios ship_upload
+```
+
+Build + upload binary to App Store Connect. Does NOT submit. (/ship Phase 2)
+
+### ios ship_submit
+
+```sh
+[bundle exec] fastlane ios ship_submit
+```
+
+Submit an already-uploaded build for review, auto-release after approval. (/ship Phase 2)
+
+### ios asc_build_status
+
+```sh
+[bundle exec] fastlane ios asc_build_status
+```
+
+Print latest App Store build status as JSON (read-only). Used by /ship pre-flight.
 
 ### ios screenshots
 
