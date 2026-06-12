@@ -156,6 +156,47 @@ final class RoutineStoreTests: XCTestCase {
         XCTAssertEqual(store.routine.transitionSpecs[0].athleteTransitions[0].athleteID, athleteID2)
     }
 
+    func testDeleteMultipleAthletesReconcilesRosterFormationsAndTransitionsAtomically() {
+        let athleteID1 = store.addAthlete()
+        let athleteID2 = store.addAthlete()
+        let athleteID3 = store.addAthlete()
+        let initialFormationID = store.routine.formations[0].id
+        let secondFormationID = store.addFormation(after: initialFormationID)
+
+        store.mutateFormation(id: secondFormationID) { formation in
+            formation.placements[0].position = CGPoint(x: 11, y: 12)
+            formation.placements[1].position = CGPoint(x: 21, y: 22)
+            formation.placements[2].position = CGPoint(x: 31, y: 32)
+        }
+        store.mutateAthleteTransition(from: initialFormationID, to: secondFormationID, athleteID: athleteID2) { transition in
+            transition.moveDelayCounts = 2
+        }
+
+        store.deleteAthletes(ids: [athleteID1, athleteID3])
+
+        XCTAssertEqual(store.routine.roster.map(\.id), [athleteID2])
+        XCTAssertEqual(store.routine.formations.map { $0.placements.map(\.athleteID) }, [[athleteID2], [athleteID2]])
+        XCTAssertEqual(store.routine.formations[1].placements[0].position, CGPoint(x: 21, y: 22))
+        XCTAssertEqual(store.routine.transitionSpecs.count, 1)
+        XCTAssertEqual(store.routine.transitionSpecs[0].athleteTransitions.map(\.athleteID), [athleteID2])
+        XCTAssertEqual(store.routine.transitionSpecs[0].athleteTransitions[0].moveDelayCounts, 2)
+    }
+
+    func testDeleteMissingAthleteDoesNotPublishOrMutateRoutine() {
+        _ = store.addAthlete()
+        let original = store.routine
+        var publishCount = 0
+        let cancellable = store.objectWillChange.sink {
+            publishCount += 1
+        }
+
+        store.deleteAthlete(id: UUID())
+
+        XCTAssertEqual(store.routine, original)
+        XCTAssertEqual(publishCount, 0)
+        _ = cancellable
+    }
+
     func testRoleMutationPublishesAfterRenderedAthletesReflectEveryRole() {
         let athleteID = store.addAthlete()
         let formationID = store.routine.formations[0].id

@@ -670,7 +670,8 @@ struct FloorGridView: View {
                 }
             }
         }
-        .onChange(of: store.routine.roster) { _, _ in
+        .onChange(of: store.routine.roster) { _, newRoster in
+            pruneRosterDependentState(validAthleteIDs: Set(newRoster.map(\.id)))
             refreshTransitionFromStore()
         }
         .onChange(of: selectedAthleteIDs) { _, newSelection in
@@ -3805,20 +3806,29 @@ struct FloorGridView: View {
     private func deleteRosterAthletes() {
         let toDelete = rosterDeleteIDs
         showingRosterDeleteConfirmation = false
+        rosterDeleteIDs = []
         selectedAthleteIDs.subtract(toDelete)
-
-        DispatchQueue.main.async {
-            for id in toDelete {
-                store.deleteAthlete(id: id)
-            }
-            rosterDeleteIDs = []
+        if let swapSourceAthleteID, toDelete.contains(swapSourceAthleteID) {
+            endSwapMode()
         }
+        store.deleteAthletes(ids: toDelete)
     }
 
     private func deleteSelectedAthlete() {
         guard let selectedAthleteID else { return }
-        store.deleteAthlete(id: selectedAthleteID)
         selectedAthleteIDs = []
+        if swapSourceAthleteID == selectedAthleteID {
+            endSwapMode()
+        }
+        store.deleteAthlete(id: selectedAthleteID)
+    }
+
+    private func pruneRosterDependentState(validAthleteIDs: Set<UUID>) {
+        selectedAthleteIDs.formIntersection(validAthleteIDs)
+        rosterDeleteIDs.removeAll { !validAthleteIDs.contains($0) }
+        if let swapSourceAthleteID, !validAthleteIDs.contains(swapSourceAthleteID) {
+            endSwapMode()
+        }
     }
 
     private func undoLastMove() {

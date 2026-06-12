@@ -1627,15 +1627,16 @@ final class RoutineStore: ObservableObject {
     }
 
     func deleteAthlete(id: UUID) {
-        var updated = routine
-        updated.roster.removeAll { $0.id == id }
-        for formationIndex in updated.formations.indices {
-            updated.formations[formationIndex].placements.removeAll { $0.athleteID == id }
-        }
-        for transitionIndex in updated.transitionSpecs.indices {
-            updated.transitionSpecs[transitionIndex].athleteTransitions.removeAll { $0.athleteID == id }
-        }
-        routine = updated
+        deleteAthletes(ids: [id])
+    }
+
+    func deleteAthletes(ids: [UUID]) {
+        let idsToDelete = Set(ids)
+        guard !idsToDelete.isEmpty,
+              routine.roster.contains(where: { idsToDelete.contains($0.id) })
+        else { return }
+
+        routine = routineDeletingAthletes(idsToDelete, from: routine)
         rebuildRosterLookup()
         rebuildFormationLookup()
         rebuildTransitionSpecLookup()
@@ -1665,6 +1666,46 @@ final class RoutineStore: ObservableObject {
         update(&routine.roster[index])
         rebuildRosterLookup()
         objectWillChange.send()
+    }
+
+    private func routineDeletingAthletes(_ idsToDelete: Set<UUID>, from source: Routine) -> Routine {
+        var updated = source
+        updated.roster.removeAll { idsToDelete.contains($0.id) }
+
+        let rosterIDs = updated.roster.map(\.id)
+        let rosterIDSet = Set(rosterIDs)
+        for formationIndex in updated.formations.indices {
+            var placementLookup = updated.formations[formationIndex].placements.reduce(into: [UUID: FormationPlacement]()) { result, placement in
+                guard rosterIDSet.contains(placement.athleteID), result[placement.athleteID] == nil else { return }
+                result[placement.athleteID] = placement
+            }
+            updated.formations[formationIndex].placements = rosterIDs.enumerated().map { offset, athleteID in
+                placementLookup.removeValue(forKey: athleteID)
+                    ?? FormationPlacement(
+                        athleteID: athleteID,
+                        position: FormationTemplates.defaultSpawnPosition(for: offset)
+                    )
+            }
+        }
+
+        let existingSpecs = updated.transitionSpecs.reduce(into: [TransitionEdge: TransitionSpec]()) { result, spec in
+            let edge = TransitionEdge(fromID: spec.fromFormationID, toID: spec.toFormationID)
+            if result[edge] == nil {
+                result[edge] = spec
+            }
+        }
+        updated.transitionSpecs = updated.formations.indices.dropLast().map { index in
+            let fromFormation = updated.formations[index]
+            let toFormation = updated.formations[index + 1]
+            var spec = existingSpecs[TransitionEdge(fromID: fromFormation.id, toID: toFormation.id)]
+                ?? TransitionSpec(fromFormationID: fromFormation.id, toFormationID: toFormation.id)
+            spec.fromFormationID = fromFormation.id
+            spec.toFormationID = toFormation.id
+            spec.synchronize(athleteIDs: fromFormation.placements.map(\.athleteID))
+            return spec
+        }
+
+        return updated
     }
 
     func mutateTransitionSpec(from fromID: UUID, to toID: UUID, _ update: (inout TransitionSpec) -> Void) {
