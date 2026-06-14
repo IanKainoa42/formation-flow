@@ -101,7 +101,6 @@ struct FloorGridView: View {
     @State private var activeAlignmentGuides: [AlignmentGuideRenderItem] = []
     @State private var activeMirrorGuides: [FormationMirrorGuideRenderItem] = []
     @State private var rosterDeleteIDs: [UUID] = []
-    @State private var showingRosterDeleteConfirmation = false
     @State private var collisionCycleIndex: Int = 0
     @State private var pathCollisionCycleIndex: Int = 0
 
@@ -1826,21 +1825,6 @@ struct FloorGridView: View {
                         }
                     }
                 }
-            }
-            .confirmationDialog(
-                "Delete \(rosterDeleteIDs.count == 1 ? "this athlete" : "these athletes")?",
-                isPresented: $showingRosterDeleteConfirmation,
-                titleVisibility: .visible
-            ) {
-                Button("Delete", role: .destructive) {
-                    deleteRosterAthletes()
-                }
-                Button("Cancel", role: .cancel) {
-                    rosterDeleteIDs = []
-                    showingRosterDeleteConfirmation = false
-                }
-            } message: {
-                Text("This will remove them from all \(store.routine.formations.count) formations and their transitions. This cannot be undone.")
             }
             .navigationTitle("Manage Roster")
             .toolbar {
@@ -3787,7 +3771,7 @@ struct FloorGridView: View {
             guard validRosterIDs.contains(id), !result.contains(id) else { return }
             result.append(id)
         }
-        showingRosterDeleteConfirmation = !rosterDeleteIDs.isEmpty
+        if !rosterDeleteIDs.isEmpty { deleteRosterAthletes() }
     }
 
     private func toggleSwapMode() {
@@ -3819,7 +3803,6 @@ struct FloorGridView: View {
 
     private func deleteRosterAthletes() {
         let toDelete = rosterDeleteIDs
-        showingRosterDeleteConfirmation = false
         rosterDeleteIDs = []
         selectedAthleteIDs.subtract(toDelete)
         if let swapSourceAthleteID, toDelete.contains(swapSourceAthleteID) {

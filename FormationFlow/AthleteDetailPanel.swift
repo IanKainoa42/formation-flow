@@ -134,8 +134,6 @@ struct MultiSelectionInspectorView: View {
     var onUpgrade: () -> Void = {}
     var onRefreshTransition: () -> Void = {}
 
-    @State private var showingDeleteConfirmation = false
-
     var body: some View {
         VStack(alignment: .leading, spacing: compactLayout ? 12 : 16) {
             HStack {
@@ -197,25 +195,13 @@ struct MultiSelectionInspectorView: View {
             if let store, !selectedAthleteIDs.isEmpty {
                 Divider()
                 Button(role: .destructive) {
-                    showingDeleteConfirmation = true
+                    store.deleteAthletes(ids: Array(selectedAthleteIDs))
+                    onClearSelection()
                 } label: {
                     Label("Delete Selected Athletes", systemImage: "trash")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
-                .confirmationDialog(
-                    "Delete \(selectedAthleteIDs.count) selected athletes?",
-                    isPresented: $showingDeleteConfirmation,
-                    titleVisibility: .visible
-                ) {
-                    Button("Delete Athletes", role: .destructive) {
-                        store.deleteAthletes(ids: Array(selectedAthleteIDs))
-                        onClearSelection()
-                    }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text("This removes them from every formation and transition. This cannot be undone.")
-                }
             }
             Spacer()
         }
