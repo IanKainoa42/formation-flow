@@ -3629,6 +3629,8 @@ struct FloorGridView: View {
     private func resetSelectedPaths() {
         if selectedAthleteIDs.count == 1, let athleteID = selectedAthleteIDs.first {
             resetPath(for: athleteID)
+        } else if !selectedAthleteIDs.isEmpty {
+            resetPaths(for: selectedAthleteIDs)
         } else {
             resetAllPaths()
         }
@@ -3645,6 +3647,18 @@ struct FloorGridView: View {
         store.mutateAthleteTransition(from: startFormationID, to: endFormationID, athleteID: athleteID) { t in
             t.pathControlPoint = nil
             t.pathWaypoints = []
+        }
+        refreshTransitionFromStore()
+    }
+
+    private func resetPaths(for athleteIDs: Set<UUID>) {
+        guard let startFormationID, let endFormationID, !athleteIDs.isEmpty else { return }
+        clearTransitionDragState()
+        store.mutateTransitionSpec(from: startFormationID, to: endFormationID) { spec in
+            for index in spec.athleteTransitions.indices where athleteIDs.contains(spec.athleteTransitions[index].athleteID) {
+                spec.athleteTransitions[index].pathControlPoint = nil
+                spec.athleteTransitions[index].pathWaypoints = []
+            }
         }
         refreshTransitionFromStore()
     }
@@ -3815,12 +3829,13 @@ struct FloorGridView: View {
     }
 
     private func deleteSelectedAthlete() {
-        guard let selectedAthleteID else { return }
+        guard !selectedAthleteIDs.isEmpty else { return }
+        let idsToDelete = selectedAthleteIDs
         selectedAthleteIDs = []
-        if swapSourceAthleteID == selectedAthleteID {
+        if let swapSourceAthleteID, idsToDelete.contains(swapSourceAthleteID) {
             endSwapMode()
         }
-        store.deleteAthlete(id: selectedAthleteID)
+        store.deleteAthletes(ids: Array(idsToDelete))
     }
 
     private func pruneRosterDependentState(validAthleteIDs: Set<UUID>) {

@@ -134,15 +134,42 @@ struct MultiSelectionInspectorView: View {
     var onUpgrade: () -> Void = {}
     var onRefreshTransition: () -> Void = {}
 
+    @State private var showingDeleteConfirmation = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: compactLayout ? 12 : 16) {
-            Text("Selection")
-                .font(.headline)
-            Text("\(count) athletes selected")
-                .font((compactLayout ? Font.title3 : .title3).weight(.semibold))
-            Text("Drag on the floor to move the selected athletes together. Use Swap for one athlete at a time.")
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Selection")
+                        .font(.headline)
+                    Text("\(count) athletes selected")
+                        .font((compactLayout ? Font.title3 : .title3).weight(.semibold))
+                }
+                Spacer()
+                Button(action: onClearSelection) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear selection")
+                .accessibilityHint("Deselect these athletes")
+                .help("Clear selection")
+            }
+            Text("Drag or rotate the group on the floor. Use the controls below to update everyone selected.")
                 .font(.body)
                 .foregroundColor(.secondary)
+
+            if let store, !selectedAthleteIDs.isEmpty {
+                Divider()
+                BulkRoleControl(
+                    store: store,
+                    selectedAthleteIDs: selectedAthleteIDs,
+                    compactLayout: compactLayout,
+                    isPro: isPro,
+                    onUpgrade: onUpgrade
+                )
+            }
 
             if let store, let player, let startFormationID, let endFormationID, !selectedAthleteIDs.isEmpty {
                 Divider()
@@ -156,14 +183,122 @@ struct MultiSelectionInspectorView: View {
                     onUpgrade: onUpgrade,
                     onRefreshTransition: onRefreshTransition
                 )
+
+                Divider()
+                BulkPathActions(
+                    store: store,
+                    selectedAthleteIDs: selectedAthleteIDs,
+                    startFormationID: startFormationID,
+                    endFormationID: endFormationID,
+                    onRefreshTransition: onRefreshTransition
+                )
             }
 
-            Button("Clear Selection", action: onClearSelection)
+            if let store, !selectedAthleteIDs.isEmpty {
+                Divider()
+                Button(role: .destructive) {
+                    showingDeleteConfirmation = true
+                } label: {
+                    Label("Delete Selected Athletes", systemImage: "trash")
+                        .frame(maxWidth: .infinity)
+                }
                 .buttonStyle(.bordered)
+                .confirmationDialog(
+                    "Delete \(selectedAthleteIDs.count) selected athletes?",
+                    isPresented: $showingDeleteConfirmation,
+                    titleVisibility: .visible
+                ) {
+                    Button("Delete Athletes", role: .destructive) {
+                        store.deleteAthletes(ids: Array(selectedAthleteIDs))
+                        onClearSelection()
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("This removes them from every formation and transition. This cannot be undone.")
+                }
+            }
             Spacer()
         }
         .padding(compactLayout ? 16 : 20)
         .background(.thinMaterial)
+    }
+}
+
+private struct BulkRoleControl: View {
+    @ObservedObject var store: RoutineStore
+    let selectedAthleteIDs: Set<UUID>
+    let compactLayout: Bool
+    let isPro: Bool
+    let onUpgrade: () -> Void
+
+    private var selectedAthletes: [RosterAthlete] {
+        store.routine.roster.filter { selectedAthleteIDs.contains($0.id) }
+    }
+
+    private var commonRole: AthleteRole? {
+        guard let first = selectedAthletes.first?.role else { return nil }
+        return selectedAthletes.allSatisfy { $0.role == first } ? first : nil
+    }
+
+    private var roleLabel: String {
+        commonRole?.displayName ?? "Mixed"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: compactLayout ? 8 : 10) {
+            HStack {
+                Text("Role")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(roleLabel)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: compactLayout ? 64 : 72), spacing: 8)],
+                spacing: 8
+            ) {
+                ForEach(AthleteRole.allCases, id: \.self) { role in
+                    Button {
+                        guard isPro || role == .base else {
+                            onUpgrade()
+                            return
+                        }
+                        let ids = selectedAthleteIDs
+                        for athleteID in ids {
+                            store.mutateRosterAthlete(id: athleteID) { athlete in
+                                athlete.role = role
+                            }
+                        }
+                    } label: {
+                        VStack(spacing: compactLayout ? 4 : 6) {
+                            ZStack {
+                                AthleteRoleSwatch(role: role, isSelected: commonRole == role)
+                                    .frame(width: compactLayout ? 24 : 28, height: compactLayout ? 24 : 28)
+                                if !isPro && role != .base {
+                                    Image(systemName: "lock.fill")
+                                        .font(.caption2)
+                                        .foregroundColor(.white)
+                                        .shadow(radius: 2)
+                                }
+                            }
+                            Text(role.displayName)
+                                .font(.caption2)
+                                .foregroundColor(commonRole == role ? .primary : .secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, compactLayout ? 6 : 8)
+                        .background(commonRole == role ? Color.primary.opacity(0.08) : Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Set selected athletes to \(role.displayName)")
+                    .accessibilityValue(commonRole == role ? "Selected" : "")
+                }
+            }
+        }
     }
 }
 
@@ -259,6 +394,40 @@ private struct BulkDelayControl: View {
             }
         }
         onRefreshTransition()
+    }
+}
+
+private struct BulkPathActions: View {
+    @ObservedObject var store: RoutineStore
+    let selectedAthleteIDs: Set<UUID>
+    let startFormationID: UUID
+    let endFormationID: UUID
+    let onRefreshTransition: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Paths")
+                .font(.subheadline.weight(.semibold))
+
+            Button(role: .destructive) {
+                let ids = selectedAthleteIDs
+                store.mutateTransitionSpec(from: startFormationID, to: endFormationID) { spec in
+                    for index in spec.athleteTransitions.indices where ids.contains(spec.athleteTransitions[index].athleteID) {
+                        spec.athleteTransitions[index].pathControlPoint = nil
+                        spec.athleteTransitions[index].pathWaypoints = []
+                    }
+                }
+                onRefreshTransition()
+            } label: {
+                Label("Reset Selected Paths", systemImage: "line.diagonal")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+
+            Text("Clears custom path bends only for the selected athletes.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
     }
 }
 
