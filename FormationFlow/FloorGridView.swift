@@ -557,12 +557,12 @@ struct FloorGridView: View {
         isCompactLayout ? 10 : 6
     }
 
-    private var pathSketchLongPressDuration: Double { 0.85 }
-    private var pathSketchCountdownDelay: Double { 0.22 }
+    private var pathSketchLongPressDuration: Double { 1.25 }
+    private var pathSketchCountdownDelay: Double { 0.45 }
     /// Movement allowed during the sketch long-press hold. Must be generous: a real
-    /// finger tremors several points over an ~0.85s hold, so tying this to the tiny
-    /// `dragActivationDistance` (6–10pt) made the long-press impossible to satisfy
-    /// on-device (it only "worked" against the perfectly-still simulator touch).
+    /// finger tremors several points over the deliberate hold, so tying this to
+    /// the tiny `dragActivationDistance` (6–10pt) made the long-press impossible
+    /// to satisfy on-device (it only "worked" against a perfectly-still touch).
     private var pathSketchHoldTolerance: CGFloat { 30 }
     private var pathSketchCountdownDuration: Double {
         max(0.1, pathSketchLongPressDuration - pathSketchCountdownDelay)
