@@ -100,8 +100,9 @@ enum TransportControls {
     @ViewBuilder
     static func swapButton(isActive: Bool, size: CGFloat = 34, disabled: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: "arrow.triangle.2.circlepath")
-                .frame(width: size, height: size)
+            Text("Swap")
+                .font(.caption.weight(.semibold))
+                .frame(minWidth: max(size + 18, 58), minHeight: size)
         }
         .buttonStyle(.bordered)
         .frame(minWidth: 44, minHeight: 44)
@@ -675,10 +676,7 @@ struct ThinTransitionTransportBar: View {
                 Divider()
 
                 Button(action: onSwap) {
-                    Label(
-                        isSwapMode ? "Cancel Swap" : "Swap Position",
-                        systemImage: "arrow.triangle.2.circlepath"
-                    )
+                    Text(isSwapMode ? "Cancel Swap" : "Swap")
                 }
                 .disabled(!canSwap)
 
