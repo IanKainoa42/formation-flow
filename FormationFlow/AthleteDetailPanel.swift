@@ -171,6 +171,16 @@ struct MultiSelectionInspectorView: View {
 
             if let store, let player, let startFormationID, let endFormationID, !selectedAthleteIDs.isEmpty {
                 Divider()
+                TransitionGroupControl(
+                    store: store,
+                    selectedAthleteIDs: selectedAthleteIDs,
+                    startFormationID: startFormationID,
+                    endFormationID: endFormationID,
+                    compactLayout: compactLayout,
+                    onRefreshTransition: onRefreshTransition
+                )
+
+                Divider()
                 BulkDelayControl(
                     store: store,
                     player: player,
@@ -207,6 +217,62 @@ struct MultiSelectionInspectorView: View {
         }
         .padding(compactLayout ? 16 : 20)
         .background(.thinMaterial)
+    }
+}
+
+private struct TransitionGroupControl: View {
+    @ObservedObject var store: RoutineStore
+    let selectedAthleteIDs: Set<UUID>
+    let startFormationID: UUID
+    let endFormationID: UUID
+    let compactLayout: Bool
+    let onRefreshTransition: () -> Void
+
+    private var selectedGroup: TransitionStuntGroup? {
+        store.transitionStuntGroup(exactly: selectedAthleteIDs, from: startFormationID, to: endFormationID)
+    }
+
+    private var overlapsExistingGroup: Bool {
+        selectedAthleteIDs.contains { athleteID in
+            store.transitionStuntGroup(containing: athleteID, from: startFormationID, to: endFormationID) != nil
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: compactLayout ? 8 : 10) {
+            HStack {
+                Text("Transition Group")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(selectedGroup == nil ? "Unlocked" : "Locked")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Button {
+                if let selectedGroup {
+                    store.removeTransitionStuntGroup(id: selectedGroup.id, from: startFormationID, to: endFormationID)
+                } else {
+                    _ = store.createTransitionStuntGroup(
+                        from: startFormationID,
+                        to: endFormationID,
+                        athleteIDs: selectedAthleteIDs
+                    )
+                }
+                onRefreshTransition()
+            } label: {
+                Label(
+                    selectedGroup == nil ? (overlapsExistingGroup ? "Regroup as Unit" : "Group as Unit") : "Ungroup Unit",
+                    systemImage: selectedGroup == nil ? "link" : "link.badge.minus"
+                )
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+
+            Text(selectedGroup == nil ? "Locks these athletes together for this transition." : "Ungroup before editing one athlete by itself.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
     }
 }
 

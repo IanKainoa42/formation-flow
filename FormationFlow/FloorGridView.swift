@@ -139,6 +139,23 @@ struct FloorGridView: View {
         player?.cachedPathCollisionIDs ?? []
     }
 
+    private var activeTransitionGroups: [TransitionStuntGroup] {
+        player?.transitionSpec.stuntGroups ?? []
+    }
+
+    private var activeTransitionGroupIDSets: [Set<UUID>] {
+        activeTransitionGroups.map(\.athleteIDSet)
+    }
+
+    private var selectedTransitionGroup: TransitionStuntGroup? {
+        guard selectedAthleteIDs.count >= 2 else { return nil }
+        return activeTransitionGroups.first { $0.athleteIDSet == selectedAthleteIDs }
+    }
+
+    private var selectionIsTransitionGroup: Bool {
+        selectedTransitionGroup != nil
+    }
+
     private var formationIndex: Int? {
         store.formationIndex(id: formationID)
     }
@@ -675,6 +692,13 @@ struct FloorGridView: View {
         }
         .onChange(of: selectedAthleteIDs) { _, newSelection in
             pendingWaypointDeletionID = nil
+            if newSelection.count == 1,
+               let athleteID = newSelection.first,
+               let group = transitionGroup(containing: athleteID),
+               selectedAthleteIDs != group.athleteIDSet {
+                selectedAthleteIDs = group.athleteIDSet
+                return
+            }
             if !newSelection.isEmpty {
                 hasMadeFirstSelection = true
             }
@@ -1073,6 +1097,7 @@ struct FloorGridView: View {
             let baseCanvasContent = FloorCanvasView(
                 athletes: renderedAthletes,
                 selectedAthleteIDs: selectedAthleteIDs,
+                groupedAthleteIDSets: activeTransitionGroupIDSets,
                 transitionPaths: displayedTransitionPaths,
                 endpointMarkers: endpointMarkers,
                 alignmentGuides: activeAlignmentGuides,
@@ -1752,6 +1777,18 @@ struct FloorGridView: View {
                 }
 
                 Spacer(minLength: 0)
+
+                if hasTransition {
+                    Button(selectionIsTransitionGroup ? "Ungroup" : "Group") {
+                        if selectionIsTransitionGroup {
+                            ungroupSelectedTransitionGroup()
+                        } else {
+                            createSelectedTransitionGroup()
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .frame(minHeight: 44)
+                }
 
                 Button("Clear") {
                     selectedAthleteIDs = []
@@ -2608,9 +2645,29 @@ struct FloorGridView: View {
                         focusedEndpoint = dragEndpoint
                         guard dragDistanceSquared >= dragActivationDistanceSquared else { return }
                         if !selectedAthleteIDs.contains(hitAthlete.id) {
-                            selectedAthleteIDs = [hitAthlete.id]
+                            selectedAthleteIDs = selectionForAthlete(hitAthlete.id)
                         }
                         let dragAthletes = athletes(for: dragEndpoint) ?? renderedAthletes
+                        dragStartPositions = dragAthletes.reduce(into: [UUID: CGPoint]()) { result, athlete in
+                            if selectedAthleteIDs.contains(athlete.id) {
+                                if result[athlete.id] == nil { result[athlete.id] = athlete.position }
+                            }
+                        }
+                        beginAthleteDragFeedback()
+                        handleFormationDragContinued(value, cellSize: cellSize)
+                        return
+                    }
+
+                    if let hitGroup = transitionGroupHit(
+                        at: startScaledPoint,
+                        within: editableAthletesForDrag(endpoint: displayedFormationEndpoint),
+                        cellSize: cellSize
+                    ) {
+                        let dragEndpoint = displayedFormationEndpoint
+                        focusedEndpoint = dragEndpoint
+                        guard dragDistanceSquared >= dragActivationDistanceSquared else { return }
+                        selectedAthleteIDs = hitGroup.athleteIDSet
+                        let dragAthletes = editableAthletesForDrag(endpoint: dragEndpoint)
                         dragStartPositions = dragAthletes.reduce(into: [UUID: CGPoint]()) { result, athlete in
                             if selectedAthleteIDs.contains(athlete.id) {
                                 if result[athlete.id] == nil { result[athlete.id] = athlete.position }
@@ -2633,7 +2690,7 @@ struct FloorGridView: View {
                         focusedEndpoint = nil
                         guard dragDistanceSquared >= dragActivationDistanceSquared else { return }
                         if !selectedAthleteIDs.contains(hitAthlete.id) {
-                            selectedAthleteIDs = [hitAthlete.id]
+                            selectedAthleteIDs = selectionForAthlete(hitAthlete.id)
                         }
                         dragStartPositions = renderedAthletes.reduce(into: [UUID: CGPoint]()) { result, athlete in
                             if selectedAthleteIDs.contains(athlete.id) {
@@ -2653,7 +2710,7 @@ struct FloorGridView: View {
                         within: endpointMarkers,
                         hitRadiusSquared: hitRadiusSquared
                     ) {
-                        selectedAthleteIDs = [hitMarker.athleteID]
+                        selectedAthleteIDs = selectionForAthlete(hitMarker.athleteID)
                         focusedEndpoint = hitMarker.endpoint
                         endpointDragStartPosition = hitMarker.position
                         guard dragDistanceSquared >= dragActivationDistanceSquared else { return }
@@ -2736,7 +2793,7 @@ struct FloorGridView: View {
                         excluding: swapSourceAthleteID
                     ) {
                         store.swapPositions(in: swapFormationID, id1: swapSourceAthleteID, id2: targetAthlete.id)
-                        selectedAthleteIDs = [targetAthlete.id]
+                        selectedAthleteIDs = selectionForAthlete(targetAthlete.id)
                         refreshTransitionFromStore()
                     }
                     endSwapMode()
@@ -2769,7 +2826,7 @@ struct FloorGridView: View {
                         }
                         // Held-tap with no meaningful path — keep this athlete
                         // selected and let the rest of onEnded run normally.
-                        selectedAthleteIDs = [athleteID]
+                        selectedAthleteIDs = selectionForAthlete(athleteID)
                         return
                     }
                     finishPathSketch()
@@ -2782,7 +2839,7 @@ struct FloorGridView: View {
                 }
 
                 if isDrawingSelectionBox, let selectionRect {
-                    let newSelection = Set(
+                    var newSelection = Set(
                         renderedAthletes.compactMap { athlete in
                             let screenPoint = CGPoint(
                                 x: athlete.position.x * cellSize + offset.x,
@@ -2791,6 +2848,9 @@ struct FloorGridView: View {
                             return selectionRect.contains(screenPoint) ? athlete.id : nil
                         }
                     )
+                    for group in activeTransitionGroups where !group.athleteIDSet.isDisjoint(with: newSelection) {
+                        newSelection.formUnion(group.athleteIDSet)
+                    }
 
                     if selectionRect.width < 5 && selectionRect.height < 5 {
                         // Tap on empty space — also try selecting from transition athletes
@@ -2804,7 +2864,7 @@ struct FloorGridView: View {
                                 within: player.currentAthletes,
                                 cellSize: cellSize
                             ) {
-                                selectedAthleteIDs = [athlete.id]
+                                selectedAthleteIDs = selectionForAthlete(athlete.id)
                                 return
                             }
                         }
@@ -2833,7 +2893,7 @@ struct FloorGridView: View {
                 // If an athlete is hovered, tapping selects exactly that athlete
                 if let hoveredID = hoveredAthleteID,
                    renderedAthletes.contains(where: { $0.id == hoveredID }) {
-                    selectedAthleteIDs = [hoveredID]
+                    selectedAthleteIDs = selectionForAthlete(hoveredID)
                     focusedEndpoint = hasTransition ? displayedFormationEndpoint : nil
                     focusedPathHandle = nil
                     return
@@ -2848,8 +2908,24 @@ struct FloorGridView: View {
                     within: renderedAthletes,
                     cellSize: cellSize
                 ) {
-                    selectedAthleteIDs = [athlete.id]
+                    selectedAthleteIDs = selectionForAthlete(athlete.id)
                     focusedEndpoint = hasTransition ? displayedFormationEndpoint : nil
+                    focusedPathHandle = nil
+                    return
+                }
+
+                if hasTransition,
+                   let hitGroup = transitionGroupHit(
+                    at: tapPoint,
+                    within: editableAthletesForDrag(endpoint: displayedFormationEndpoint),
+                    cellSize: cellSize
+                   ) ?? transitionGroupHit(
+                    at: startScaledPoint,
+                    within: editableAthletesForDrag(endpoint: displayedFormationEndpoint),
+                    cellSize: cellSize
+                   ) {
+                    selectedAthleteIDs = hitGroup.athleteIDSet
+                    focusedEndpoint = displayedFormationEndpoint
                     focusedPathHandle = nil
                     return
                 }
@@ -2896,6 +2972,55 @@ struct FloorGridView: View {
     }
 
     // MARK: - Drag Helpers
+
+    private func transitionGroup(containing athleteID: UUID) -> TransitionStuntGroup? {
+        activeTransitionGroups.first { $0.athleteIDs.contains(athleteID) }
+    }
+
+    private func selectionForAthlete(_ athleteID: UUID) -> Set<UUID> {
+        transitionGroup(containing: athleteID)?.athleteIDSet ?? [athleteID]
+    }
+
+    private func transitionGroupHit(
+        at point: CGPoint,
+        within athletes: [RenderedAthlete],
+        cellSize: CGFloat
+    ) -> TransitionStuntGroup? {
+        guard !activeTransitionGroups.isEmpty else { return nil }
+        let athletesByID = Dictionary(uniqueKeysWithValues: athletes.map { ($0.id, $0) })
+
+        for group in activeTransitionGroups {
+            let members = group.athleteIDs.compactMap { athletesByID[$0] }
+            guard members.count >= 2 else { continue }
+            let xs = members.map { $0.position.x }
+            let ys = members.map { $0.position.y }
+            guard
+                let minX = xs.min(),
+                let maxX = xs.max(),
+                let minY = ys.min(),
+                let maxY = ys.max()
+            else { continue }
+
+            let padding = max(1.4, 18 / max(cellSize, 1))
+            let rect = CGRect(
+                x: minX - padding,
+                y: minY - padding,
+                width: max(maxX - minX + padding * 2, padding * 2),
+                height: max(maxY - minY + padding * 2, padding * 2)
+            )
+            if rect.contains(point) {
+                return group
+            }
+        }
+        return nil
+    }
+
+    private func editableAthletesForDrag(endpoint: PreviewEditableEndpoint?) -> [RenderedAthlete] {
+        if let endpoint, let athletes = athletes(for: endpoint) {
+            return athletes
+        }
+        return renderedAthletes
+    }
 
     private func interactionHitRadiusSquared(for cellSize: CGFloat) -> CGFloat {
         // Selection hit-testing deliberately stays tighter than the 44pt
@@ -3141,6 +3266,13 @@ struct FloorGridView: View {
 
     private func applyRotation(angle: CGFloat) {
         guard !rotationStartPositions.isEmpty else { return }
+        let editableID: UUID = {
+            if hasTransition, let focusedEndpoint,
+               let startFormationID, let endFormationID {
+                return focusedEndpoint == .end ? endFormationID : startFormationID
+            }
+            return formationID
+        }()
 
         // ⚡ Bolt: Eliminate redundant `.map` and intermediate arrays in O(N) path
         // Compute center of mass of the selected group using a single pass
@@ -3153,7 +3285,7 @@ struct FloorGridView: View {
         let cosA = cos(angle)
         let sinA = sin(angle)
 
-        store.mutateFormation(id: formationID) { formation in
+        store.mutateFormation(id: editableID) { formation in
             for (athleteID, startPosition) in rotationStartPositions {
                 guard let placementIndex = formation.placementIndex(for: athleteID) else { continue }
 
@@ -3386,7 +3518,7 @@ struct FloorGridView: View {
             // and the drawn shape will be applied to the whole group on commit.
             let preserveGroup = selectedAthleteIDs.count > 1 && selectedAthleteIDs.contains(hit.athleteID)
             if !preserveGroup, selectedAthleteIDs != [hit.athleteID] {
-                selectedAthleteIDs = [hit.athleteID]
+                selectedAthleteIDs = selectionForAthlete(hit.athleteID)
             }
             longPressSketchAnchorAthleteID = hit.athleteID
             isLongPressSketching = true
@@ -3404,7 +3536,7 @@ struct FloorGridView: View {
 
         if let bootstrap = bootstrapAthleteHit(at: scaledPoint, cellSize: cellSize) {
             if selectedAthleteIDs != [bootstrap.athleteID] {
-                selectedAthleteIDs = [bootstrap.athleteID]
+                selectedAthleteIDs = selectionForAthlete(bootstrap.athleteID)
             }
             isLongPressSketching = true
             isSketchingPath = true
@@ -3676,6 +3808,41 @@ struct FloorGridView: View {
         )
     }
 
+    private func createSelectedTransitionGroup() {
+        guard hasTransition,
+              let startFormationID,
+              let endFormationID,
+              selectedAthleteIDs.count >= 2 else { return }
+        if let group = store.createTransitionStuntGroup(
+            from: startFormationID,
+            to: endFormationID,
+            athleteIDs: selectedAthleteIDs
+        ) {
+            selectedAthleteIDs = group.athleteIDSet
+            if currentFormationEndpoint == .start {
+                focusedEndpoint = .end
+                player?.pause()
+                player?.seek(to: 1)
+            } else if focusedEndpoint == nil {
+                focusedEndpoint = currentFormationEndpoint
+            }
+            refreshTransitionFromStore()
+        }
+    }
+
+    private func ungroupSelectedTransitionGroup() {
+        guard hasTransition,
+              let startFormationID,
+              let endFormationID,
+              !selectedAthleteIDs.isEmpty else { return }
+        if let selectedTransitionGroup {
+            store.removeTransitionStuntGroup(id: selectedTransitionGroup.id, from: startFormationID, to: endFormationID)
+        } else {
+            store.removeTransitionStuntGroups(containing: selectedAthleteIDs, from: startFormationID, to: endFormationID)
+        }
+        refreshTransitionFromStore()
+    }
+
     // MARK: - Formation Actions
 
     private func snappingResult(for translation: CGPoint) -> SnapResult {
@@ -3843,13 +4010,13 @@ struct FloorGridView: View {
     private func selectCollision(at index: Int) {
         guard !collidingAthletes.isEmpty else { return }
         let safeIndex = index % collidingAthletes.count
-        selectedAthleteIDs = [collidingAthletes[safeIndex].id]
+        selectedAthleteIDs = selectionForAthlete(collidingAthletes[safeIndex].id)
     }
 
     private func selectPathCollision(at index: Int) {
         guard !pathCollidingAthletes.isEmpty else { return }
         let safeIndex = index % pathCollidingAthletes.count
-        selectedAthleteIDs = [pathCollidingAthletes[safeIndex].id]
+        selectedAthleteIDs = selectionForAthlete(pathCollidingAthletes[safeIndex].id)
     }
 
     private func shareTransitionPreview() {

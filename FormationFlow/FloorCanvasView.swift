@@ -110,6 +110,7 @@ struct FormationMirrorGuideRenderItem: Identifiable, Equatable, Hashable {
 struct FloorCanvasView: View {
     let athletes: [RenderedAthlete]
     var selectedAthleteIDs: Set<UUID> = []
+    var groupedAthleteIDSets: [Set<UUID>] = []
     var transitionPaths: [TransitionPathRenderItem] = []
     var endpointMarkers: [TransitionEndpointMarkerRenderItem] = []
     var alignmentGuides: [AlignmentGuideRenderItem] = []
@@ -210,6 +211,7 @@ struct FloorCanvasView: View {
                 drawTrails(in: &context)
                 drawAlignmentGuides(in: &context)
                 drawMirrorGuides(in: &context)
+                drawGroupHarnesses(in: &context)
                 drawTransitionPaths(in: &context, collisionColor: collisionColor)
                 drawPathSketch(in: &context)
                 drawPathCollisionMarkers(in: &context)
@@ -465,6 +467,81 @@ struct FloorCanvasView: View {
                 with: .color(primaryColor.opacity(0.74)),
                 style: StrokeStyle(lineWidth: max(1.2, 1.4 * markerScale), dash: [3, 3])
             )
+        }
+    }
+
+    private func drawGroupHarnesses(in context: inout GraphicsContext) {
+        guard !groupedAthleteIDSets.isEmpty else { return }
+        let athletesByID = Dictionary(uniqueKeysWithValues: athletes.map { ($0.id, $0) })
+
+        for groupIDs in groupedAthleteIDSets {
+            let members = groupIDs.compactMap { athletesByID[$0] }
+            guard members.count >= 2 else { continue }
+
+            let points = members.map { scaledCanvasPoint($0.position) }
+            guard
+                let minX = points.map(\.x).min(),
+                let maxX = points.map(\.x).max(),
+                let minY = points.map(\.y).min(),
+                let maxY = points.map(\.y).max()
+            else { continue }
+
+            let inset = max(18, 20 * markerScale)
+            let rect = CGRect(
+                x: minX - inset,
+                y: minY - inset,
+                width: max(maxX - minX + inset * 2, 44 * markerScale),
+                height: max(maxY - minY + inset * 2, 44 * markerScale)
+            )
+            let isActive = groupIDs.isSubset(of: selectedAthleteIDs)
+            let harnessColor = isActive ? formationColor : Color.white
+            let opacity: CGFloat = isActive ? 0.88 : 0.36
+            var outline = Path()
+            outline.addRoundedRect(in: rect, cornerSize: CGSize(width: 10, height: 10))
+
+            context.fill(outline, with: .color(harnessColor.opacity(isActive ? 0.08 : 0.035)))
+            context.stroke(
+                outline,
+                with: .color(harnessColor.opacity(opacity)),
+                style: StrokeStyle(
+                    lineWidth: isActive ? max(2, 2.4 * markerScale) : max(1.2, 1.5 * markerScale),
+                    lineCap: .round,
+                    lineJoin: .round,
+                    dash: [8, 5]
+                )
+            )
+
+            let center = CGPoint(x: rect.midX, y: rect.midY)
+            let anchorRadius = max(3.5, 4.5 * markerScale)
+            var anchor = Path()
+            anchor.addEllipse(
+                in: CGRect(
+                    x: center.x - anchorRadius,
+                    y: center.y - anchorRadius,
+                    width: anchorRadius * 2,
+                    height: anchorRadius * 2
+                )
+            )
+            context.fill(anchor, with: .color(.black.opacity(0.5)))
+            context.stroke(anchor, with: .color(harnessColor.opacity(opacity)), lineWidth: max(1.5, 1.8 * markerScale))
+
+            let handle = CGPoint(x: rect.midX, y: rect.minY - max(11, 12 * markerScale))
+            var stem = Path()
+            stem.move(to: CGPoint(x: rect.midX, y: rect.minY))
+            stem.addLine(to: handle)
+            context.stroke(stem, with: .color(harnessColor.opacity(opacity)), lineWidth: max(1.2, 1.5 * markerScale))
+
+            var rotateHandle = Path()
+            rotateHandle.addEllipse(
+                in: CGRect(
+                    x: handle.x - anchorRadius,
+                    y: handle.y - anchorRadius,
+                    width: anchorRadius * 2,
+                    height: anchorRadius * 2
+                )
+            )
+            context.fill(rotateHandle, with: .color(harnessColor.opacity(isActive ? 0.24 : 0.12)))
+            context.stroke(rotateHandle, with: .color(harnessColor.opacity(opacity)), lineWidth: max(1.4, 1.7 * markerScale))
         }
     }
 

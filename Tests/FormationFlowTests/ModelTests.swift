@@ -75,6 +75,64 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(spec.athleteTransitions[1].moveDelay, 0.0) // Default properties
     }
 
+    func testTransitionStuntGroupCreationOverridesSelectedPaths() {
+        let athleteID1 = UUID()
+        let athleteID2 = UUID()
+        let athleteID3 = UUID()
+        var spec = TransitionSpec(
+            fromFormationID: UUID(),
+            toFormationID: UUID(),
+            athleteTransitions: [
+                AthleteTransition(
+                    athleteID: athleteID1,
+                    moveDelay: 1.5,
+                    pathControlPoint: CGPoint(x: 4, y: 5),
+                    pathWaypoints: [PathWaypoint(position: CGPoint(x: 6, y: 7))]
+                ),
+                AthleteTransition(
+                    athleteID: athleteID2,
+                    moveDelay: 0.5,
+                    pathControlPoint: CGPoint(x: 8, y: 9),
+                    pathWaypoints: [PathWaypoint(position: CGPoint(x: 10, y: 11))]
+                ),
+                AthleteTransition(athleteID: athleteID3, moveDelay: 2)
+            ]
+        )
+
+        let group = spec.createStuntGroup(athleteIDs: [athleteID1, athleteID2])
+
+        XCTAssertEqual(group?.athleteIDs, [athleteID1, athleteID2])
+        XCTAssertEqual(spec.stuntGroups.first?.athleteIDSet, [athleteID1, athleteID2])
+        XCTAssertEqual(spec.athleteTransition(for: athleteID1).moveDelayCounts, 0.5)
+        XCTAssertEqual(spec.athleteTransition(for: athleteID2).moveDelayCounts, 0.5)
+        XCTAssertNil(spec.athleteTransition(for: athleteID1).pathControlPoint)
+        XCTAssertNil(spec.athleteTransition(for: athleteID2).pathControlPoint)
+        XCTAssertTrue(spec.athleteTransition(for: athleteID1).pathWaypoints.isEmpty)
+        XCTAssertTrue(spec.athleteTransition(for: athleteID2).pathWaypoints.isEmpty)
+        XCTAssertEqual(spec.athleteTransition(for: athleteID3).moveDelayCounts, 2)
+    }
+
+    func testTransitionStuntGroupsKeepOneGroupPerAthlete() {
+        let athleteID1 = UUID()
+        let athleteID2 = UUID()
+        let athleteID3 = UUID()
+        var spec = TransitionSpec(
+            fromFormationID: UUID(),
+            toFormationID: UUID(),
+            athleteTransitions: [
+                AthleteTransition(athleteID: athleteID1),
+                AthleteTransition(athleteID: athleteID2),
+                AthleteTransition(athleteID: athleteID3)
+            ]
+        )
+
+        _ = spec.createStuntGroup(athleteIDs: [athleteID1, athleteID2])
+        _ = spec.createStuntGroup(athleteIDs: [athleteID2, athleteID3])
+
+        XCTAssertEqual(spec.stuntGroups.count, 1)
+        XCTAssertEqual(spec.stuntGroups[0].athleteIDSet, [athleteID2, athleteID3])
+    }
+
     func testRoutineInitialization() {
         let routine = Routine.initial()
 

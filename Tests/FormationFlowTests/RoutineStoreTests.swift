@@ -182,6 +182,31 @@ final class RoutineStoreTests: XCTestCase {
         XCTAssertEqual(store.routine.transitionSpecs[0].athleteTransitions[0].moveDelayCounts, 2)
     }
 
+    func testCreateTransitionStuntGroupPersistsOnTransitionSpec() {
+        let athleteID1 = store.addAthlete()
+        let athleteID2 = store.addAthlete()
+        let athleteID3 = store.addAthlete()
+        let startFormationID = store.routine.formations[0].id
+        let endFormationID = store.addFormation(after: startFormationID)
+
+        let group = store.createTransitionStuntGroup(
+            from: startFormationID,
+            to: endFormationID,
+            athleteIDs: [athleteID1, athleteID2]
+        )
+
+        XCTAssertEqual(group?.athleteIDSet, [athleteID1, athleteID2])
+        XCTAssertEqual(
+            store.transitionStuntGroup(containing: athleteID1, from: startFormationID, to: endFormationID)?.athleteIDSet,
+            [athleteID1, athleteID2]
+        )
+        XCTAssertNil(store.transitionStuntGroup(containing: athleteID3, from: startFormationID, to: endFormationID))
+
+        store.removeTransitionStuntGroups(containing: [athleteID1], from: startFormationID, to: endFormationID)
+
+        XCTAssertTrue(store.transitionStuntGroups(from: startFormationID, to: endFormationID).isEmpty)
+    }
+
     func testDeleteMissingAthleteDoesNotPublishOrMutateRoutine() {
         _ = store.addAthlete()
         let original = store.routine

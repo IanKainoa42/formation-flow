@@ -447,12 +447,27 @@ struct AthleteTransition: Codable, Identifiable, Equatable, Hashable {
     }
 }
 
+struct TransitionStuntGroup: Codable, Identifiable, Equatable, Hashable {
+    var id: UUID
+    var athleteIDs: [UUID]
+
+    init(id: UUID = UUID(), athleteIDs: [UUID]) {
+        self.id = id
+        self.athleteIDs = athleteIDs
+    }
+
+    var athleteIDSet: Set<UUID> {
+        Set(athleteIDs)
+    }
+}
+
 struct TransitionSpec: Codable, Identifiable, Equatable, Hashable {
     var id: UUID
     var fromFormationID: UUID
     var toFormationID: UUID
     var duration: Double
     var athleteTransitions: [AthleteTransition]
+    var stuntGroups: [TransitionStuntGroup]
 
     var counts: Double {
         get { duration }
@@ -464,13 +479,44 @@ struct TransitionSpec: Codable, Identifiable, Equatable, Hashable {
         fromFormationID: UUID,
         toFormationID: UUID,
         duration: Double = 4.0,
-        athleteTransitions: [AthleteTransition] = []
+        athleteTransitions: [AthleteTransition] = [],
+        stuntGroups: [TransitionStuntGroup] = []
     ) {
         self.id = id
         self.fromFormationID = fromFormationID
         self.toFormationID = toFormationID
         self.duration = duration
         self.athleteTransitions = athleteTransitions
+        self.stuntGroups = stuntGroups
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case fromFormationID
+        case toFormationID
+        case duration
+        case athleteTransitions
+        case stuntGroups
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        fromFormationID = try container.decode(UUID.self, forKey: .fromFormationID)
+        toFormationID = try container.decode(UUID.self, forKey: .toFormationID)
+        duration = try container.decodeIfPresent(Double.self, forKey: .duration) ?? 4.0
+        athleteTransitions = try container.decodeIfPresent([AthleteTransition].self, forKey: .athleteTransitions) ?? []
+        stuntGroups = try container.decodeIfPresent([TransitionStuntGroup].self, forKey: .stuntGroups) ?? []
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(fromFormationID, forKey: .fromFormationID)
+        try container.encode(toFormationID, forKey: .toFormationID)
+        try container.encode(duration, forKey: .duration)
+        try container.encode(athleteTransitions, forKey: .athleteTransitions)
+        try container.encode(stuntGroups, forKey: .stuntGroups)
     }
 
     func athleteTransition(for athleteID: UUID) -> AthleteTransition {
@@ -478,7 +524,16 @@ struct TransitionSpec: Codable, Identifiable, Equatable, Hashable {
             ?? AthleteTransition(athleteID: athleteID)
     }
 
+    func stuntGroup(containing athleteID: UUID) -> TransitionStuntGroup? {
+        stuntGroups.first { $0.athleteIDs.contains(athleteID) }
+    }
+
+    func stuntGroup(exactly athleteIDs: Set<UUID>) -> TransitionStuntGroup? {
+        stuntGroups.first { $0.athleteIDSet == athleteIDs }
+    }
+
     mutating func synchronize(athleteIDs: [UUID]) {
+        let validAthleteIDs = Set(athleteIDs)
         let lookup = athleteTransitions.reduce(into: [UUID: AthleteTransition]()) { result, transition in
             if result[transition.athleteID] == nil {
                 result[transition.athleteID] = transition
@@ -486,6 +541,59 @@ struct TransitionSpec: Codable, Identifiable, Equatable, Hashable {
         }
         athleteTransitions = athleteIDs.map { athleteID in
             lookup[athleteID] ?? AthleteTransition(athleteID: athleteID)
+        }
+        stuntGroups = stuntGroups.compactMap { group in
+            var seen = Set<UUID>()
+            let keptIDs = group.athleteIDs.filter { athleteID in
+                validAthleteIDs.contains(athleteID) && seen.insert(athleteID).inserted
+            }
+            guard keptIDs.count >= 2 else { return nil }
+            return TransitionStuntGroup(id: group.id, athleteIDs: keptIDs)
+        }
+        enforceSingleGroupMembership()
+    }
+
+    @discardableResult
+    mutating func createStuntGroup(athleteIDs rawAthleteIDs: Set<UUID>) -> TransitionStuntGroup? {
+        let availableIDs = Set(athleteTransitions.map(\.athleteID))
+        let orderedIDs = athleteTransitions
+            .map(\.athleteID)
+            .filter { rawAthleteIDs.contains($0) && availableIDs.contains($0) }
+        guard orderedIDs.count >= 2 else { return nil }
+
+        let selectedIDs = Set(orderedIDs)
+        stuntGroups.removeAll { !$0.athleteIDSet.isDisjoint(with: selectedIDs) }
+
+        let commonDelay = athleteTransitions
+            .filter { selectedIDs.contains($0.athleteID) }
+            .map(\.moveDelayCounts)
+            .min() ?? 0
+        for index in athleteTransitions.indices where selectedIDs.contains(athleteTransitions[index].athleteID) {
+            athleteTransitions[index].moveDelayCounts = commonDelay
+            athleteTransitions[index].pathControlPoint = nil
+            athleteTransitions[index].pathWaypoints = []
+        }
+
+        let group = TransitionStuntGroup(athleteIDs: orderedIDs)
+        stuntGroups.append(group)
+        enforceSingleGroupMembership()
+        return group
+    }
+
+    mutating func removeStuntGroup(id: UUID) {
+        stuntGroups.removeAll { $0.id == id }
+    }
+
+    mutating func removeStuntGroups(containing athleteIDs: Set<UUID>) {
+        stuntGroups.removeAll { !$0.athleteIDSet.isDisjoint(with: athleteIDs) }
+    }
+
+    private mutating func enforceSingleGroupMembership() {
+        var assigned = Set<UUID>()
+        stuntGroups = stuntGroups.compactMap { group in
+            let keptIDs = group.athleteIDs.filter { assigned.insert($0).inserted }
+            guard keptIDs.count >= 2 else { return nil }
+            return TransitionStuntGroup(id: group.id, athleteIDs: keptIDs)
         }
     }
 }
@@ -1439,6 +1547,21 @@ final class RoutineStore: ObservableObject {
         )
     }
 
+    func transitionStuntGroups(from fromID: UUID?, to toID: UUID?) -> [TransitionStuntGroup] {
+        guard let fromID, let toID else { return [] }
+        return transitionSpec(for: fromID, to: toID).stuntGroups
+    }
+
+    func transitionStuntGroup(containing athleteID: UUID, from fromID: UUID?, to toID: UUID?) -> TransitionStuntGroup? {
+        guard let fromID, let toID else { return nil }
+        return transitionSpec(for: fromID, to: toID).stuntGroup(containing: athleteID)
+    }
+
+    func transitionStuntGroup(exactly athleteIDs: Set<UUID>, from fromID: UUID?, to toID: UUID?) -> TransitionStuntGroup? {
+        guard let fromID, let toID, athleteIDs.count >= 2 else { return nil }
+        return transitionSpec(for: fromID, to: toID).stuntGroup(exactly: athleteIDs)
+    }
+
     func renderedAthletes(for formationID: UUID) -> [RenderedAthlete] {
         guard let index = formationIndex(id: formationID) else { return [] }
         return renderedAthletes(for: routine.formations[index])
@@ -1713,6 +1836,29 @@ final class RoutineStore: ObservableObject {
         update(&routine.transitionSpecs[index])
         let athleteIDs = routine.formations[formationIndex(id: fromID) ?? 0].placements.map(\.athleteID)
         routine.transitionSpecs[index].synchronize(athleteIDs: athleteIDs)
+    }
+
+    @discardableResult
+    func createTransitionStuntGroup(from fromID: UUID, to toID: UUID, athleteIDs: Set<UUID>) -> TransitionStuntGroup? {
+        guard athleteIDs.count >= 2 else { return nil }
+        var createdGroup: TransitionStuntGroup?
+        mutateTransitionSpec(from: fromID, to: toID) { spec in
+            createdGroup = spec.createStuntGroup(athleteIDs: athleteIDs)
+        }
+        return createdGroup
+    }
+
+    func removeTransitionStuntGroup(id: UUID, from fromID: UUID, to toID: UUID) {
+        mutateTransitionSpec(from: fromID, to: toID) { spec in
+            spec.removeStuntGroup(id: id)
+        }
+    }
+
+    func removeTransitionStuntGroups(containing athleteIDs: Set<UUID>, from fromID: UUID, to toID: UUID) {
+        guard !athleteIDs.isEmpty else { return }
+        mutateTransitionSpec(from: fromID, to: toID) { spec in
+            spec.removeStuntGroups(containing: athleteIDs)
+        }
     }
 
     func mutateAthleteTransition(
