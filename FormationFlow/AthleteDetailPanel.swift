@@ -131,6 +131,7 @@ struct MultiSelectionInspectorView: View {
     var startFormationID: UUID? = nil
     var endFormationID: UUID? = nil
     var isPro: Bool = true
+    var canCreateStuntGroup: Bool = true
     var onUpgrade: () -> Void = {}
     var onRefreshTransition: () -> Void = {}
 
@@ -177,6 +178,7 @@ struct MultiSelectionInspectorView: View {
                     startFormationID: startFormationID,
                     endFormationID: endFormationID,
                     compactLayout: compactLayout,
+                    canCreateStuntGroup: canCreateStuntGroup,
                     onRefreshTransition: onRefreshTransition
                 )
 
@@ -226,6 +228,7 @@ private struct TransitionGroupControl: View {
     let startFormationID: UUID
     let endFormationID: UUID
     let compactLayout: Bool
+    let canCreateStuntGroup: Bool
     let onRefreshTransition: () -> Void
 
     private var selectedGroup: TransitionStuntGroup? {
@@ -241,7 +244,7 @@ private struct TransitionGroupControl: View {
     var body: some View {
         VStack(alignment: .leading, spacing: compactLayout ? 8 : 10) {
             HStack {
-                Text("Transition Group")
+                Text("Stunt Group")
                     .font(.subheadline.weight(.semibold))
                 Spacer()
                 Text(selectedGroup == nil ? "Unlocked" : "Locked")
@@ -252,7 +255,7 @@ private struct TransitionGroupControl: View {
             Button {
                 if let selectedGroup {
                     store.removeTransitionStuntGroup(id: selectedGroup.id, from: startFormationID, to: endFormationID)
-                } else {
+                } else if canCreateStuntGroup {
                     _ = store.createTransitionStuntGroup(
                         from: startFormationID,
                         to: endFormationID,
@@ -262,17 +265,28 @@ private struct TransitionGroupControl: View {
                 onRefreshTransition()
             } label: {
                 Label(
-                    selectedGroup == nil ? (overlapsExistingGroup ? "Regroup as Unit" : "Group as Unit") : "Ungroup Unit",
+                    selectedGroup == nil ? (overlapsExistingGroup ? "Group as Stunt" : "Create Stunt Group") : "Ungroup Stunt Group",
                     systemImage: selectedGroup == nil ? "link" : "link.badge.minus"
                 )
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
+            .disabled(selectedGroup == nil && !canCreateStuntGroup)
 
-            Text(selectedGroup == nil ? "Locks these athletes together for this transition." : "Ungroup before editing one athlete by itself.")
+            Text(groupHelpText)
                 .font(.caption)
                 .foregroundColor(.secondary)
         }
+    }
+
+    private var groupHelpText: String {
+        if selectedGroup != nil {
+            return "Ungroup before editing one athlete by itself."
+        }
+        if !canCreateStuntGroup {
+            return "Pause on a formation to create a stunt group."
+        }
+        return "Locks these athletes together for this transition."
     }
 }
 
@@ -888,6 +902,19 @@ struct SidebarInspectorView: View {
         return player.transitionSpec.athleteTransition(for: selectedAthleteID)
     }
 
+    private var canCreateStuntGroup: Bool {
+        guard
+            selectedAthleteIDs.count >= 2,
+            let player,
+            !player.isPlaying,
+            player.progress <= 0.001 || player.progress >= 0.999,
+            let formation
+        else { return false }
+
+        let placementIDs = Set(formation.placements.map(\.athleteID))
+        return selectedAthleteIDs.isSubset(of: placementIDs)
+    }
+
     private var startFormationName: String? {
         guard let startFormationID, let idx = store.formationIndex(id: startFormationID) else { return nil }
         return store.routine.formations[idx].name
@@ -956,6 +983,7 @@ struct SidebarInspectorView: View {
                         startFormationID: startFormationID,
                         endFormationID: endFormationID,
                         isPro: isPro,
+                        canCreateStuntGroup: canCreateStuntGroup,
                         onUpgrade: onUpgrade,
                         onRefreshTransition: onRefreshTransition
                     )
@@ -1158,6 +1186,18 @@ struct SelectedAthleteSidebarView: View {
     private var transition: AthleteTransition? {
         guard let selectedAthleteID else { return nil }
         return player.transitionSpec.athleteTransition(for: selectedAthleteID)
+    }
+
+    private var canCreateStuntGroup: Bool {
+        guard
+            selectedAthleteIDs.count >= 2,
+            !player.isPlaying,
+            player.progress <= 0.001 || player.progress >= 0.999,
+            let formation
+        else { return false }
+
+        let placementIDs = Set(formation.placements.map(\.athleteID))
+        return selectedAthleteIDs.isSubset(of: placementIDs)
     }
 
     private var startFormationName: String {
@@ -1423,6 +1463,7 @@ struct SelectedAthleteSidebarView: View {
                     startFormationID: startFormationID,
                     endFormationID: endFormationID,
                     isPro: isPro,
+                    canCreateStuntGroup: canCreateStuntGroup,
                     onUpgrade: onUpgrade,
                     onRefreshTransition: onRefreshTransition
                 )

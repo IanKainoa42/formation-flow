@@ -156,6 +156,25 @@ struct FloorGridView: View {
         selectedTransitionGroup != nil
     }
 
+    private var selectedAthletesAreInDisplayedFormation: Bool {
+        guard
+            selectedAthleteIDs.count >= 2,
+            let endpoint = displayedFormationEndpoint,
+            let formationID = endpoint == .start ? startFormationID : endFormationID,
+            let formation = store.formation(id: formationID)
+        else { return false }
+
+        let placementIDs = Set(formation.placements.map(\.athleteID))
+        return selectedAthleteIDs.isSubset(of: placementIDs)
+    }
+
+    private var canCreateSelectedTransitionGroup: Bool {
+        hasTransition
+            && !isTransportEngaged
+            && displayedFormationEndpoint != nil
+            && selectedAthletesAreInDisplayedFormation
+    }
+
     private var formationIndex: Int? {
         store.formationIndex(id: formationID)
     }
@@ -1779,7 +1798,7 @@ struct FloorGridView: View {
                 Spacer(minLength: 0)
 
                 if hasTransition {
-                    Button(selectionIsTransitionGroup ? "Ungroup" : "Group") {
+                    Button(selectionIsTransitionGroup ? "Ungroup" : "Create Stunt Group") {
                         if selectionIsTransitionGroup {
                             ungroupSelectedTransitionGroup()
                         } else {
@@ -1787,6 +1806,7 @@ struct FloorGridView: View {
                         }
                     }
                     .buttonStyle(.borderedProminent)
+                    .disabled(!selectionIsTransitionGroup && !canCreateSelectedTransitionGroup)
                     .frame(minHeight: 44)
                 }
 
@@ -3810,6 +3830,7 @@ struct FloorGridView: View {
 
     private func createSelectedTransitionGroup() {
         guard hasTransition,
+              canCreateSelectedTransitionGroup,
               let startFormationID,
               let endFormationID,
               selectedAthleteIDs.count >= 2 else { return }

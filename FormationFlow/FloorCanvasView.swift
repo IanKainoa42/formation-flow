@@ -477,31 +477,15 @@ struct FloorCanvasView: View {
         for groupIDs in groupedAthleteIDSets {
             let members = groupIDs.compactMap { athletesByID[$0] }
             guard members.count >= 2 else { continue }
+            guard let harness = groupHarnessOutline(for: members) else { continue }
 
-            let points = members.map { scaledCanvasPoint($0.position) }
-            guard
-                let minX = points.map(\.x).min(),
-                let maxX = points.map(\.x).max(),
-                let minY = points.map(\.y).min(),
-                let maxY = points.map(\.y).max()
-            else { continue }
-
-            let inset = max(18, 20 * markerScale)
-            let rect = CGRect(
-                x: minX - inset,
-                y: minY - inset,
-                width: max(maxX - minX + inset * 2, 44 * markerScale),
-                height: max(maxY - minY + inset * 2, 44 * markerScale)
-            )
             let isActive = groupIDs.isSubset(of: selectedAthleteIDs)
             let harnessColor = isActive ? formationColor : Color.white
             let opacity: CGFloat = isActive ? 0.88 : 0.36
-            var outline = Path()
-            outline.addRoundedRect(in: rect, cornerSize: CGSize(width: 10, height: 10))
 
-            context.fill(outline, with: .color(harnessColor.opacity(isActive ? 0.08 : 0.035)))
+            context.fill(harness.path, with: .color(harnessColor.opacity(isActive ? 0.08 : 0.035)))
             context.stroke(
-                outline,
+                harness.path,
                 with: .color(harnessColor.opacity(opacity)),
                 style: StrokeStyle(
                     lineWidth: isActive ? max(2, 2.4 * markerScale) : max(1.2, 1.5 * markerScale),
@@ -511,7 +495,7 @@ struct FloorCanvasView: View {
                 )
             )
 
-            let center = CGPoint(x: rect.midX, y: rect.midY)
+            let center = harness.center
             let anchorRadius = max(3.5, 4.5 * markerScale)
             var anchor = Path()
             anchor.addEllipse(
@@ -525,9 +509,9 @@ struct FloorCanvasView: View {
             context.fill(anchor, with: .color(.black.opacity(0.5)))
             context.stroke(anchor, with: .color(harnessColor.opacity(opacity)), lineWidth: max(1.5, 1.8 * markerScale))
 
-            let handle = CGPoint(x: rect.midX, y: rect.minY - max(11, 12 * markerScale))
+            let handle = CGPoint(x: harness.bounds.midX, y: harness.bounds.minY - max(11, 12 * markerScale))
             var stem = Path()
-            stem.move(to: CGPoint(x: rect.midX, y: rect.minY))
+            stem.move(to: CGPoint(x: harness.bounds.midX, y: harness.bounds.minY))
             stem.addLine(to: handle)
             context.stroke(stem, with: .color(harnessColor.opacity(opacity)), lineWidth: max(1.2, 1.5 * markerScale))
 
@@ -543,6 +527,140 @@ struct FloorCanvasView: View {
             context.fill(rotateHandle, with: .color(harnessColor.opacity(isActive ? 0.24 : 0.12)))
             context.stroke(rotateHandle, with: .color(harnessColor.opacity(opacity)), lineWidth: max(1.4, 1.7 * markerScale))
         }
+    }
+
+    private func groupHarnessOutline(for members: [RenderedAthlete]) -> (path: Path, bounds: CGRect, center: CGPoint)? {
+        let points = members.map { scaledCanvasPoint($0.position) }
+        guard !points.isEmpty else { return nil }
+
+        let summedCenter = points.reduce(CGPoint.zero) { partial, point in
+            CGPoint(x: partial.x + point.x, y: partial.y + point.y)
+        }
+        let center = CGPoint(
+            x: summedCenter.x / CGFloat(points.count),
+            y: summedCenter.y / CGFloat(points.count)
+        )
+        let padding = max(
+            10,
+            (members.map { $0.role.selectedMarkerRadius }.max() ?? 18) * markerScale + max(2, 3 * markerScale)
+        )
+
+        if points.count == 2 {
+            let path = capsuleHarnessPath(from: points[0], to: points[1], radius: padding)
+            return (path, path.boundingRect, center)
+        }
+
+        let hull = convexHull(points)
+        guard hull.count >= 3 else {
+            let path = circularHarnessPath(center: center, radius: padding)
+            return (path, path.boundingRect, center)
+        }
+
+        let expanded = hull.map { point -> CGPoint in
+            let dx = point.x - center.x
+            let dy = point.y - center.y
+            let length = max(0.001, (dx * dx + dy * dy).squareRoot())
+            return CGPoint(
+                x: point.x + (dx / length) * padding,
+                y: point.y + (dy / length) * padding
+            )
+        }
+
+        let path = smoothClosedPath(through: expanded)
+        return (path, path.boundingRect, center)
+    }
+
+    private func capsuleHarnessPath(from start: CGPoint, to end: CGPoint, radius: CGFloat) -> Path {
+        let dx = end.x - start.x
+        let dy = end.y - start.y
+        let length = (dx * dx + dy * dy).squareRoot()
+        guard length > 0.001 else {
+            return circularHarnessPath(center: start, radius: radius)
+        }
+
+        let ux = dx / length
+        let uy = dy / length
+        let nx = -uy * radius
+        let ny = ux * radius
+
+        let startA = CGPoint(x: start.x + nx, y: start.y + ny)
+        let endA = CGPoint(x: end.x + nx, y: end.y + ny)
+        let endB = CGPoint(x: end.x - nx, y: end.y - ny)
+        let startB = CGPoint(x: start.x - nx, y: start.y - ny)
+
+        var path = Path()
+        path.move(to: startA)
+        path.addLine(to: endA)
+        path.addQuadCurve(to: endB, control: CGPoint(x: end.x + ux * radius, y: end.y + uy * radius))
+        path.addLine(to: startB)
+        path.addQuadCurve(to: startA, control: CGPoint(x: start.x - ux * radius, y: start.y - uy * radius))
+        path.closeSubpath()
+        return path
+    }
+
+    private func circularHarnessPath(center: CGPoint, radius: CGFloat) -> Path {
+        var path = Path()
+        path.addEllipse(
+            in: CGRect(
+                x: center.x - radius,
+                y: center.y - radius,
+                width: radius * 2,
+                height: radius * 2
+            )
+        )
+        return path
+    }
+
+    private func smoothClosedPath(through points: [CGPoint]) -> Path {
+        guard points.count >= 3 else { return Path() }
+
+        func midpoint(_ a: CGPoint, _ b: CGPoint) -> CGPoint {
+            CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
+        }
+
+        var path = Path()
+        let last = points[points.count - 1]
+        path.move(to: midpoint(last, points[0]))
+
+        for index in points.indices {
+            let current = points[index]
+            let next = points[(index + 1) % points.count]
+            path.addQuadCurve(to: midpoint(current, next), control: current)
+        }
+        path.closeSubpath()
+        return path
+    }
+
+    private func convexHull(_ points: [CGPoint]) -> [CGPoint] {
+        let sorted = points.sorted {
+            if abs($0.x - $1.x) > 0.001 { return $0.x < $1.x }
+            return $0.y < $1.y
+        }
+        guard sorted.count > 2 else { return sorted }
+
+        func cross(_ origin: CGPoint, _ a: CGPoint, _ b: CGPoint) -> CGFloat {
+            (a.x - origin.x) * (b.y - origin.y) - (a.y - origin.y) * (b.x - origin.x)
+        }
+
+        var lower: [CGPoint] = []
+        for point in sorted {
+            while lower.count >= 2 && cross(lower[lower.count - 2], lower[lower.count - 1], point) <= 0 {
+                lower.removeLast()
+            }
+            lower.append(point)
+        }
+
+        var upper: [CGPoint] = []
+        for point in sorted.reversed() {
+            while upper.count >= 2 && cross(upper[upper.count - 2], upper[upper.count - 1], point) <= 0 {
+                upper.removeLast()
+            }
+            upper.append(point)
+        }
+
+        lower.removeLast()
+        upper.removeLast()
+        return lower + upper
     }
 
     private func scaledCanvasPoint(_ point: CGPoint) -> CGPoint {
