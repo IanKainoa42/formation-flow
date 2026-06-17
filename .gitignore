@@ -62,3 +62,10 @@ plan.md
 *.mov
 AppStoreScreenshots/
 marketing/
+
+# Stale fastlane screenshot archives (locally retained, not for git)
+fastlane/_archive_*/
+
+# Python bytecode from scripts/
+__pycache__/
+*.pyc
