@@ -428,6 +428,14 @@ private struct BulkDelayControl: View {
                     step: 0.5
                 )
                 .accessibilityLabel("Start Delay for \(selectedAthleteIDs.count) selected athletes")
+
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 112), spacing: 8)],
+                    spacing: 8
+                ) {
+                    rippleButton(stepCounts: 1, title: "Ripple +1")
+                    rippleButton(stepCounts: 2, title: "Ripple +2")
+                }
             } else {
                 HStack {
                     Slider(value: .constant(0), in: 0...CGFloat(player.counts))
@@ -440,10 +448,21 @@ private struct BulkDelayControl: View {
                     .help("Upgrade to Pro to adjust start delay")
                 }
             }
-            Text("Applies to all selected athletes.")
+            Text("Slider applies one delay to all. Ripple sequences selected athletes/groups left-to-right.")
                 .font(.caption)
                 .foregroundColor(.secondary)
         }
+    }
+
+    private func rippleButton(stepCounts: CGFloat, title: String) -> some View {
+        Button {
+            applyRippleDelay(stepCounts: stepCounts)
+        } label: {
+            Label(title, systemImage: "forward.frame")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .accessibilityHint("Stagger selected athletes and stunt groups by \(TransitionCountFormatting.label(stepCounts))")
     }
 
     private func applyBulkDelay(_ newValue: CGFloat) {
@@ -455,6 +474,84 @@ private struct BulkDelayControl: View {
             }
         }
         onRefreshTransition()
+    }
+
+    private func applyRippleDelay(stepCounts: CGFloat) {
+        let units = orderedRippleUnits
+        guard !units.isEmpty else { return }
+
+        let baseDelay = min(CGFloat(player.counts), max(0, commonDelay ?? selectedDelays.min() ?? 0))
+        let maxDelay = CGFloat(player.counts)
+        store.mutateTransitionSpec(from: startFormationID, to: endFormationID) { spec in
+            for (unitIndex, athleteIDs) in units.enumerated() {
+                let delay = min(maxDelay, baseDelay + CGFloat(unitIndex) * stepCounts)
+                for index in spec.athleteTransitions.indices where athleteIDs.contains(spec.athleteTransitions[index].athleteID) {
+                    spec.athleteTransitions[index].moveDelayCounts = delay
+                }
+            }
+        }
+        onRefreshTransition()
+    }
+
+    private var orderedRippleUnits: [Set<UUID>] {
+        let selectedIDs = selectedAthleteIDs
+        let groupUnits = store.transitionStuntGroups(from: startFormationID, to: endFormationID)
+            .map(\.athleteIDSet)
+            .filter { $0.count >= 2 && $0.isSubset(of: selectedIDs) }
+
+        var assignedIDs = Set<UUID>()
+        var units: [Set<UUID>] = []
+        for groupIDs in groupUnits {
+            guard groupIDs.isDisjoint(with: assignedIDs) else { continue }
+            units.append(groupIDs)
+            assignedIDs.formUnion(groupIDs)
+        }
+
+        for athleteID in selectedIDs.subtracting(assignedIDs) {
+            units.append(Set([athleteID]))
+        }
+
+        return units.sorted(by: rippleUnitPrecedes)
+    }
+
+    private func rippleUnitPrecedes(_ lhs: Set<UUID>, _ rhs: Set<UUID>) -> Bool {
+        let left = rippleUnitMetrics(for: lhs)
+        let right = rippleUnitMetrics(for: rhs)
+
+        if abs(left.position.x - right.position.x) > 0.001 {
+            return left.position.x < right.position.x
+        }
+        if abs(left.position.y - right.position.y) > 0.001 {
+            return left.position.y < right.position.y
+        }
+        return left.order < right.order
+    }
+
+    private func rippleUnitMetrics(for athleteIDs: Set<UUID>) -> (position: CGPoint, order: Int) {
+        var sum = CGPoint.zero
+        var count: CGFloat = 0
+        var order = Int.max
+
+        for athleteID in athleteIDs {
+            guard let index = player.startAthletes.firstIndex(where: { $0.id == athleteID }) else { continue }
+            let athlete = player.startAthletes[index]
+            sum.x += athlete.position.x
+            sum.y += athlete.position.y
+            count += 1
+            order = min(order, index)
+        }
+
+        guard count > 0 else {
+            return (
+                CGPoint(x: CGFloat.greatestFiniteMagnitude, y: CGFloat.greatestFiniteMagnitude),
+                Int.max
+            )
+        }
+
+        return (
+            CGPoint(x: sum.x / count, y: sum.y / count),
+            order
+        )
     }
 }
 
