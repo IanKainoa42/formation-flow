@@ -404,6 +404,36 @@ struct RoutineWorkspaceView: View {
                     compactDetailView(for: formationID)
                 }
         }
+        // Lists/navigation stay portrait on iPhone; the floor editor flips to
+        // landscape on its own (see detailContent). iPad is never constrained.
+        .onAppear {
+            if isPhoneLayout { OrientationLock.set(.portrait) }
+        }
+    }
+
+    /// Shown over the floor editor on iPhone while the device is still portrait
+    /// (e.g. rotation hasn't completed, or the user has rotation lock on). The
+    /// editor itself forces landscape, so this is a brief/fallback state.
+    private var rotateToEditPrompt: some View {
+        ZStack {
+            Color(white: 0.08).ignoresSafeArea()
+            VStack(spacing: 16) {
+                Image(systemName: "rotate.right.fill")
+                    .font(.system(size: 44, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.9))
+                Text("Rotate to edit")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.white)
+                Text("The floor opens in landscape so the full court fits.")
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 280)
+            }
+            .padding(32)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Rotate your phone to landscape to edit the floor")
     }
 
     // MARK: - Sidebar
@@ -644,6 +674,20 @@ struct RoutineWorkspaceView: View {
                 .toolbar(isPhoneLandscape ? .hidden : .automatic, for: .navigationBar)
                 .ignoresSafeArea(edges: isPhoneLandscape ? .all : [])
                 .statusBarHidden(isPhoneLandscape)
+                // The court is wide (72×56) — on a phone it only fills the screen
+                // in landscape, so the floor editor forces landscape on iPhone and
+                // hands the orientation back to portrait when you leave.
+                .overlay {
+                    if isPhoneLayout && !isPhoneLandscape {
+                        rotateToEditPrompt
+                    }
+                }
+                .onAppear {
+                    if isPhoneLayout { OrientationLock.set(.landscape) }
+                }
+                .onDisappear {
+                    if isPhoneLayout { OrientationLock.set(.portrait) }
+                }
                 .sheet(isPresented: $showingCompactFormationPicker) {
                     compactFormationPickerSheet
                 }

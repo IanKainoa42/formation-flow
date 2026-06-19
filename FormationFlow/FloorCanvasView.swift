@@ -194,8 +194,10 @@ struct FloorCanvasView: View {
         // same smooth clock as the comet. Under Reduce Motion it falls back to a
         // static dot at every step (no animation), so no fast clock then.
         let stepActive = showCountSteps && !transitionPaths.isEmpty && !reduceMotion
-        // Pulse/step need a smooth ~30fps clock; collisions blink at 0.45s; otherwise idle.
-        let tickInterval: Double = (pulseActive || stepActive) ? (1.0 / 30.0) : (blinkActive ? blinkInterval : 86_400)
+        // A single selected athlete gets a pulsing destination spotlight.
+        let selectionActive = hasTransition && selectedAthleteIDs.count == 1 && !reduceMotion
+        // Pulse/step/selection need a smooth ~30fps clock; collisions blink at 0.45s; otherwise idle.
+        let tickInterval: Double = (pulseActive || stepActive || selectionActive) ? (1.0 / 30.0) : (blinkActive ? blinkInterval : 86_400)
         return TimelineView(.periodic(from: .now, by: tickInterval)) { timeline in
             Canvas { context, _ in
                 var context = context
@@ -226,17 +228,17 @@ struct FloorCanvasView: View {
                 drawGroupHarnesses(in: &context)
                 drawTransitionPaths(in: &context, collisionColor: collisionColor)
                 if showCountSteps {
-                    if stepActive,
-                       let stepState = pathPulseRenderState(time: timeline.date.timeIntervalSinceReferenceDate) {
-                        drawStepBlinks(in: &context, state: stepState)
+                    if stepActive {
+                        drawStepBlinks(in: &context, time: timeline.date.timeIntervalSinceReferenceDate)
                     } else {
-                        // Reduce Motion (or empty clock): static dot at each step.
+                        // Reduce Motion: static dot at each step.
                         drawStepDotsStatic(in: &context)
                     }
                 }
                 drawPathSketch(in: &context)
                 drawPathCollisionMarkers(in: &context)
                 drawEndpointMarkers(in: &context)
+                drawSelectedDestination(in: &context, time: timeline.date.timeIntervalSinceReferenceDate)
                 drawAthletes(in: &context, pulseLights: pulseLights)
 
                 if let pulseState {
@@ -981,62 +983,182 @@ struct FloorCanvasView: View {
     /// blinks sharply on arrival — "step, step, step" at one step per count. Path
     /// length is divided into `transitionCounts` equal segments; during the k-th
     /// count window the blip sits at step k and decays until it jumps to k+1.
-    private func drawStepBlinks(in context: inout GraphicsContext, state: PulseRenderState) {
-        let n = max(1, Int(transitionCounts.rounded()))
-        let blinkDecay: Double = 0.16   // sharp: bright on the count, gone before the next
+    /// One stride ≈ a yard (~half a grid square). The LED advances exactly one
+    /// stride per beat, so the step length is a real footstep — not the path
+    /// stretched across `counts` (which made steps arbitrarily long). Stride
+    /// count therefore comes from the path's true length, not the count setting.
+    private static let stepFeet: CGFloat = 3
 
-        for lane in state.lanes {
-            let localT = state.cycleT - lane.start
-            guard localT >= 0 else { continue }
-            let progress = lane.travel > 0 ? min(max(localT / lane.travel, 0), 1) : 1
+    private struct StepLane {
+        let item: TransitionPathRenderItem
+        let poly: [CGPoint]
+        let cum: [CGFloat]
+        let total: CGFloat
+        let strides: Int
+        let delayBeats: Double
+    }
 
-            if progress < 1 {
-                let stepF = progress * Double(n)
-                // Current step we're on/heading to, 1...n.
-                let stepIndex = min(n, Int(floor(stepF)) + 1)
-                let posFrac = CGFloat(stepIndex) / CGFloat(n)
+    private static let warningAmber = Color(red: 1.0, green: 0.72, blue: 0.12)
+
+    private func drawStepBlinks(in context: inout GraphicsContext, time: TimeInterval) {
+        // One beat per stride at the real tempo (0.4s at 150 BPM): the LED hops a
+        // yard each beat, the same clock playback runs at.
+        let spc = Double(PathCalculations.secondsPerCount)
+        let restBeats: Double = 1.0
+        // The athlete only has `counts` beats — at one stride per beat that caps
+        // how far they get. Paths needing more strides than this can't be reached
+        // in time (flagged below).
+        let cap = max(1, Int(transitionCounts.rounded()))
+        let pathOpacityMultiplier: CGFloat = focusedEndpoint != nil ? 0.5 : 1.0
+
+        // Each lane takes as many strides as its real length holds yards.
+        var lanes: [StepLane] = []
+        lanes.reserveCapacity(transitionPaths.count)
+        for item in transitionPaths {
+            let poly = pathPolyline(for: item)
+            guard poly.count >= 2 else { continue }
+            let cum = cumulativeLengths(poly)
+            guard let total = cum.last, total > 0 else { continue }
+            let lengthFeet = total / max(cellSize, 0.0001)
+            let strides = max(1, Int((lengthFeet / Self.stepFeet).rounded()))
+            lanes.append(StepLane(
+                item: item, poly: poly, cum: cum, total: total,
+                strides: strides, delayBeats: Double(max(0, item.moveDelay))
+            ))
+        }
+        guard !lanes.isEmpty else { return }
+
+        // Shared cycle: longest (delay + strides it actually takes, capped) + rest.
+        let maxBeats = lanes.map { $0.delayBeats + Double(min($0.strides, cap)) }.max() ?? 1
+        let cycleSeconds = (maxBeats + restBeats) * spc
+        guard cycleSeconds > 0 else { return }
+        let elapsedBeats = time.truncatingRemainder(dividingBy: cycleSeconds) / spc
+        let warnPulse = CGFloat(0.5 + 0.5 * sin(time * 3.4))
+
+        let (sr, sg, sb) = rgbComponents(startFormationColor)
+        let (er, eg, eb) = rgbComponents(endFormationColor)
+
+        for lane in lanes {
+            let movingStrides = min(lane.strides, cap)   // where the athlete actually stops
+            let cameUpShort = lane.strides > cap
+            let stopFrac = CGFloat(movingStrides) / CGFloat(lane.strides)
+            let isSelected = selectedAthleteIDs.contains(lane.item.athleteID)
+
+            // Persistent "didn't make it in time" alert: a dashed amber line from
+            // where they stop to where they should be, and a pulsing amber target
+            // on the unreached spot. Distinct from the red collision warning.
+            if cameUpShort {
+                let stopPoint = pointAtArcLength(stopFrac * lane.total, pts: lane.poly, cum: lane.cum)
+                let dest = CGPoint(x: lane.item.endPosition.x * cellSize, y: lane.item.endPosition.y * cellSize)
+                drawUnreachedWarning(in: &context, from: stopPoint, to: dest, pulse: warnPulse, opacity: pathOpacityMultiplier)
+            }
+
+            let localBeats = elapsedBeats - lane.delayBeats
+            guard localBeats >= 0 else { continue }
+
+            if localBeats < Double(movingStrides) {
+                // Stride we're on. The LED snaps to it and holds full brightness
+                // for the whole beat (no fade) — a persisting light that hops a
+                // yard per beat, like a Mattel Electronic Football blip.
+                let stepIndex = min(movingStrides, Int(floor(localBeats)) + 1)
+                let posFrac = CGFloat(stepIndex) / CGFloat(lane.strides)
                 let center = pointAtArcLength(posFrac * lane.total, pts: lane.poly, cum: lane.cum)
-                let fracIntoStep = stepF - floor(stepF)          // 0 (just landed) → 1 (about to jump)
-                let blink = max(0.14, CGFloat(exp(-fracIntoStep / blinkDecay)))
-                let color = pulseGlowColor(progress: posFrac, state: state)
-                drawStepBlip(in: &context, center: center, intensity: blink, color: color)
+                let color = isSelected
+                    ? Color.white
+                    : Color(red: sr + (er - sr) * posFrac, green: sg + (eg - sg) * posFrac, blue: sb + (eb - sb) * posFrac)
+                drawStepBlip(in: &context, center: center, intensity: pathOpacityMultiplier, color: color)
             } else {
-                // Landed: a final sharp flash at the destination, fading into the
-                // group's rest pause before the whole set relaunches.
-                let sinceArrival = state.cycleT - (lane.start + lane.travel)
-                let flash = max(0.12, CGFloat(exp(-sinceArrival / 0.2)))
-                drawArrivalFlash(in: &context, at: lane.item.endPosition, intensity: flash, color: state.endGlow)
+                // Out of beats: hold at the stop point — the destination if reached,
+                // short of it (amber) if they ran out of counts.
+                let center = pointAtArcLength(stopFrac * lane.total, pts: lane.poly, cum: lane.cum)
+                let color = isSelected ? Color.white : (cameUpShort ? Self.warningAmber : endFormationColor)
+                drawStepBlip(in: &context, center: center, intensity: pathOpacityMultiplier, color: color)
             }
         }
     }
 
-    /// A crisp blip: hard bright core + tight glow (sharper/smaller than the
-    /// comet halo) so each step reads as a distinct blink rather than a sweep.
+    /// Amber "ran out of counts" alert — gap line from the stop point to the spot
+    /// the athlete should have reached, plus a pulsing target there. Deliberately
+    /// amber, not the red of a collision, so the two read as different problems.
+    private func drawUnreachedWarning(in context: inout GraphicsContext, from stop: CGPoint, to dest: CGPoint, pulse: CGFloat, opacity: CGFloat) {
+        let amber = Self.warningAmber
+        var gap = Path()
+        gap.move(to: stop)
+        gap.addLine(to: dest)
+        context.stroke(gap, with: .color(amber.opacity(0.55 * opacity)),
+                       style: StrokeStyle(lineWidth: max(1.5, 1.8 * markerScale), lineCap: .round, dash: [5, 4]))
+
+        let baseR = max(11, 13 * markerScale)
+        let r = baseR * (1.0 + 0.22 * pulse)
+        var ring = Path()
+        ring.addEllipse(in: CGRect(x: dest.x - r, y: dest.y - r, width: r * 2, height: r * 2))
+        context.stroke(ring, with: .color(amber.opacity((0.45 + 0.4 * pulse) * opacity)),
+                       style: StrokeStyle(lineWidth: max(2, 2.4 * markerScale)))
+
+        let cr = max(3, 3.4 * markerScale)
+        var center = Path()
+        center.addEllipse(in: CGRect(x: dest.x - cr, y: dest.y - cr, width: cr * 2, height: cr * 2))
+        context.fill(center, with: .color(amber.opacity(0.85 * opacity)))
+    }
+
+    /// A bright pulsing spotlight on the selected athlete's destination so it's
+    /// obvious where they end up (the future spot reads faintly otherwise).
+    private func drawSelectedDestination(in context: inout GraphicsContext, time: TimeInterval) {
+        guard hasTransition, selectedAthleteIDs.count == 1, let selected = selectedAthleteIDs.first else { return }
+        guard let item = transitionPaths.first(where: { $0.athleteID == selected }) else { return }
+        let dest = CGPoint(x: item.endPosition.x * cellSize, y: item.endPosition.y * cellSize)
+        let pulse = CGFloat(0.5 + 0.5 * sin(time * 2.4))
+        let glowColor = endFormationColor
+
+        let baseR = max(16, 18 * markerScale)
+        let r = baseR * (1.0 + 0.16 * pulse)
+        var glow = Path()
+        glow.addEllipse(in: CGRect(x: dest.x - r, y: dest.y - r, width: r * 2, height: r * 2))
+        context.fill(glow, with: .radialGradient(
+            Gradient(colors: [glowColor.opacity(0.34), glowColor.opacity(0.1), .clear]),
+            center: dest, startRadius: 0, endRadius: r))
+
+        var ring = Path()
+        ring.addEllipse(in: CGRect(x: dest.x - r, y: dest.y - r, width: r * 2, height: r * 2))
+        context.stroke(ring, with: .color(.white.opacity(0.5 + 0.4 * pulse)),
+                       style: StrokeStyle(lineWidth: max(2, 2.6 * markerScale)))
+
+        let cr = max(3.5, 4 * markerScale)
+        var core = Path()
+        core.addEllipse(in: CGRect(x: dest.x - cr, y: dest.y - cr, width: cr * 2, height: cr * 2))
+        context.fill(core, with: .color(.white.opacity(0.95)))
+    }
+
+    /// A steady LED: solid colored core + white-hot center + fixed soft glow.
+    /// Sizes don't track intensity, so it reads as a persisting light that holds
+    /// on its step and snaps to the next — not a twinkle that fades each beat.
     private func drawStepBlip(in context: inout GraphicsContext, center: CGPoint, intensity: CGFloat, color: Color) {
         let clamped = min(max(intensity, 0), 1)
-        let glowR = max(7, (6 + 8 * clamped) * markerScale)
+        let glowR = max(10, 11 * markerScale)
         var glow = Path()
         glow.addEllipse(in: CGRect(x: center.x - glowR, y: center.y - glowR, width: glowR * 2, height: glowR * 2))
         context.fill(
             glow,
             with: .radialGradient(
-                Gradient(colors: [color.opacity(0.55 * clamped), color.opacity(0.16 * clamped), .clear]),
+                Gradient(colors: [color.opacity(0.5 * clamped), color.opacity(0.14 * clamped), .clear]),
                 center: center,
                 startRadius: 0,
                 endRadius: glowR
             )
         )
-        let coreR = max(2.4, (2.6 + 1.6 * clamped) * markerScale)
+        let coreR = max(3.2, 3.6 * markerScale)
         var core = Path()
         core.addEllipse(in: CGRect(x: center.x - coreR, y: center.y - coreR, width: coreR * 2, height: coreR * 2))
-        context.fill(core, with: .color(.white.opacity(0.95 * clamped)))
+        context.fill(core, with: .color(color.opacity(0.98 * clamped)))
+        let hotR = coreR * 0.5
+        var hot = Path()
+        hot.addEllipse(in: CGRect(x: center.x - hotR, y: center.y - hotR, width: hotR * 2, height: hotR * 2))
+        context.fill(hot, with: .color(.white.opacity(0.95 * clamped)))
     }
 
     /// Reduce Motion fallback: a static dot at every step position (no blink),
     /// so the "one step per count" spacing is still legible without animation.
     private func drawStepDotsStatic(in context: inout GraphicsContext) {
-        let n = max(1, Int(transitionCounts.rounded()))
-        guard n >= 1 else { return }
         let pathOpacityMultiplier: CGFloat = focusedEndpoint != nil ? 0.5 : 1.0
 
         for item in transitionPaths {
@@ -1048,10 +1170,13 @@ struct FloorCanvasView: View {
             guard polyline.count >= 2 else { continue }
             let cum = cumulativeLengths(polyline)
             guard let total = cum.last, total > 0 else { continue }
+            // One dot per ~3ft stride, matching the animated step length.
+            let lengthFeet = total / max(cellSize, 0.0001)
+            let strides = max(1, Int((lengthFeet / Self.stepFeet).rounded()))
             let dotR = max(2.2, 2.6 * markerScale)
 
-            for i in 1...n {
-                let p = pointAtArcLength(total * CGFloat(i) / CGFloat(n), pts: polyline, cum: cum)
+            for i in 1...strides {
+                let p = pointAtArcLength(total * CGFloat(i) / CGFloat(strides), pts: polyline, cum: cum)
                 var dot = Path()
                 dot.addEllipse(in: CGRect(x: p.x - dotR, y: p.y - dotR, width: dotR * 2, height: dotR * 2))
                 context.fill(dot, with: .color(color.opacity(opacity)))

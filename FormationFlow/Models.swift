@@ -2053,7 +2053,14 @@ final class RoutineStore: ObservableObject {
 
 struct PathCalculations {
     static let collisionPenaltyCounts: CGFloat = 0.1
-    static let defaultPlaybackSpeed: CGFloat = 1.5
+    /// 1× playback = real choreography tempo. With `beatsPerMinute` 150 a count
+    /// lasts 0.4s, so a default 8-count transition runs 3.2s — what an 8-count
+    /// actually takes on the floor, not the old ~1s-per-count crawl.
+    static let defaultPlaybackSpeed: CGFloat = 1.0
+    /// Counts are beats; this is the tempo one beat is timed at. Standard cheer
+    /// 8-counts run ~150 BPM (0.4s/beat).
+    static let beatsPerMinute: CGFloat = 150
+    static var secondsPerCount: CGFloat { 60.0 / max(beatsPerMinute, 1) }
     private static let collisionResponseMinimumTravel: CGFloat = 0.001
     private static let collisionRedirectDistance: CGFloat = 1.0
     private static let collisionRedirectLeadProgress: CGFloat = 0.05
@@ -3240,7 +3247,10 @@ final class TransitionPlayer: ObservableObject {
 
     private func update() {
         guard isPlaying else { return }
-        let delta = CGFloat(1.0 / 60.0) * speed / max(playbackDurationCounts, 0.5)
+        // Advance at the choreography tempo: a count lasts `secondsPerCount`
+        // (0.4s at 150 BPM), so wall-clock = counts × secondsPerCount ÷ speed.
+        let delta = CGFloat(1.0 / 60.0) * speed
+            / (max(playbackDurationCounts, 0.5) * PathCalculations.secondsPerCount)
         progress = min(1.0, progress + delta)
         if progress >= 1.0 {
             if isLooping {

@@ -1468,11 +1468,11 @@ struct SelectedAthleteSidebarView: View {
                             get: { player.speed },
                             set: { player.setSpeed($0) }
                         )) {
-                            Text("0.5x").tag(CGFloat(1.0))
-                            Text("0.75x").tag(CGFloat(1.5))
-                            Text("1x").tag(CGFloat(2.0))
-                            Text("2x").tag(CGFloat(4.0))
-                            Text("4x").tag(CGFloat(8.0))
+                            Text("0.5x").tag(CGFloat(0.5))
+                            Text("0.75x").tag(CGFloat(0.75))
+                            Text("1x").tag(CGFloat(1.0))
+                            Text("2x").tag(CGFloat(2.0))
+                            Text("4x").tag(CGFloat(4.0))
                         }
                         .pickerStyle(.segmented)
                         .accessibilityLabel("Playback Speed")
