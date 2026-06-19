@@ -207,6 +207,59 @@ final class RoutineStoreTests: XCTestCase {
         XCTAssertTrue(store.transitionStuntGroups(from: startFormationID, to: endFormationID).isEmpty)
     }
 
+    func testApplyRelativePathWaypointsToStuntGroupPreservesMemberOffsets() {
+        let athleteID1 = store.addAthlete()
+        let athleteID2 = store.addAthlete()
+        let athleteID3 = store.addAthlete()
+        let startFormationID = store.routine.formations[0].id
+        let endFormationID = store.addFormation(after: startFormationID)
+
+        store.mutateFormation(id: startFormationID) { formation in
+            formation.placements[0].position = CGPoint(x: 10, y: 10)
+            formation.placements[1].position = CGPoint(x: 14, y: 12)
+            formation.placements[2].position = CGPoint(x: 30, y: 30)
+        }
+        _ = store.createTransitionStuntGroup(
+            from: startFormationID,
+            to: endFormationID,
+            athleteIDs: [athleteID1, athleteID2]
+        )
+
+        let anchorWaypoint = PathWaypoint(
+            id: UUID(),
+            position: CGPoint(x: 20, y: 18),
+            isSmooth: true,
+            holdDuration: 2
+        )
+        let startPositions = Dictionary(
+            uniqueKeysWithValues: store.renderedAthletes(for: startFormationID).map { ($0.id, $0.position) }
+        )
+
+        store.mutateTransitionSpec(from: startFormationID, to: endFormationID) { spec in
+            XCTAssertTrue(
+                spec.applyRelativePathWaypoints(
+                    anchorAthleteID: athleteID1,
+                    memberIDs: [athleteID1, athleteID2],
+                    anchorWaypoints: [anchorWaypoint],
+                    startPositionsByAthleteID: startPositions
+                )
+            )
+        }
+
+        let spec = store.transitionSpec(for: startFormationID, to: endFormationID)
+        let anchorPath = spec.athleteTransition(for: athleteID1).pathWaypoints
+        let secondPath = spec.athleteTransition(for: athleteID2).pathWaypoints
+        let nonMemberPath = spec.athleteTransition(for: athleteID3).pathWaypoints
+
+        XCTAssertEqual(anchorPath.map(\.id), [anchorWaypoint.id])
+        XCTAssertEqual(anchorPath.map(\.position), [CGPoint(x: 20, y: 18)])
+        XCTAssertEqual(anchorPath.map(\.holdDuration), [2])
+        XCTAssertEqual(secondPath.map(\.position), [CGPoint(x: 24, y: 20)])
+        XCTAssertEqual(secondPath.map(\.holdDuration), [2])
+        XCTAssertNotEqual(secondPath.first?.id, anchorWaypoint.id)
+        XCTAssertTrue(nonMemberPath.isEmpty)
+    }
+
     func testDeleteMissingAthleteDoesNotPublishOrMutateRoutine() {
         _ = store.addAthlete()
         let original = store.routine

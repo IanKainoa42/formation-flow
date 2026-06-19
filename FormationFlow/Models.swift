@@ -580,6 +580,56 @@ struct TransitionSpec: Codable, Identifiable, Equatable, Hashable {
         return group
     }
 
+    @discardableResult
+    mutating func applyRelativePathWaypoints(
+        anchorAthleteID: UUID,
+        memberIDs: Set<UUID>,
+        anchorWaypoints: [PathWaypoint],
+        startPositionsByAthleteID: [UUID: CGPoint]
+    ) -> Bool {
+        guard
+            memberIDs.count >= 2,
+            memberIDs.contains(anchorAthleteID),
+            let anchorStart = startPositionsByAthleteID[anchorAthleteID]
+        else { return false }
+
+        var updatedAnyMember = false
+        for index in athleteTransitions.indices {
+            let athleteID = athleteTransitions[index].athleteID
+            guard
+                memberIDs.contains(athleteID),
+                let athleteStart = startPositionsByAthleteID[athleteID]
+            else { continue }
+
+            let dx = athleteStart.x - anchorStart.x
+            let dy = athleteStart.y - anchorStart.y
+            let existingWaypoints = athleteTransitions[index].pathWaypoints
+            athleteTransitions[index].pathControlPoint = nil
+            athleteTransitions[index].pathWaypoints = anchorWaypoints.enumerated().map { waypointIndex, waypoint in
+                let waypointID: UUID
+                if athleteID == anchorAthleteID {
+                    waypointID = waypoint.id
+                } else if existingWaypoints.indices.contains(waypointIndex) {
+                    waypointID = existingWaypoints[waypointIndex].id
+                } else {
+                    waypointID = UUID()
+                }
+                return PathWaypoint(
+                    id: waypointID,
+                    position: CGPoint(
+                        x: waypoint.position.x + dx,
+                        y: waypoint.position.y + dy
+                    ),
+                    isSmooth: waypoint.isSmooth,
+                    holdDuration: waypoint.holdDuration
+                )
+            }
+            updatedAnyMember = true
+        }
+
+        return updatedAnyMember
+    }
+
     mutating func removeStuntGroup(id: UUID) {
         stuntGroups.removeAll { $0.id == id }
     }

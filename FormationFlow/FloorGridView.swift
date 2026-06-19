@@ -37,6 +37,17 @@ enum PathDisplayScope: String, CaseIterable, Identifiable {
     }
 }
 
+private struct FormationMoveUndoSnapshot: Equatable {
+    let formationID: UUID
+    let positions: [UUID: CGPoint]
+}
+
+private struct PathHandleHit {
+    let athleteID: UUID
+    let waypointID: UUID?
+    let position: CGPoint
+}
+
 // MARK: - Floor Grid View
 
 struct FloorGridView: View {
@@ -87,7 +98,7 @@ struct FloorGridView: View {
     @State private var selectionLasso: FloorSelectionLasso? = nil
     @State private var dragStartPositions: [UUID: CGPoint] = [:]
     @State private var draggingAthleteIDs: Set<UUID> = []
-    @State private var undoStack: [[(id: UUID, position: CGPoint)]] = []
+    @State private var undoStack: [FormationMoveUndoSnapshot] = []
     @State private var rotationStartPositions: [UUID: CGPoint] = [:]
     @State private var lastRotationDetent: Int = 0
     @State private var zoomScale: CGFloat = 1.0
@@ -107,6 +118,7 @@ struct FloorGridView: View {
     @State private var focusedEndpoint: PreviewEditableEndpoint?
     @State private var isDraggingEndpoint = false
     @State private var isDraggingPathHandle = false
+    @State private var pathDragAthleteID: UUID?
     @State private var isSketchingPath = false
     @State private var isLongPressSketching = false
     @State private var draggingWaypointID: UUID?
@@ -488,6 +500,26 @@ struct FloorGridView: View {
 
     private var displayedFormationEndpoint: PreviewEditableEndpoint? {
         focusedEndpoint ?? currentFormationEndpoint
+    }
+
+    private func formationID(for endpoint: PreviewEditableEndpoint?) -> UUID? {
+        guard let endpoint else { return nil }
+        switch endpoint {
+        case .start:
+            return startFormationID
+        case .end:
+            return endFormationID
+        }
+    }
+
+    private func endpoint(for formationID: UUID) -> PreviewEditableEndpoint? {
+        if formationID == startFormationID { return .start }
+        if formationID == endFormationID { return .end }
+        return nil
+    }
+
+    private var displayedEditableFormationID: UUID {
+        formationID(for: displayedFormationEndpoint) ?? formationID
     }
 
     private var editableFormationID: UUID? {
@@ -1192,7 +1224,7 @@ struct FloorGridView: View {
                         // push a useless undo entry for an incidental two-finger twitch.
                         if detent != 0 {
                             applyRotation(angle: CGFloat(detent) * rotationSnapIncrement)
-                            undoStack.append(rotationStartPositions.map { ($0.key, $0.value) })
+                            appendUndoSnapshot(positions: rotationStartPositions)
                             refreshTransitionFromStore()
                         }
                         rotationStartPositions = [:]
@@ -2562,92 +2594,37 @@ struct FloorGridView: View {
                     return athleteHit(at: startScaledPoint, within: renderedAthletes, cellSize: cellSize)
                 }()
 
-                // Priority 2: Focused waypoint handle gets a large grab area.
-                // (Only waypoints are draggable — the legacy midpoint bend handle
-                // was removed; path shape is edited via waypoints + long-press sketch.)
+                // Priority 2: Focused path handle gets a large grab area.
                 if athleteAtStart == nil,
                    let focusedPathHandle,
-                   let selectedAthleteID, let player,
                    showTransitionPaths, hasTransition
                 {
                     let focusedHitRadius = hitRadiusSquared * 2
-                    if PathCalculations.squaredDistance(from: startScaledPoint, to: focusedPathHandle) < focusedHitRadius {
-                        let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
-                        if let waypoint = transition.pathWaypoints.first(where: {
-                            PathCalculations.squaredDistance(from: focusedPathHandle, to: $0.position) < 1.0
-                        }) {
-                            guard dragDistanceSquared >= dragActivationDistanceSquared else { return }
-                            draggingWaypointID = waypoint.id
-                            isDraggingPathHandle = true
-                            focusedEndpoint = currentFormationEndpoint
-                            handlePathDragContinued(scaledPoint: scaledPoint)
-                            return
-                        }
+                    if PathCalculations.squaredDistance(from: startScaledPoint, to: focusedPathHandle) < focusedHitRadius,
+                       let hit = selectedPathHandleHit(
+                        at: startScaledPoint,
+                        maxSquaredDistance: focusedHitRadius
+                       ) {
+                        guard dragDistanceSquared >= dragActivationDistanceSquared else { return }
+                        beginPathHandleDrag(hit: hit, scaledPoint: scaledPoint)
+                        return
                     }
                 }
 
                 // Priority 3: Hit-test for new drag initiation
-                    if showTransitionPaths, hasTransition {
-                        // 3a: Path handles — block only when touching the SELECTED athlete itself
-                    if athleteAtStart?.id != selectedAthleteID,
-                       let selectedAthleteID,
-                       let player
-                    {
-                        let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
-
-                        let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID })
-                        let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
-
-                        // Check existing waypoint handles first. Generous grab
-                        // radius so the bend handles are easy to catch.
+                if showTransitionPaths, hasTransition {
+                    // 3a: Path handles — selected athlete markers still win
+                    // direct touches, but a selected path handle can be dragged
+                    // without collapsing a stunt group selection.
+                    if athleteAtStart.map({ !selectedAthleteIDs.contains($0.id) }) ?? true {
                         let waypointGrabRadius = hitRadiusSquared * 2.5
-                        for waypoint in transition.pathWaypoints {
-                            if PathCalculations.squaredDistance(from: startScaledPoint, to: waypoint.position)
-                                < waypointGrabRadius
-                            {
-                                guard dragDistanceSquared >= dragActivationDistanceSquared else { return }
-                                draggingWaypointID = waypoint.id
-                                isDraggingPathHandle = true
-                                focusedEndpoint = currentFormationEndpoint
-                                handlePathDragContinued(scaledPoint: scaledPoint)
-                                return
-                            }
-                        }
-
-                        // No waypoints yet → the midpoint "bend" handle on the
-                        // selected athlete's path creates a waypoint on drag, so
-                        // you can grab the path and bend it without sketching.
-                        if transition.pathWaypoints.isEmpty,
-                           athleteAtStart == nil,
-                           let startAthlete,
-                           let endAthlete
-                        {
-                            let midpoint = CGPoint(
-                                x: (startAthlete.position.x + endAthlete.position.x) / 2,
-                                y: (startAthlete.position.y + endAthlete.position.y) / 2
-                            )
-                            if PathCalculations.squaredDistance(from: startScaledPoint, to: midpoint) < waypointGrabRadius,
-                               let startFormationID, let endFormationID {
-                                guard dragDistanceSquared >= dragActivationDistanceSquared else { return }
-                                // Free, like the old control-point bend: materialize
-                                // a single waypoint at the grab point and drag it.
-                                let newWaypoint = PathWaypoint(position: clampedPathPoint(scaledPoint), isSmooth: true)
-                                store.mutateAthleteTransition(
-                                    from: startFormationID,
-                                    to: endFormationID,
-                                    athleteID: selectedAthleteID
-                                ) { t in
-                                    t.pathControlPoint = nil
-                                    t.pathWaypoints = [newWaypoint]
-                                }
-                                refreshTransitionFromStore()
-                                draggingWaypointID = newWaypoint.id
-                                isDraggingPathHandle = true
-                                focusedEndpoint = currentFormationEndpoint
-                                focusedPathHandle = scaledPoint
-                                handlePathDragContinued(scaledPoint: scaledPoint)
-                                return
-                            }
+                        if let hit = selectedPathHandleHit(
+                            at: startScaledPoint,
+                            maxSquaredDistance: waypointGrabRadius
+                        ) {
+                            guard dragDistanceSquared >= dragActivationDistanceSquared else { return }
+                            beginPathHandleDrag(hit: hit, scaledPoint: scaledPoint)
+                            return
                         }
                     }
 
@@ -2770,6 +2747,7 @@ struct FloorGridView: View {
                     isSketchingPath = false
                     isPanningCanvas = false
                     draggingWaypointID = nil
+                    pathDragAthleteID = nil
                     pathSketchPoints = []
                     isDrawingSelectionLasso = false
                     selectionLasso = nil
@@ -2819,7 +2797,7 @@ struct FloorGridView: View {
                 }
 
                 if isDraggingAthletes, !dragStartPositions.isEmpty {
-                    undoStack.append(dragStartPositions.map { ($0.key, $0.value) })
+                    appendUndoSnapshot(positions: dragStartPositions)
                     refreshTransitionFromStore()
                     // A real move happened (drag cleared the activation threshold) —
                     // keep the moved selection intact. Falling through to tap-handling
@@ -3073,6 +3051,16 @@ struct FloorGridView: View {
         generator.impactOccurred(intensity: 0.7)
     }
 
+    private func appendUndoSnapshot(positions: [UUID: CGPoint]) {
+        guard !positions.isEmpty else { return }
+        undoStack.append(
+            FormationMoveUndoSnapshot(
+                formationID: displayedEditableFormationID,
+                positions: positions
+            )
+        )
+    }
+
     private func clampedCanvasPanOffset(
         _ proposedOffset: CGSize,
         viewportSize: CGSize,
@@ -3101,6 +3089,105 @@ struct FloorGridView: View {
             viewportSize: viewportSize,
             canvasSize: canvasSize
         )
+    }
+
+    private func selectedPathHandleHit(
+        at point: CGPoint,
+        maxSquaredDistance: CGFloat
+    ) -> PathHandleHit? {
+        guard hasTransition, !selectedAthleteIDs.isEmpty, let player else { return nil }
+
+        var bestHit: PathHandleHit?
+        var bestDistance = CGFloat.greatestFiniteMagnitude
+
+        for item in transitionPaths where selectedAthleteIDs.contains(item.athleteID) {
+            let transition = player.transitionSpec.athleteTransition(for: item.athleteID)
+            let candidates: [(waypointID: UUID?, position: CGPoint)]
+
+            if transition.pathWaypoints.isEmpty {
+                let midpoint: CGPoint
+                if let controlPoint = transition.pathControlPoint {
+                    midpoint = PathCalculations.quadraticBezierPoint(
+                        from: item.startPosition,
+                        control: controlPoint,
+                        to: item.endPosition,
+                        t: 0.5
+                    )
+                } else {
+                    midpoint = CGPoint(
+                        x: (item.startPosition.x + item.endPosition.x) / 2,
+                        y: (item.startPosition.y + item.endPosition.y) / 2
+                    )
+                }
+                candidates = [(waypointID: nil, position: midpoint)]
+            } else {
+                candidates = transition.pathWaypoints.map { waypoint in
+                    (waypointID: waypoint.id, position: waypoint.position)
+                }
+            }
+
+            for candidate in candidates {
+                let distance = PathCalculations.squaredDistance(from: point, to: candidate.position)
+                guard distance < maxSquaredDistance, distance < bestDistance else { continue }
+                bestDistance = distance
+                bestHit = PathHandleHit(
+                    athleteID: item.athleteID,
+                    waypointID: candidate.waypointID,
+                    position: candidate.position
+                )
+            }
+        }
+
+        return bestHit
+    }
+
+    private func beginPathHandleDrag(hit: PathHandleHit, scaledPoint: CGPoint) {
+        pathDragAthleteID = hit.athleteID
+        draggingWaypointID = hit.waypointID
+        isDraggingPathHandle = true
+        focusedEndpoint = displayedFormationEndpoint
+
+        if hit.waypointID == nil {
+            draggingWaypointID = materializePathWaypointForDrag(
+                anchorAthleteID: hit.athleteID,
+                at: scaledPoint
+            )
+        }
+
+        focusedPathHandle = scaledPoint
+        handlePathDragContinued(scaledPoint: scaledPoint)
+    }
+
+    private func materializePathWaypointForDrag(anchorAthleteID: UUID, at point: CGPoint) -> UUID? {
+        guard let startFormationID, let endFormationID, let player else { return nil }
+
+        let waypoint = PathWaypoint(position: clampedPathPoint(point), isSmooth: true)
+        if selectedTransitionGroup?.athleteIDSet.contains(anchorAthleteID) == true {
+            let startsByID = Dictionary(
+                uniqueKeysWithValues: player.startAthletes.map { ($0.id, $0.position) }
+            )
+            let memberIDs = selectedAthleteIDs
+            store.mutateTransitionSpec(from: startFormationID, to: endFormationID) { spec in
+                _ = spec.applyRelativePathWaypoints(
+                    anchorAthleteID: anchorAthleteID,
+                    memberIDs: memberIDs,
+                    anchorWaypoints: [waypoint],
+                    startPositionsByAthleteID: startsByID
+                )
+            }
+        } else {
+            store.mutateAthleteTransition(
+                from: startFormationID,
+                to: endFormationID,
+                athleteID: anchorAthleteID
+            ) { t in
+                t.pathControlPoint = nil
+                t.pathWaypoints = [waypoint]
+            }
+        }
+
+        refreshTransitionFromStore()
+        return waypoint.id
     }
 
     private func transitionHandleIsHit(at point: CGPoint, hitRadiusSquared: CGFloat) -> Bool {
@@ -3137,45 +3224,51 @@ struct FloorGridView: View {
     }
 
     private func nearestPathHandle(at point: CGPoint, cellSize: CGFloat) -> CGPoint? {
-        guard hasTransition, let selectedAthleteID, let player else { return nil }
         let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize) * 1.5
-
-        let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
-
-        // Only waypoint handles are grabbable. The legacy midpoint bend handle
-        // was removed — it created a "force field" near the selected athlete and
-        // overlapped neighbors. Path shape is edited via waypoints + sketch.
-        for waypoint in transition.pathWaypoints {
-            if PathCalculations.squaredDistance(from: point, to: waypoint.position) < hitRadiusSquared {
-                return waypoint.position
-            }
-        }
-        return nil
+        return selectedPathHandleHit(at: point, maxSquaredDistance: hitRadiusSquared)?.position
     }
 
     private func handlePathDragContinued(scaledPoint: CGPoint) {
-        guard let selectedAthleteID, let player, let startFormationID, let endFormationID else { return }
+        let anchorAthleteID = pathDragAthleteID ?? selectedAthleteID
+        guard let anchorAthleteID, let player, let startFormationID, let endFormationID else { return }
         clearActiveGuides()
-        let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
+        let transition = player.transitionSpec.athleteTransition(for: anchorAthleteID)
         let pathPoint = clampedPathPoint(scaledPoint)
 
         if !transition.pathWaypoints.isEmpty {
             if let draggingWaypointID,
                let waypointIndex = transition.pathWaypoints.firstIndex(where: { $0.id == draggingWaypointID })
             {
-                store.mutateAthleteTransition(
-                    from: startFormationID,
-                    to: endFormationID,
-                    athleteID: selectedAthleteID
-                ) { t in
-                    t.pathWaypoints[waypointIndex].position = pathPoint
+                if selectedTransitionGroup?.athleteIDSet.contains(anchorAthleteID) == true {
+                    var anchorWaypoints = transition.pathWaypoints
+                    anchorWaypoints[waypointIndex].position = pathPoint
+                    let startsByID = Dictionary(
+                        uniqueKeysWithValues: player.startAthletes.map { ($0.id, $0.position) }
+                    )
+                    let memberIDs = selectedAthleteIDs
+                    store.mutateTransitionSpec(from: startFormationID, to: endFormationID) { spec in
+                        _ = spec.applyRelativePathWaypoints(
+                            anchorAthleteID: anchorAthleteID,
+                            memberIDs: memberIDs,
+                            anchorWaypoints: anchorWaypoints,
+                            startPositionsByAthleteID: startsByID
+                        )
+                    }
+                } else {
+                    store.mutateAthleteTransition(
+                        from: startFormationID,
+                        to: endFormationID,
+                        athleteID: anchorAthleteID
+                    ) { t in
+                        t.pathWaypoints[waypointIndex].position = pathPoint
+                    }
                 }
                 refreshTransitionFromStore()
             }
         } else {
             // Legacy control point drag
-            let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID })
-            let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
+            let startAthlete = player.startAthletes.first(where: { $0.id == anchorAthleteID })
+            let endAthlete = player.endAthletes.first(where: { $0.id == anchorAthleteID })
             if let startAthlete, let endAthlete {
                 let newControlPoint = CGPoint(
                     x: 2 * pathPoint.x - 0.5 * startAthlete.position.x - 0.5 * endAthlete.position.x,
@@ -3184,7 +3277,7 @@ struct FloorGridView: View {
                 store.mutateAthleteTransition(
                     from: startFormationID,
                     to: endFormationID,
-                    athleteID: selectedAthleteID
+                    athleteID: anchorAthleteID
                 ) { t in
                     t.pathControlPoint = newControlPoint
                     t.pathWaypoints = []
@@ -3248,13 +3341,7 @@ struct FloorGridView: View {
         // the visible athletes come from player.startAthletes / player.endAthletes
         // (chosen by focusedEndpoint), which may differ from formationID — the
         // viewed formation can be either endpoint of the previewed pair.
-        let editableID: UUID = {
-            if hasTransition, let focusedEndpoint,
-               let startFormationID, let endFormationID {
-                return focusedEndpoint == .end ? endFormationID : startFormationID
-            }
-            return formationID
-        }()
+        let editableID = displayedEditableFormationID
 
         store.mutateFormation(id: editableID) { formation in
             for athleteID in selectedAthleteIDs {
@@ -3285,13 +3372,7 @@ struct FloorGridView: View {
 
     private func applyRotation(angle: CGFloat) {
         guard !rotationStartPositions.isEmpty else { return }
-        let editableID: UUID = {
-            if hasTransition, let focusedEndpoint,
-               let startFormationID, let endFormationID {
-                return focusedEndpoint == .end ? endFormationID : startFormationID
-            }
-            return formationID
-        }()
+        let editableID = displayedEditableFormationID
 
         // ⚡ Bolt: Eliminate redundant `.map` and intermediate arrays in O(N) path
         // Compute center of mass of the selected group using a single pass
@@ -4008,14 +4089,19 @@ struct FloorGridView: View {
     }
 
     private func undoLastMove() {
-        guard let previousPositions = undoStack.popLast() else { return }
-        store.mutateFormation(id: formationID) { formation in
-            for entry in previousPositions {
-                if let placementIndex = formation.placementIndex(for: entry.id) {
-                    formation.placements[placementIndex].position = entry.position
+        guard let snapshot = undoStack.popLast() else { return }
+        store.mutateFormation(id: snapshot.formationID) { formation in
+            for (athleteID, position) in snapshot.positions {
+                if let placementIndex = formation.placementIndex(for: athleteID) {
+                    formation.placements[placementIndex].position = position
                 }
             }
         }
+        if let endpoint = endpoint(for: snapshot.formationID) {
+            focusedEndpoint = endpoint
+        }
+        selectedAthleteIDs = Set(snapshot.positions.keys)
+        refreshTransitionFromStore()
     }
 
     private func selectCollision(at index: Int) {
