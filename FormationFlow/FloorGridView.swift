@@ -1828,6 +1828,18 @@ struct FloorGridView: View {
                 Spacer(minLength: 0)
 
                 if hasTransition {
+                    Button {
+                        addWaypoint()
+                    } label: {
+                        Label(
+                            entitlementManager.isPro ? "Add Waypoint" : "Waypoint (Pro)",
+                            systemImage: entitlementManager.isPro ? "plus.circle" : "lock.fill"
+                        )
+                    }
+                    .buttonStyle(.bordered)
+                    .frame(minHeight: 44)
+                    .accessibilityHint(entitlementManager.isPro ? "Add a waypoint to every selected path" : "Upgrade to Pro to add waypoints")
+
                     Button(selectionIsTransitionGroup ? "Ungroup" : "Create Stunt Group") {
                         if selectionIsTransitionGroup {
                             ungroupSelectedTransitionGroup()

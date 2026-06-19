@@ -159,6 +159,20 @@ struct MultiSelectionInspectorView: View {
                 .font(.body)
                 .foregroundColor(.secondary)
 
+            if let store, let player, let startFormationID, let endFormationID, !selectedAthleteIDs.isEmpty {
+                Divider()
+                BulkPathActions(
+                    store: store,
+                    player: player,
+                    selectedAthleteIDs: selectedAthleteIDs,
+                    startFormationID: startFormationID,
+                    endFormationID: endFormationID,
+                    isPro: isPro,
+                    onUpgrade: onUpgrade,
+                    onRefreshTransition: onRefreshTransition
+                )
+            }
+
             if let store, !selectedAthleteIDs.isEmpty {
                 Divider()
                 BulkRoleControl(
@@ -184,18 +198,6 @@ struct MultiSelectionInspectorView: View {
 
                 Divider()
                 BulkDelayControl(
-                    store: store,
-                    player: player,
-                    selectedAthleteIDs: selectedAthleteIDs,
-                    startFormationID: startFormationID,
-                    endFormationID: endFormationID,
-                    isPro: isPro,
-                    onUpgrade: onUpgrade,
-                    onRefreshTransition: onRefreshTransition
-                )
-
-                Divider()
-                BulkPathActions(
                     store: store,
                     player: player,
                     selectedAthleteIDs: selectedAthleteIDs,

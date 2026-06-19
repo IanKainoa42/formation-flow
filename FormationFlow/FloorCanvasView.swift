@@ -495,37 +495,6 @@ struct FloorCanvasView: View {
                 )
             )
 
-            let center = harness.center
-            let anchorRadius = max(3.5, 4.5 * markerScale)
-            var anchor = Path()
-            anchor.addEllipse(
-                in: CGRect(
-                    x: center.x - anchorRadius,
-                    y: center.y - anchorRadius,
-                    width: anchorRadius * 2,
-                    height: anchorRadius * 2
-                )
-            )
-            context.fill(anchor, with: .color(.black.opacity(0.5)))
-            context.stroke(anchor, with: .color(harnessColor.opacity(opacity)), lineWidth: max(1.5, 1.8 * markerScale))
-
-            let handle = CGPoint(x: harness.bounds.midX, y: harness.bounds.minY - max(11, 12 * markerScale))
-            var stem = Path()
-            stem.move(to: CGPoint(x: harness.bounds.midX, y: harness.bounds.minY))
-            stem.addLine(to: handle)
-            context.stroke(stem, with: .color(harnessColor.opacity(opacity)), lineWidth: max(1.2, 1.5 * markerScale))
-
-            var rotateHandle = Path()
-            rotateHandle.addEllipse(
-                in: CGRect(
-                    x: handle.x - anchorRadius,
-                    y: handle.y - anchorRadius,
-                    width: anchorRadius * 2,
-                    height: anchorRadius * 2
-                )
-            )
-            context.fill(rotateHandle, with: .color(harnessColor.opacity(isActive ? 0.24 : 0.12)))
-            context.stroke(rotateHandle, with: .color(harnessColor.opacity(opacity)), lineWidth: max(1.4, 1.7 * markerScale))
         }
     }
 
