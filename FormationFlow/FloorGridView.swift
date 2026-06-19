@@ -83,9 +83,8 @@ struct FloorGridView: View {
     private var showTransitionPaths: Bool { pathDisplayScope != .off }
     @State private var isDraggingAthletes = false
     @State private var isPanningCanvas = false
-    @State private var isDrawingSelectionBox = false
-    @State private var selectionRect: CGRect? = nil
-    @State private var selectionStartPoint: CGPoint = .zero
+    @State private var isDrawingSelectionLasso = false
+    @State private var selectionLasso: FloorSelectionLasso? = nil
     @State private var dragStartPositions: [UUID: CGPoint] = [:]
     @State private var draggingAthleteIDs: Set<UUID> = []
     @State private var undoStack: [[(id: UUID, position: CGPoint)]] = []
@@ -562,7 +561,7 @@ struct FloorGridView: View {
         }
 
         if !hasMadeFirstSelection {
-            return ("Tap an athlete to edit it. Drag on empty space to box-select.", .accentColor)
+            return ("Tap an athlete to edit it. Drag on empty space to lasso-select.", .accentColor)
         }
 
         return nil
@@ -1280,7 +1279,7 @@ struct FloorGridView: View {
                             }
                         } else if !hasMadeFirstSelection {
                             banner(
-                                text: "Tap an athlete to edit it. Drag on empty space to box-select.",
+                                text: "Tap an athlete to edit it. Drag on empty space to lasso-select.",
                                 color: .accentColor
                             )
                         }
@@ -2549,8 +2548,8 @@ struct FloorGridView: View {
                     handleFormationDragContinued(value, cellSize: cellSize)
                     return
                 }
-                if isDrawingSelectionBox {
-                    handleSelectionBoxContinued(value)
+                if isDrawingSelectionLasso {
+                    handleSelectionLassoContinued(value)
                     return
                 }
 
@@ -2758,10 +2757,9 @@ struct FloorGridView: View {
                     return
                 }
 
-                selectionStartPoint = value.startLocation
-                selectionRect = CGRect(origin: value.startLocation, size: .zero)
-                isDrawingSelectionBox = true
-                handleSelectionBoxContinued(value)
+                selectionLasso = FloorSelectionLasso(startPoint: value.startLocation)
+                isDrawingSelectionLasso = true
+                handleSelectionLassoContinued(value)
             }
             .onEnded { value in
                 let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize)
@@ -2773,8 +2771,8 @@ struct FloorGridView: View {
                     isPanningCanvas = false
                     draggingWaypointID = nil
                     pathSketchPoints = []
-                    isDrawingSelectionBox = false
-                    selectionRect = nil
+                    isDrawingSelectionLasso = false
+                    selectionLasso = nil
                     dragStartPositions = [:]
                     draggingAthleteIDs = []
                     endpointDragStartPosition = nil
@@ -2858,21 +2856,22 @@ struct FloorGridView: View {
                     return
                 }
 
-                if isDrawingSelectionBox, let selectionRect {
+                if isDrawingSelectionLasso, var selectionLasso {
+                    selectionLasso.append(value.location, minimumDistance: 0)
                     var newSelection = Set(
                         renderedAthletes.compactMap { athlete in
                             let screenPoint = CGPoint(
                                 x: athlete.position.x * cellSize + offset.x,
                                 y: athlete.position.y * cellSize + offset.y
                             )
-                            return selectionRect.contains(screenPoint) ? athlete.id : nil
+                            return selectionLasso.contains(screenPoint) ? athlete.id : nil
                         }
                     )
                     for group in activeTransitionGroups where !group.athleteIDSet.isDisjoint(with: newSelection) {
                         newSelection.formUnion(group.athleteIDSet)
                     }
 
-                    if selectionRect.width < 5 && selectionRect.height < 5 {
+                    if selectionLasso.isTapCandidate {
                         // Tap on empty space — also try selecting from transition athletes
                         let tapPoint = CGPoint(
                             x: (value.location.x - offset.x) / cellSize,
@@ -3325,22 +3324,13 @@ struct FloorGridView: View {
     }
 
     private var selectionLassoForDisplay: FloorSelectionLasso? {
-        guard isDrawingSelectionBox, let rect = selectionRect, rect.width > 0 || rect.height > 0 else { return nil }
-        var lasso = FloorSelectionLasso(startPoint: CGPoint(x: rect.minX, y: rect.minY))
-        lasso.append(CGPoint(x: rect.maxX, y: rect.minY), minimumDistance: 0)
-        lasso.append(CGPoint(x: rect.maxX, y: rect.maxY), minimumDistance: 0)
-        lasso.append(CGPoint(x: rect.minX, y: rect.maxY), minimumDistance: 0)
-        return lasso
+        guard isDrawingSelectionLasso, let selectionLasso, !selectionLasso.isTapCandidate else { return nil }
+        return selectionLasso
     }
 
-    private func handleSelectionBoxContinued(_ value: DragGesture.Value) {
+    private func handleSelectionLassoContinued(_ value: DragGesture.Value) {
         clearActiveGuides()
-        selectionRect = CGRect(
-            x: min(selectionStartPoint.x, value.location.x),
-            y: min(selectionStartPoint.y, value.location.y),
-            width: abs(value.location.x - selectionStartPoint.x),
-            height: abs(value.location.y - selectionStartPoint.y)
-        )
+        selectionLasso?.append(value.location)
     }
 
     // MARK: - Double-Tap Gesture for Waypoints
@@ -3495,7 +3485,7 @@ struct FloorGridView: View {
                   !isDraggingEndpoint,
                   !isDraggingPathHandle,
                   !isPanningCanvas,
-                  !isDrawingSelectionBox
+                  !isDrawingSelectionLasso
             else { return }
 
             let generator = UISelectionFeedbackGenerator()
@@ -3525,7 +3515,7 @@ struct FloorGridView: View {
               !isDraggingEndpoint,
               !isDraggingPathHandle,
               !isPanningCanvas,
-              !isDrawingSelectionBox
+              !isDrawingSelectionLasso
         else { return }
 
         let scaledPoint = CGPoint(
