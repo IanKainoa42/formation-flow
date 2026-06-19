@@ -134,6 +134,7 @@ struct MultiSelectionInspectorView: View {
     var canCreateStuntGroup: Bool = true
     var onUpgrade: () -> Void = {}
     var onRefreshTransition: () -> Void = {}
+    var onDrawPath: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: compactLayout ? 12 : 16) {
@@ -169,7 +170,8 @@ struct MultiSelectionInspectorView: View {
                     endFormationID: endFormationID,
                     isPro: isPro,
                     onUpgrade: onUpgrade,
-                    onRefreshTransition: onRefreshTransition
+                    onRefreshTransition: onRefreshTransition,
+                    onDrawPath: onDrawPath
                 )
             }
 
@@ -564,11 +566,24 @@ private struct BulkPathActions: View {
     let isPro: Bool
     let onUpgrade: () -> Void
     let onRefreshTransition: () -> Void
+    let onDrawPath: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Paths")
                 .font(.subheadline.weight(.semibold))
+
+            if let onDrawPath {
+                Button(action: onDrawPath) {
+                    Label(
+                        isPro ? "Draw Paths for Selection" : "Draw Paths for Selection (Pro)",
+                        systemImage: isPro ? "scribble" : "lock.fill"
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .accessibilityHint(isPro ? "Draw matching paths for every selected athlete" : "Upgrade to Pro to draw paths")
+            }
 
             Button {
                 guard isPro else {
@@ -748,6 +763,7 @@ struct TransitionInspectorSectionView: View {
     var onUpdateMoveDelay: (CGFloat) -> Void = { _ in }
     var onClearPath: () -> Void = {}
     var onEnsureCurve: () -> Void = {}
+    var onDrawPath: (() -> Void)?
     var onAddWaypoint: () -> Void = {}
     var onToggleWaypointSmooth: (Int) -> Void = { _ in }
     var onDeleteWaypoint: (UUID) -> Void = { _ in }
@@ -909,6 +925,18 @@ struct TransitionInspectorSectionView: View {
         }
         .buttonStyle(.bordered)
 
+        if let onDrawPath {
+            Button(action: onDrawPath) {
+                Label(
+                    isPro ? "Draw" : "Draw (Pro)",
+                    systemImage: isPro ? "scribble" : "lock.fill"
+                )
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .accessibilityHint(isPro ? "Draw the path directly on the floor" : "Upgrade to Pro to draw paths")
+        }
+
         Button(action: onAddWaypoint) {
             Label(
                 isPro ? "Waypoint" : "Waypoint (Pro)",
@@ -1038,6 +1066,7 @@ struct SidebarInspectorView: View {
     var isPro: Bool = true
     var onUpgrade: () -> Void = {}
     var onRefreshTransition: () -> Void = {}
+    var onDrawPath: (() -> Void)?
 
     @State private var showingClearPathConfirmation = false
 
@@ -1232,6 +1261,7 @@ struct SidebarInspectorView: View {
                 }
                 onRefreshTransition()
             },
+            onDrawPath: onDrawPath,
             onAddWaypoint: {
                 guard isPro else {
                     onUpgrade()

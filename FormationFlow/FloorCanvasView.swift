@@ -91,6 +91,24 @@ struct FloorSelectionLasso {
     }
 }
 
+struct PathSketchPreviewRenderItem: Identifiable {
+    let athleteID: UUID
+    let startPosition: CGPoint
+    let endPosition: CGPoint
+    let waypoints: [PathWaypoint]
+    let isPrimary: Bool
+
+    var id: UUID { athleteID }
+
+    var nodes: [CGPoint] {
+        PathCalculations.waypointNodes(
+            from: startPosition,
+            to: endPosition,
+            waypoints: waypoints
+        )
+    }
+}
+
 struct FormationMirrorGuideRenderItem: Identifiable, Equatable, Hashable {
     let sourcePosition: CGPoint
     let mirroredPosition: CGPoint
@@ -158,6 +176,7 @@ struct FloorCanvasView: View {
     var ghostPrevPaths: [TransitionPathRenderItem] = []
     var ghostNextPaths: [TransitionPathRenderItem] = []
     var pathSketchPoints: [CGPoint] = []
+    var pathSketchPreviewPaths: [PathSketchPreviewRenderItem] = []
     var hoveredHandlePosition: CGPoint? = nil
     var hoveredAthleteID: UUID? = nil
     var hoveredPathAthleteID: UUID? = nil
@@ -235,6 +254,7 @@ struct FloorCanvasView: View {
                         drawStepDotsStatic(in: &context)
                     }
                 }
+                drawPathSketchPreview(in: &context)
                 drawPathSketch(in: &context)
                 drawPathCollisionMarkers(in: &context)
                 drawEndpointMarkers(in: &context)
@@ -702,6 +722,67 @@ struct FloorCanvasView: View {
             with: .color(.white.opacity(0.9)),
             style: StrokeStyle(lineWidth: max(2.2, 2.6 * markerScale), lineCap: .round, lineJoin: .round, dash: [10, 5])
         )
+    }
+
+    private func drawPathSketchPreview(in context: inout GraphicsContext) {
+        guard !pathSketchPreviewPaths.isEmpty else { return }
+
+        for item in pathSketchPreviewPaths {
+            let color: Color = item.isPrimary ? .white : formationColor
+            let opacity: CGFloat = item.isPrimary ? 0.9 : 0.42
+            let lineWidth: CGFloat = item.isPrimary ? max(3, 3.2 * markerScale) : max(1.6, 2.0 * markerScale)
+            let style = StrokeStyle(
+                lineWidth: lineWidth,
+                lineCap: .round,
+                lineJoin: .round,
+                dash: item.isPrimary ? [] : [7, 5]
+            )
+
+            if item.waypoints.isEmpty {
+                var path = Path()
+                path.move(to: scaledCanvasPoint(item.startPosition))
+                path.addLine(to: scaledCanvasPoint(item.endPosition))
+                context.stroke(path, with: .color(color.opacity(opacity)), style: style)
+            } else {
+                let nodes = item.nodes
+                for segmentIndex in 0..<(nodes.count - 1) {
+                    let p0 = scaledCanvasPoint(nodes[segmentIndex])
+                    let p1 = scaledCanvasPoint(nodes[segmentIndex + 1])
+                    var segment = Path()
+                    segment.move(to: p0)
+                    if segmentUsesSmoothWaypoint(segmentIndex: segmentIndex, waypoints: item.waypoints) {
+                        let prevNode = segmentIndex > 0 ? nodes[segmentIndex - 1] : nodes[segmentIndex]
+                        let nextNode = segmentIndex + 2 < nodes.count ? nodes[segmentIndex + 2] : nodes[segmentIndex + 1]
+                        let (c1, c2) = PathCalculations.catmullRomControlPoints(
+                            prev: scaledCanvasPoint(prevNode),
+                            p0: p0,
+                            p1: p1,
+                            next: scaledCanvasPoint(nextNode)
+                        )
+                        segment.addCurve(to: p1, control1: c1, control2: c2)
+                    } else {
+                        segment.addLine(to: p1)
+                    }
+                    context.stroke(segment, with: .color(color.opacity(opacity)), style: style)
+                }
+            }
+
+            for waypoint in item.waypoints {
+                let center = scaledCanvasPoint(waypoint.position)
+                let radius: CGFloat = item.isPrimary ? max(3, 3.2 * markerScale) : max(2.2, 2.6 * markerScale)
+                var dot = Path()
+                dot.addEllipse(
+                    in: CGRect(
+                        x: center.x - radius,
+                        y: center.y - radius,
+                        width: radius * 2,
+                        height: radius * 2
+                    )
+                )
+                context.fill(dot, with: .color(color.opacity(item.isPrimary ? 0.85 : 0.45)))
+                context.stroke(dot, with: .color(.black.opacity(0.55)), lineWidth: 1)
+            }
+        }
     }
 
     private func segmentUsesSmoothWaypoint(segmentIndex: Int, waypoints: [PathWaypoint]) -> Bool {
