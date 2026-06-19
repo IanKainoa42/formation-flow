@@ -1265,13 +1265,12 @@ struct FloorGridView: View {
                         hoveredHandlePosition = nil
                         hoveredAthleteID = athleteHit(at: scaledPoint, within: renderedAthletes, cellSize: cellSize)?.id
                         if hoveredAthleteID == nil,
-                           selectedAthleteID != nil,
-                           selectedTransitionPathHit(
-                               at: scaledPoint,
-                               maxSquaredDistance: pathHitRadiusSquared(for: cellSize)
-                           ) != nil
+                           let hit = selectedTransitionPathHit(
+                            at: scaledPoint,
+                            maxSquaredDistance: pathHitRadiusSquared(for: cellSize)
+                           )
                         {
-                            hoveredPathAthleteID = selectedAthleteID
+                            hoveredPathAthleteID = hit.transition.athleteID
                         } else {
                             hoveredPathAthleteID = nil
                         }
@@ -2217,33 +2216,46 @@ struct FloorGridView: View {
         startAthlete: RenderedAthlete,
         endAthlete: RenderedAthlete
     )? {
-        guard
-            hasTransition,
-            showTransitionPaths,
-            let selectedAthleteID,
-            let player,
-            let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID }),
-            let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
-        else { return nil }
+        guard hasTransition, showTransitionPaths, !selectedAthleteIDs.isEmpty, let player else { return nil }
 
-        let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
-        guard let nearest = nearestPointOnTransitionPath(
-            at: point,
-            transition: transition,
-            startAthlete: startAthlete,
-            endAthlete: endAthlete
-        ), nearest.squaredDistance < maxSquaredDistance else {
-            return nil
+        var bestHit: (
+            point: CGPoint,
+            segmentIndex: Int,
+            squaredDistance: CGFloat,
+            transition: AthleteTransition,
+            startAthlete: RenderedAthlete,
+            endAthlete: RenderedAthlete
+        )?
+
+        for athleteID in selectedAthleteIDs {
+            guard
+                let startAthlete = player.startAthletes.first(where: { $0.id == athleteID }),
+                let endAthlete = player.endAthletes.first(where: { $0.id == athleteID })
+            else { continue }
+
+            let transition = player.transitionSpec.athleteTransition(for: athleteID)
+            guard let nearest = nearestPointOnTransitionPath(
+                at: point,
+                transition: transition,
+                startAthlete: startAthlete,
+                endAthlete: endAthlete
+            ), nearest.squaredDistance < maxSquaredDistance else {
+                continue
+            }
+
+            if bestHit == nil || nearest.squaredDistance < bestHit!.squaredDistance {
+                bestHit = (
+                    nearest.point,
+                    nearest.segmentIndex,
+                    nearest.squaredDistance,
+                    transition,
+                    startAthlete,
+                    endAthlete
+                )
+            }
         }
 
-        return (
-            nearest.point,
-            nearest.segmentIndex,
-            nearest.squaredDistance,
-            transition,
-            startAthlete,
-            endAthlete
-        )
+        return bestHit
     }
 
     private func pathHitRadiusSquared(for cellSize: CGFloat) -> CGFloat {
@@ -2255,7 +2267,7 @@ struct FloorGridView: View {
     }
 
     private func shouldSuppressMarqueeForSelectedPathNearMiss(at point: CGPoint, cellSize: CGFloat) -> Bool {
-        guard selectedAthleteID != nil else { return false }
+        guard !selectedAthleteIDs.isEmpty else { return false }
         return selectedTransitionPathHit(
             at: point,
             maxSquaredDistance: pathNearMissRadiusSquared(for: cellSize)
@@ -3161,33 +3173,18 @@ struct FloorGridView: View {
     private func materializePathWaypointForDrag(anchorAthleteID: UUID, at point: CGPoint) -> UUID? {
         guard let startFormationID, let endFormationID, let player else { return nil }
 
-        let waypoint = PathWaypoint(position: clampedPathPoint(point), isSmooth: true)
-        if selectedTransitionGroup?.athleteIDSet.contains(anchorAthleteID) == true {
-            let startsByID = Dictionary(
-                uniqueKeysWithValues: player.startAthletes.map { ($0.id, $0.position) }
-            )
-            let memberIDs = selectedAthleteIDs
-            store.mutateTransitionSpec(from: startFormationID, to: endFormationID) { spec in
-                _ = spec.applyRelativePathWaypoints(
-                    anchorAthleteID: anchorAthleteID,
-                    memberIDs: memberIDs,
-                    anchorWaypoints: [waypoint],
-                    startPositionsByAthleteID: startsByID
-                )
-            }
-        } else {
-            store.mutateAthleteTransition(
-                from: startFormationID,
-                to: endFormationID,
-                athleteID: anchorAthleteID
-            ) { t in
-                t.pathControlPoint = nil
-                t.pathWaypoints = [waypoint]
-            }
-        }
-
+        let waypointID = TransitionPathSelectionEditing.addWaypoint(
+            store: store,
+            player: player,
+            startFormationID: startFormationID,
+            endFormationID: endFormationID,
+            selectedAthleteIDs: selectedAthleteIDs,
+            anchorAthleteID: anchorAthleteID,
+            point: clampedPathPoint(point),
+            segmentIndex: 0
+        )
         refreshTransitionFromStore()
-        return waypoint.id
+        return waypointID
     }
 
     private func transitionHandleIsHit(at point: CGPoint, hitRadiusSquared: CGFloat) -> Bool {
@@ -3237,32 +3234,18 @@ struct FloorGridView: View {
 
         if !transition.pathWaypoints.isEmpty {
             if let draggingWaypointID,
-               let waypointIndex = transition.pathWaypoints.firstIndex(where: { $0.id == draggingWaypointID })
+               transition.pathWaypoints.contains(where: { $0.id == draggingWaypointID })
             {
-                if selectedTransitionGroup?.athleteIDSet.contains(anchorAthleteID) == true {
-                    var anchorWaypoints = transition.pathWaypoints
-                    anchorWaypoints[waypointIndex].position = pathPoint
-                    let startsByID = Dictionary(
-                        uniqueKeysWithValues: player.startAthletes.map { ($0.id, $0.position) }
-                    )
-                    let memberIDs = selectedAthleteIDs
-                    store.mutateTransitionSpec(from: startFormationID, to: endFormationID) { spec in
-                        _ = spec.applyRelativePathWaypoints(
-                            anchorAthleteID: anchorAthleteID,
-                            memberIDs: memberIDs,
-                            anchorWaypoints: anchorWaypoints,
-                            startPositionsByAthleteID: startsByID
-                        )
-                    }
-                } else {
-                    store.mutateAthleteTransition(
-                        from: startFormationID,
-                        to: endFormationID,
-                        athleteID: anchorAthleteID
-                    ) { t in
-                        t.pathWaypoints[waypointIndex].position = pathPoint
-                    }
-                }
+                _ = TransitionPathSelectionEditing.moveWaypoint(
+                    store: store,
+                    player: player,
+                    startFormationID: startFormationID,
+                    endFormationID: endFormationID,
+                    selectedAthleteIDs: selectedAthleteIDs,
+                    anchorAthleteID: anchorAthleteID,
+                    waypointID: draggingWaypointID,
+                    point: pathPoint
+                )
                 refreshTransitionFromStore()
             }
         } else {
@@ -3420,7 +3403,7 @@ struct FloorGridView: View {
         SpatialTapGesture(count: 2)
             .onEnded { value in
                 guard showTransitionPaths, hasTransition else { return }
-                guard let selectedAthleteID, let player else { return }
+                guard !selectedAthleteIDs.isEmpty, let player else { return }
 
                 let scaledPoint = CGPoint(
                     x: (value.location.x - offset.x) / cellSize,
@@ -3439,18 +3422,21 @@ struct FloorGridView: View {
                     at: scaledPoint,
                     maxSquaredDistance: pathHitRadiusSquared(for: cellSize)
                 ) {
-                    _ = insertWaypoint(at: hit.point, segmentIndex: hit.segmentIndex)
+                    _ = insertWaypoint(
+                        anchorAthleteID: hit.transition.athleteID,
+                        at: hit.point,
+                        segmentIndex: hit.segmentIndex
+                    )
                     return
                 }
 
-                guard let selectedAthlete = player.currentAthletes.first(where: { $0.id == selectedAthleteID })
+                guard let selectedAthlete = player.currentAthletes.first(where: {
+                    selectedAthleteIDs.contains($0.id)
+                        && PathCalculations.squaredDistance(from: scaledPoint, to: $0.position) < interactionHitRadiusSquared(for: cellSize)
+                })
                 else { return }
-                let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize)
-                guard PathCalculations.squaredDistance(from: scaledPoint, to: selectedAthlete.position) < hitRadiusSquared else {
-                    return
-                }
 
-                addWaypoint()
+                addWaypoint(anchorAthleteID: selectedAthlete.id)
             }
     }
 
@@ -3700,41 +3686,51 @@ struct FloorGridView: View {
         refreshTransitionFromStore()
     }
 
-    private func addWaypoint() {
+    private func addWaypoint(anchorAthleteID: UUID? = nil) {
         guard entitlementManager.isPro else {
             showingUpgradeSheet = true
             return
         }
-        guard let selectedAthleteID, let player else { return }
-        let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID })
-        let endAthlete = player.endAthletes.first(where: { $0.id == selectedAthleteID })
+        guard let player else { return }
+        guard let anchorAthleteID = anchorAthleteID ?? TransitionPathSelectionEditing.anchorAthleteID(
+            for: selectedAthleteIDs,
+            in: player
+        ) else { return }
+        let startAthlete = player.startAthletes.first(where: { $0.id == anchorAthleteID })
+        let endAthlete = player.endAthletes.first(where: { $0.id == anchorAthleteID })
         guard let startAthlete, let endAthlete else { return }
-        let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
+        let transition = player.transitionSpec.athleteTransition(for: anchorAthleteID)
         let placement = PathWaypointPlacement.defaultPlacement(
             transition: transition,
             start: startAthlete.position,
             end: endAthlete.position
         )
 
-        _ = insertWaypoint(at: placement.point, segmentIndex: placement.index)
+        _ = insertWaypoint(
+            anchorAthleteID: anchorAthleteID,
+            at: placement.point,
+            segmentIndex: placement.index
+        )
     }
 
-    private func insertWaypoint(at point: CGPoint, segmentIndex: Int) -> UUID? {
+    private func insertWaypoint(anchorAthleteID: UUID? = nil, at point: CGPoint, segmentIndex: Int) -> UUID? {
         guard entitlementManager.isPro else {
             showingUpgradeSheet = true
             return nil
         }
-        guard let selectedAthleteID, let startFormationID, let endFormationID, let player else { return nil }
-        let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
-        let waypoint = PathWaypoint(position: clampedPathPoint(point), isSmooth: true)
-        let insertionIndex = max(0, min(segmentIndex, transition.pathWaypoints.count))
-
-        store.mutateAthleteTransition(from: startFormationID, to: endFormationID, athleteID: selectedAthleteID) { t in
-            t.pathControlPoint = nil
-            t.pathWaypoints.insert(waypoint, at: insertionIndex)
-        }
+        guard let startFormationID, let endFormationID, let player else { return nil }
+        let waypointID = TransitionPathSelectionEditing.addWaypoint(
+            store: store,
+            player: player,
+            startFormationID: startFormationID,
+            endFormationID: endFormationID,
+            selectedAthleteIDs: selectedAthleteIDs,
+            anchorAthleteID: anchorAthleteID,
+            point: clampedPathPoint(point),
+            segmentIndex: segmentIndex
+        )
         refreshTransitionFromStore()
-        return waypoint.id
+        return waypointID
     }
 
     private func cycleWaypointByDoubleTap(at point: CGPoint, cellSize: CGFloat) -> Bool {
@@ -4252,6 +4248,140 @@ enum PathWaypointPlacement {
         CGPoint(
             x: (start.x + end.x) / 2,
             y: (start.y + end.y) / 2
+        )
+    }
+}
+
+@MainActor
+enum TransitionPathSelectionEditing {
+    static func anchorAthleteID(for selectedAthleteIDs: Set<UUID>, in player: TransitionPlayer) -> UUID? {
+        if selectedAthleteIDs.count == 1 {
+            return selectedAthleteIDs.first
+        }
+
+        return player.transitionSpec.athleteTransitions
+            .map(\.athleteID)
+            .first { selectedAthleteIDs.contains($0) }
+            ?? player.startAthletes.first { selectedAthleteIDs.contains($0.id) }?.id
+    }
+
+    @discardableResult
+    static func addWaypoint(
+        store: RoutineStore,
+        player: TransitionPlayer,
+        startFormationID: UUID,
+        endFormationID: UUID,
+        selectedAthleteIDs: Set<UUID>,
+        anchorAthleteID explicitAnchorAthleteID: UUID? = nil,
+        point explicitPoint: CGPoint? = nil,
+        segmentIndex explicitSegmentIndex: Int? = nil
+    ) -> UUID? {
+        guard
+            let anchorAthleteID = explicitAnchorAthleteID ?? anchorAthleteID(for: selectedAthleteIDs, in: player),
+            let startAthlete = player.startAthletes.first(where: { $0.id == anchorAthleteID }),
+            let endAthlete = player.endAthletes.first(where: { $0.id == anchorAthleteID })
+        else { return nil }
+
+        let transition = player.transitionSpec.athleteTransition(for: anchorAthleteID)
+        let placement: (index: Int, point: CGPoint)
+        if let explicitPoint {
+            placement = (
+                index: explicitSegmentIndex ?? transition.pathWaypoints.count,
+                point: clampedPathPoint(explicitPoint)
+            )
+        } else {
+            placement = PathWaypointPlacement.defaultPlacement(
+                transition: transition,
+                start: startAthlete.position,
+                end: endAthlete.position
+            )
+        }
+        let waypoint = PathWaypoint(position: clampedPathPoint(placement.point), isSmooth: true)
+
+        if selectedAthleteIDs.count > 1, selectedAthleteIDs.contains(anchorAthleteID) {
+            let startsByID = Dictionary(uniqueKeysWithValues: player.startAthletes.map { ($0.id, $0.position) })
+            let memberIDs = selectedAthleteIDs
+            var didInsert = false
+            store.mutateTransitionSpec(from: startFormationID, to: endFormationID) { spec in
+                guard let anchorIndex = spec.athleteTransitions.firstIndex(where: { $0.athleteID == anchorAthleteID }) else {
+                    return
+                }
+                var anchorWaypoints = spec.athleteTransitions[anchorIndex].pathWaypoints
+                let insertionIndex = max(0, min(placement.index, anchorWaypoints.count))
+                anchorWaypoints.insert(waypoint, at: insertionIndex)
+                didInsert = spec.applyRelativePathWaypoints(
+                    anchorAthleteID: anchorAthleteID,
+                    memberIDs: memberIDs,
+                    anchorWaypoints: anchorWaypoints,
+                    startPositionsByAthleteID: startsByID
+                )
+            }
+            return didInsert ? waypoint.id : nil
+        }
+
+        store.mutateAthleteTransition(
+            from: startFormationID,
+            to: endFormationID,
+            athleteID: anchorAthleteID
+        ) { transition in
+            let insertionIndex = max(0, min(placement.index, transition.pathWaypoints.count))
+            transition.pathControlPoint = nil
+            transition.pathWaypoints.insert(waypoint, at: insertionIndex)
+        }
+        return waypoint.id
+    }
+
+    @discardableResult
+    static func moveWaypoint(
+        store: RoutineStore,
+        player: TransitionPlayer,
+        startFormationID: UUID,
+        endFormationID: UUID,
+        selectedAthleteIDs: Set<UUID>,
+        anchorAthleteID: UUID,
+        waypointID: UUID,
+        point: CGPoint
+    ) -> Bool {
+        let pathPoint = clampedPathPoint(point)
+        if selectedAthleteIDs.count > 1, selectedAthleteIDs.contains(anchorAthleteID) {
+            let startsByID = Dictionary(uniqueKeysWithValues: player.startAthletes.map { ($0.id, $0.position) })
+            let memberIDs = selectedAthleteIDs
+            var didMove = false
+            store.mutateTransitionSpec(from: startFormationID, to: endFormationID) { spec in
+                guard
+                    let anchorIndex = spec.athleteTransitions.firstIndex(where: { $0.athleteID == anchorAthleteID }),
+                    let waypointIndex = spec.athleteTransitions[anchorIndex].pathWaypoints.firstIndex(where: { $0.id == waypointID })
+                else { return }
+
+                var anchorWaypoints = spec.athleteTransitions[anchorIndex].pathWaypoints
+                anchorWaypoints[waypointIndex].position = pathPoint
+                didMove = spec.applyRelativePathWaypoints(
+                    anchorAthleteID: anchorAthleteID,
+                    memberIDs: memberIDs,
+                    anchorWaypoints: anchorWaypoints,
+                    startPositionsByAthleteID: startsByID
+                )
+            }
+            return didMove
+        }
+
+        var didMove = false
+        store.mutateAthleteTransition(
+            from: startFormationID,
+            to: endFormationID,
+            athleteID: anchorAthleteID
+        ) { transition in
+            guard let waypointIndex = transition.pathWaypoints.firstIndex(where: { $0.id == waypointID }) else { return }
+            transition.pathWaypoints[waypointIndex].position = pathPoint
+            didMove = true
+        }
+        return didMove
+    }
+
+    private static func clampedPathPoint(_ point: CGPoint) -> CGPoint {
+        CGPoint(
+            x: max(0, min(CourtConstants.width, point.x)),
+            y: max(0, min(CourtConstants.height, point.y))
         )
     }
 }

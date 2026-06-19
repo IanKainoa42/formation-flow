@@ -197,9 +197,12 @@ struct MultiSelectionInspectorView: View {
                 Divider()
                 BulkPathActions(
                     store: store,
+                    player: player,
                     selectedAthleteIDs: selectedAthleteIDs,
                     startFormationID: startFormationID,
                     endFormationID: endFormationID,
+                    isPro: isPro,
+                    onUpgrade: onUpgrade,
                     onRefreshTransition: onRefreshTransition
                 )
             }
@@ -465,15 +468,41 @@ private struct BulkDelayControl: View {
 
 private struct BulkPathActions: View {
     @ObservedObject var store: RoutineStore
+    @ObservedObject var player: TransitionPlayer
     let selectedAthleteIDs: Set<UUID>
     let startFormationID: UUID
     let endFormationID: UUID
+    let isPro: Bool
+    let onUpgrade: () -> Void
     let onRefreshTransition: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Paths")
                 .font(.subheadline.weight(.semibold))
+
+            Button {
+                guard isPro else {
+                    onUpgrade()
+                    return
+                }
+                _ = TransitionPathSelectionEditing.addWaypoint(
+                    store: store,
+                    player: player,
+                    startFormationID: startFormationID,
+                    endFormationID: endFormationID,
+                    selectedAthleteIDs: selectedAthleteIDs
+                )
+                onRefreshTransition()
+            } label: {
+                Label(
+                    isPro ? "Add Waypoint to Selection" : "Add Waypoint to Selection (Pro)",
+                    systemImage: isPro ? "plus.circle" : "lock.fill"
+                )
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityHint(isPro ? "Add a waypoint to every selected path" : "Upgrade to Pro to add waypoints")
 
             Button(role: .destructive) {
                 let ids = selectedAthleteIDs
@@ -490,7 +519,7 @@ private struct BulkPathActions: View {
             }
             .buttonStyle(.bordered)
 
-            Text("Clears custom path bends only for the selected athletes.")
+            Text("Adds a matching waypoint or clears custom bends only for the selected athletes.")
                 .font(.caption)
                 .foregroundColor(.secondary)
         }
