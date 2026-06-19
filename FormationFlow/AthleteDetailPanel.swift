@@ -383,9 +383,6 @@ private struct BulkDelayControl: View {
     let onUpgrade: () -> Void
     let onRefreshTransition: () -> Void
 
-    @State private var sliderValue: CGFloat = 0
-    @State private var isEditing = false
-
     private var selectedDelays: [CGFloat] {
         selectedAthleteIDs.map {
             player.transitionSpec.athleteTransition(for: $0).moveDelayCounts
@@ -399,11 +396,11 @@ private struct BulkDelayControl: View {
     }
 
     private var displayedValue: CGFloat {
-        isEditing ? sliderValue : (commonDelay ?? selectedDelays.first ?? 0)
+        commonDelay ?? selectedDelays.first ?? 0
     }
 
     private var valueLabel: String {
-        if !isEditing, commonDelay == nil {
+        if commonDelay == nil {
             return "Mixed"
         }
         return TransitionCountFormatting.label(displayedValue)
@@ -424,18 +421,11 @@ private struct BulkDelayControl: View {
                     value: Binding(
                         get: { displayedValue },
                         set: { newValue in
-                            sliderValue = newValue
                             applyBulkDelay(newValue)
                         }
                     ),
                     in: 0...CGFloat(player.counts),
-                    step: 0.5,
-                    onEditingChanged: { editing in
-                        isEditing = editing
-                        if editing {
-                            sliderValue = commonDelay ?? selectedDelays.first ?? 0
-                        }
-                    }
+                    step: 0.5
                 )
                 .accessibilityLabel("Start Delay for \(selectedAthleteIDs.count) selected athletes")
             } else {
