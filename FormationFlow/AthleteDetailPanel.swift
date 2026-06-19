@@ -744,6 +744,7 @@ struct TransitionInspectorSectionView: View {
     let endFormationName: String
     var compactLayout: Bool = false
     var isPro: Bool = true
+    var onSetTransitionCounts: (Int) -> Void = { _ in }
     var onUpdateMoveDelay: (CGFloat) -> Void = { _ in }
     var onClearPath: () -> Void = {}
     var onEnsureCurve: () -> Void = {}
@@ -757,6 +758,7 @@ struct TransitionInspectorSectionView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: compactLayout ? 14 : 16) {
             header
+            transitionLengthSection
             moveDelaySection
             pathControlsSection
 
@@ -792,6 +794,49 @@ struct TransitionInspectorSectionView: View {
     private var hasCustomPaths: Bool {
         player.transitionSpec.athleteTransitions.contains {
             $0.pathControlPoint != nil || !$0.pathWaypoints.isEmpty
+        }
+    }
+
+    // MARK: - Transition Length
+
+    private var currentCounts: Int { max(1, Int(player.counts.rounded())) }
+
+    private var transitionLengthSection: some View {
+        VStack(alignment: .leading, spacing: compactLayout ? 6 : 8) {
+            Text("Length")
+                .font(.subheadline.weight(.semibold))
+            if isPro {
+                Stepper(
+                    value: Binding(
+                        get: { currentCounts },
+                        set: { onSetTransitionCounts($0) }
+                    ),
+                    in: 1...32,
+                    step: 1
+                ) {
+                    Text(TransitionCountFormatting.label(CGFloat(currentCounts)))
+                        .font(.system(.body, design: .monospaced))
+                }
+                .accessibilityLabel("Transition length")
+                .accessibilityValue(TransitionCountFormatting.label(CGFloat(currentCounts)))
+            } else {
+                HStack {
+                    Text(TransitionCountFormatting.label(CGFloat(currentCounts)))
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Button(action: onUpgrade) {
+                        Image(systemName: "lock.fill")
+                            .foregroundColor(.secondary)
+                    }
+                    .accessibilityLabel("Upgrade to Pro to adjust transition length")
+                    .accessibilityHint("Requires a Pro subscription to change the transition length")
+                    .help("Upgrade to Pro to adjust transition length")
+                }
+            }
+            Text("How many counts the whole transition takes.")
+                .font(.caption)
+                .foregroundColor(.secondary)
         }
     }
 
@@ -1145,6 +1190,12 @@ struct SidebarInspectorView: View {
             endFormationName: endFormationName,
             compactLayout: isCompactLayout,
             isPro: isPro,
+            onSetTransitionCounts: { newCounts in
+                store.mutateTransitionSpec(from: startFormationID, to: endFormationID) { spec in
+                    spec.duration = Double(min(32, max(1, newCounts)))
+                }
+                onRefreshTransition()
+            },
             onUpdateMoveDelay: { newValue in
                 guard let selectedAthleteID else { return }
                 store.mutateAthleteTransition(

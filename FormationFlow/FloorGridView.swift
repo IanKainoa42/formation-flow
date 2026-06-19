@@ -37,6 +37,30 @@ enum PathDisplayScope: String, CaseIterable, Identifiable {
     }
 }
 
+/// How idle transition paths are previewed. `flow` = the ambient comet pulse
+/// sweeping each path; `step` = static "one tick per count" markers. Persisted
+/// so the coach's choice sticks. Default `.flow` (on-brand for FormationFlow).
+enum TransitionPreviewMode: String, CaseIterable, Identifiable {
+    case flow
+    case step
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .flow: return "Flow"
+        case .step: return "Step"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .flow: return "wind"
+        case .step: return "figure.walk"
+        }
+    }
+}
+
 private struct FormationMoveUndoSnapshot: Equatable {
     let formationID: UUID
     let positions: [UUID: CGPoint]
@@ -88,6 +112,10 @@ struct FloorGridView: View {
     @AppStorage("pathDisplayScope") private var pathDisplayScopeRaw = PathDisplayScope.selectedOnly.rawValue
     private var pathDisplayScope: PathDisplayScope {
         PathDisplayScope(rawValue: pathDisplayScopeRaw) ?? .selectedOnly
+    }
+    @AppStorage("transitionPreviewMode") private var transitionPreviewModeRaw = TransitionPreviewMode.flow.rawValue
+    private var transitionPreviewMode: TransitionPreviewMode {
+        TransitionPreviewMode(rawValue: transitionPreviewModeRaw) ?? .flow
     }
     // Kept as a computed convenience so the many gesture sites that gate on
     // "are paths visible at all" don't need to learn about scope.
@@ -908,12 +936,21 @@ struct FloorGridView: View {
                                 Label(scope.label, systemImage: scope.systemImage).tag(scope)
                             }
                         }
+                        Divider()
+                        Picker("Preview", selection: Binding(
+                            get: { transitionPreviewMode },
+                            set: { transitionPreviewModeRaw = $0.rawValue }
+                        )) {
+                            ForEach(TransitionPreviewMode.allCases) { mode in
+                                Label(mode.label, systemImage: mode.systemImage).tag(mode)
+                            }
+                        }
                     } label: {
                         Label("Paths", systemImage: pathDisplayScope.systemImage)
                     }
                     .buttonStyle(.bordered)
-                    .accessibilityLabel("Path display: \(pathDisplayScope.label)")
-                    .help("Choose how many transition paths to show")
+                    .accessibilityLabel("Path display: \(pathDisplayScope.label), preview \(transitionPreviewMode.label)")
+                    .help("Choose how many transition paths to show, and Flow vs Step preview")
 
                     Button(action: shareTransitionPreview) {
                         Label("Share", systemImage: "square.and.arrow.up")
@@ -1166,8 +1203,9 @@ struct FloorGridView: View {
                 endFormationColor: transitionEndColor,
                 transitionProgress: displayProgress,
                 formationColor: currentFormationColor,
-                showPathPulse: hasTransition && showTransitionPaths && !isTransportEngaged,
-                transitionCounts: player?.counts ?? 4,
+                showPathPulse: hasTransition && showTransitionPaths && !isTransportEngaged && transitionPreviewMode == .flow,
+                transitionCounts: player?.counts ?? 8,
+                showCountSteps: hasTransition && showTransitionPaths && !isTransportEngaged && transitionPreviewMode == .step,
                 ghostAthletes: pathDisplayScope == .allFormations ? previousFormationAthletes : [],
                 ghostColor: previousFormationColor,
                 ghostNextAthletes: pathDisplayScope == .allFormations ? nextFormationAthletes : [],
@@ -1469,9 +1507,21 @@ struct FloorGridView: View {
             onToggleDirection: onToggleTransitionDirection,
             onPrev: { onCyclePreviousFormation?() },
             onNext: { onCycleFormation?() },
-            onRename: onRenameFormation
+            onRename: onRenameFormation,
+            transitionCounts: hasTransition ? max(1, Int((player?.counts ?? 8).rounded())) : nil,
+            countsLocked: !entitlementManager.isPro,
+            onAdjustCounts: { setTransitionCounts($0) },
+            onLockedCountsTap: { showingUpgradeSheet = true }
         )
         .accessibilityLabel(formationContextLabel)
+    }
+
+    private func setTransitionCounts(_ newCounts: Int) {
+        guard let startFormationID, let endFormationID else { return }
+        store.mutateTransitionSpec(from: startFormationID, to: endFormationID) { spec in
+            spec.duration = Double(min(32, max(1, newCounts)))
+        }
+        refreshTransitionFromStore()
     }
 
     private var compactInspectorSheet: some View {
@@ -1544,6 +1594,18 @@ struct FloorGridView: View {
 
     @ViewBuilder
     private var phoneToolbarMenuContent: some View {
+        if hasTransition {
+            Picker("Path Preview", selection: Binding(
+                get: { transitionPreviewMode },
+                set: { transitionPreviewModeRaw = $0.rawValue }
+            )) {
+                ForEach(TransitionPreviewMode.allCases) { mode in
+                    Label(mode.label, systemImage: mode.systemImage).tag(mode)
+                }
+            }
+            Divider()
+        }
+
         if canShareTransition {
             Button(action: shareTransitionPreview) {
                 Label("Share Preview", systemImage: "square.and.arrow.up")

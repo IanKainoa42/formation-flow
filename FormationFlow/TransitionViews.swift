@@ -184,6 +184,15 @@ struct FormationPipBadge: View {
     var onNext: () -> Void
     var onRename: (() -> Void)? = nil
 
+    /// Transition length in counts. `nil` hides the length row (e.g. the
+    /// full-screen player, or a formation with no adjacent transition).
+    var transitionCounts: Int? = nil
+    /// Free tier: length editing is Pro — show the value with a lock instead of
+    /// the stepper, and route taps to the upgrade gate.
+    var countsLocked: Bool = false
+    var onAdjustCounts: ((Int) -> Void)? = nil
+    var onLockedCountsTap: (() -> Void)? = nil
+
     private static let badgeWidth: CGFloat = 220
     private static let rowWidth: CGFloat = 200
 
@@ -193,6 +202,9 @@ struct FormationPipBadge: View {
                 directionTab(active: direction, onToggle: onToggleDirection)
             }
             navBody
+            if let transitionCounts {
+                lengthRow(counts: transitionCounts)
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
@@ -202,6 +214,54 @@ struct FormationPipBadge: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(.white.opacity(0.08))
         }
+    }
+
+    // Length of the whole transition, in counts. A −/+ stepper so a coach can
+    // dial the move from 1 to 32 counts right on the badge; locked behind Pro.
+    private func lengthRow(counts: Int) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "metronome")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            Text("Length")
+                .font(.caption2.weight(.semibold))
+                .foregroundColor(.secondary)
+            Spacer(minLength: 4)
+            if countsLocked {
+                Button { onLockedCountsTap?() } label: {
+                    HStack(spacing: 4) {
+                        Text("\(counts) ct").font(.caption.weight(.bold).monospacedDigit())
+                        Image(systemName: "lock.fill").font(.system(size: 9))
+                    }
+                    .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Transition length \(counts) counts, locked")
+                .accessibilityHint("Upgrade to Pro to change the transition length")
+            } else {
+                stepButton("minus.circle.fill", enabled: counts > 1) { onAdjustCounts?(counts - 1) }
+                Text("\(counts) ct")
+                    .font(.callout.weight(.bold).monospacedDigit())
+                    .foregroundColor(.primary)
+                    .frame(minWidth: 38)
+                    .accessibilityLabel("Transition length \(counts) counts")
+                stepButton("plus.circle.fill", enabled: counts < 32) { onAdjustCounts?(counts + 1) }
+            }
+        }
+        .frame(width: Self.rowWidth, alignment: .leading)
+    }
+
+    private func stepButton(_ icon: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.title3)
+                .symbolRenderingMode(.hierarchical)
+                .foregroundColor(.primary)
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.3)
+        .accessibilityLabel(icon.hasPrefix("minus") ? "Decrease length" : "Increase length")
     }
 
     // Pips + name. This is the prev/next/rename surface — the tab sits above it

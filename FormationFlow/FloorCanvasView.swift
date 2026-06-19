@@ -143,7 +143,12 @@ struct FloorCanvasView: View {
     /// The transition's total length in counts (== seconds at 1× playback). Used
     /// to scale each athlete's pulse launch delay so a comet waits the same
     /// FRACTION of the transition that the athlete waits in real playback.
-    var transitionCounts: Double = 4
+    var transitionCounts: Double = 8
+    /// When true (preview, idle only — Step mode), each visible transition path
+    /// is divided into `transitionCounts` equal arc-length segments with a small
+    /// perpendicular tick at every count boundary: the "one step per count"
+    /// footwork guide. Mutually exclusive with `showPathPulse` (Flow mode).
+    var showCountSteps: Bool = false
     var ghostAthletes: [RenderedAthlete] = []
     var ghostColor: Color = .white
     var ghostNextAthletes: [RenderedAthlete] = []
@@ -169,7 +174,10 @@ struct FloorCanvasView: View {
     var body: some View {
         mainCanvas
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(.background)
+            // A fixed dark "stage" behind the court (not the system background) so
+            // the floor reads as the hero in both light and dark mode — no white
+            // letterbox margins when the wide court is fit to a tall phone screen.
+            .background(Color(white: 0.08))
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Formation court grid")
             .accessibilityValue("\(athletes.count) athletes on the court")
@@ -182,8 +190,12 @@ struct FloorCanvasView: View {
         let blinkActive = !pathCollisionIDs.isEmpty && !reduceMotion
         let blinkInterval: Double = 0.45
         let pulseActive = showPathPulse && !transitionPaths.isEmpty && !reduceMotion
-        // Pulse needs a smooth ~30fps clock; collisions blink at 0.45s; otherwise idle.
-        let tickInterval: Double = pulseActive ? (1.0 / 30.0) : (blinkActive ? blinkInterval : 86_400)
+        // Step mode animates a blip that snaps from count to count, so it needs the
+        // same smooth clock as the comet. Under Reduce Motion it falls back to a
+        // static dot at every step (no animation), so no fast clock then.
+        let stepActive = showCountSteps && !transitionPaths.isEmpty && !reduceMotion
+        // Pulse/step need a smooth ~30fps clock; collisions blink at 0.45s; otherwise idle.
+        let tickInterval: Double = (pulseActive || stepActive) ? (1.0 / 30.0) : (blinkActive ? blinkInterval : 86_400)
         return TimelineView(.periodic(from: .now, by: tickInterval)) { timeline in
             Canvas { context, _ in
                 var context = context
@@ -213,6 +225,15 @@ struct FloorCanvasView: View {
                 drawMirrorGuides(in: &context)
                 drawGroupHarnesses(in: &context)
                 drawTransitionPaths(in: &context, collisionColor: collisionColor)
+                if showCountSteps {
+                    if stepActive,
+                       let stepState = pathPulseRenderState(time: timeline.date.timeIntervalSinceReferenceDate) {
+                        drawStepBlinks(in: &context, state: stepState)
+                    } else {
+                        // Reduce Motion (or empty clock): static dot at each step.
+                        drawStepDotsStatic(in: &context)
+                    }
+                }
                 drawPathSketch(in: &context)
                 drawPathCollisionMarkers(in: &context)
                 drawEndpointMarkers(in: &context)
@@ -950,6 +971,91 @@ struct FloorCanvasView: View {
                 nextMark += spacing
             }
             traveled += segLen
+        }
+    }
+
+    // MARK: - Step Mode (one blip per count, preview idle)
+
+    /// Step mode reuses the comet's group clock but quantizes motion: instead of
+    /// gliding, a blip SNAPS to each successive count position along the path and
+    /// blinks sharply on arrival — "step, step, step" at one step per count. Path
+    /// length is divided into `transitionCounts` equal segments; during the k-th
+    /// count window the blip sits at step k and decays until it jumps to k+1.
+    private func drawStepBlinks(in context: inout GraphicsContext, state: PulseRenderState) {
+        let n = max(1, Int(transitionCounts.rounded()))
+        let blinkDecay: Double = 0.16   // sharp: bright on the count, gone before the next
+
+        for lane in state.lanes {
+            let localT = state.cycleT - lane.start
+            guard localT >= 0 else { continue }
+            let progress = lane.travel > 0 ? min(max(localT / lane.travel, 0), 1) : 1
+
+            if progress < 1 {
+                let stepF = progress * Double(n)
+                // Current step we're on/heading to, 1...n.
+                let stepIndex = min(n, Int(floor(stepF)) + 1)
+                let posFrac = CGFloat(stepIndex) / CGFloat(n)
+                let center = pointAtArcLength(posFrac * lane.total, pts: lane.poly, cum: lane.cum)
+                let fracIntoStep = stepF - floor(stepF)          // 0 (just landed) → 1 (about to jump)
+                let blink = max(0.14, CGFloat(exp(-fracIntoStep / blinkDecay)))
+                let color = pulseGlowColor(progress: posFrac, state: state)
+                drawStepBlip(in: &context, center: center, intensity: blink, color: color)
+            } else {
+                // Landed: a final sharp flash at the destination, fading into the
+                // group's rest pause before the whole set relaunches.
+                let sinceArrival = state.cycleT - (lane.start + lane.travel)
+                let flash = max(0.12, CGFloat(exp(-sinceArrival / 0.2)))
+                drawArrivalFlash(in: &context, at: lane.item.endPosition, intensity: flash, color: state.endGlow)
+            }
+        }
+    }
+
+    /// A crisp blip: hard bright core + tight glow (sharper/smaller than the
+    /// comet halo) so each step reads as a distinct blink rather than a sweep.
+    private func drawStepBlip(in context: inout GraphicsContext, center: CGPoint, intensity: CGFloat, color: Color) {
+        let clamped = min(max(intensity, 0), 1)
+        let glowR = max(7, (6 + 8 * clamped) * markerScale)
+        var glow = Path()
+        glow.addEllipse(in: CGRect(x: center.x - glowR, y: center.y - glowR, width: glowR * 2, height: glowR * 2))
+        context.fill(
+            glow,
+            with: .radialGradient(
+                Gradient(colors: [color.opacity(0.55 * clamped), color.opacity(0.16 * clamped), .clear]),
+                center: center,
+                startRadius: 0,
+                endRadius: glowR
+            )
+        )
+        let coreR = max(2.4, (2.6 + 1.6 * clamped) * markerScale)
+        var core = Path()
+        core.addEllipse(in: CGRect(x: center.x - coreR, y: center.y - coreR, width: coreR * 2, height: coreR * 2))
+        context.fill(core, with: .color(.white.opacity(0.95 * clamped)))
+    }
+
+    /// Reduce Motion fallback: a static dot at every step position (no blink),
+    /// so the "one step per count" spacing is still legible without animation.
+    private func drawStepDotsStatic(in context: inout GraphicsContext) {
+        let n = max(1, Int(transitionCounts.rounded()))
+        guard n >= 1 else { return }
+        let pathOpacityMultiplier: CGFloat = focusedEndpoint != nil ? 0.5 : 1.0
+
+        for item in transitionPaths {
+            let isSelected = selectedAthleteIDs.contains(item.athleteID)
+            let color: Color = isSelected ? .white : Color(white: 0.72)
+            let opacity = (isSelected ? 0.9 : 0.5) * pathOpacityMultiplier
+
+            let polyline = pathPolyline(for: item)
+            guard polyline.count >= 2 else { continue }
+            let cum = cumulativeLengths(polyline)
+            guard let total = cum.last, total > 0 else { continue }
+            let dotR = max(2.2, 2.6 * markerScale)
+
+            for i in 1...n {
+                let p = pointAtArcLength(total * CGFloat(i) / CGFloat(n), pts: polyline, cum: cum)
+                var dot = Path()
+                dot.addEllipse(in: CGRect(x: p.x - dotR, y: p.y - dotR, width: dotR * 2, height: dotR * 2))
+                context.fill(dot, with: .color(color.opacity(opacity)))
+            }
         }
     }
 
