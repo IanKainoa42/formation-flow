@@ -3,6 +3,106 @@ import SwiftUI
 import UIKit
 #endif
 
+// MARK: - Playback Haptics
+//
+// Buzzes the device when playback starts and when athletes collide mid-move — a
+// courtside tactile cue so a coach feels a pile-up without staring at the screen.
+// Lives here (a non-frozen file) and only OBSERVES the players' published state,
+// so `Models.swift` (TransitionPlayer / RoutinePlayer / PathCalculations) stays
+// untouched per the Known Fragile Areas freeze.
+
+enum PlaybackHaptics {
+    // Generators must be RETAINED — a transient `let g = UIImpactFeedbackGenerator()`
+    // is often released before the Taptic engine fires, dropping the buzz. Keeping
+    // them alive (and prepared) is what actually makes the haptic land on device.
+    #if canImport(UIKit)
+    private static let impact = UIImpactFeedbackGenerator(style: .medium)
+    private static let notification = UINotificationFeedbackGenerator()
+    #endif
+
+    // Collapse near-simultaneous triggers (e.g. two transport views briefly
+    // double-mounted across an orientation change) into a single buzz.
+    private static var lastFire: CFAbsoluteTime = 0
+    private static let cooldown: CFAbsoluteTime = 0.05
+
+    private static func gate() -> Bool {
+        let now = CFAbsoluteTimeGetCurrent()
+        guard now - lastFire >= cooldown else { return false }
+        lastFire = now
+        return true
+    }
+
+    /// Wake the Taptic engine so the first buzz of a play pass isn't dropped.
+    static func prime() {
+        #if canImport(UIKit)
+        impact.prepare()
+        notification.prepare()
+        #endif
+    }
+
+    /// Light tap when play starts.
+    static func play() {
+        guard gate() else { return }
+        #if canImport(UIKit)
+        impact.impactOccurred()
+        impact.prepare()
+        notification.prepare()
+        #endif
+    }
+
+    /// Sharper warning when a new collision appears during playback.
+    static func collision() {
+        guard gate() else { return }
+        #if canImport(UIKit)
+        notification.notificationOccurred(.warning)
+        notification.prepare()
+        #endif
+    }
+}
+
+/// Any playback engine that can drive haptics: exposes whether it's currently
+/// animating and the live on-floor positions. Both `TransitionPlayer` and
+/// `RoutinePlayer` already publish these, so they conform retroactively here
+/// with no edit to the frozen `Models.swift`.
+protocol PlaybackHapticSource: ObservableObject {
+    var isPlaying: Bool { get }
+    var currentAthletes: [RenderedAthlete] { get }
+}
+
+extension TransitionPlayer: PlaybackHapticSource {}
+extension RoutinePlayer: PlaybackHapticSource {}
+
+private struct PlaybackHapticsModifier<Source: PlaybackHapticSource>: ViewModifier {
+    @ObservedObject var player: Source
+    @State private var colliding: Set<UUID> = []
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear { PlaybackHaptics.prime() }
+            .onChange(of: player.isPlaying) { _, playing in
+                colliding = []
+                if playing { PlaybackHaptics.play() }
+            }
+            .onChange(of: player.currentAthletes) { _, athletes in
+                guard player.isPlaying else { return }
+                let current = PathCalculations.collisionSummary(in: athletes).ids
+                // Fire only on the rising edge of a NEW collision so a sustained
+                // overlap buzzes once, not every frame.
+                if !current.subtracting(colliding).isEmpty {
+                    PlaybackHaptics.collision()
+                }
+                colliding = current
+            }
+    }
+}
+
+extension View {
+    /// Buzz on play-start and on each new collision while `player` animates.
+    func playbackHaptics<Source: PlaybackHapticSource>(_ player: Source) -> some View {
+        modifier(PlaybackHapticsModifier(player: player))
+    }
+}
+
 enum TransitionCountFormatting {
     static func value(_ value: Double) -> String {
         if abs(value.rounded() - value) < 0.001 {
@@ -46,7 +146,12 @@ enum TransportControls {
     @ViewBuilder
     static func playPauseButton(player: TransitionPlayer, size: CGFloat = 34) -> some View {
         Button {
-            player.isPlaying ? player.pause() : player.play()
+            if player.isPlaying {
+                player.pause()
+            } else {
+                PlaybackHaptics.play()
+                player.play()
+            }
         } label: {
             Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                 .frame(width: size, height: size)
@@ -400,6 +505,7 @@ struct TransitionTransportSidebarView: View {
             .padding(20)
         }
         .navigationTitle("Transport")
+        .playbackHaptics(player)
     }
 
     private var headerSection: some View {
@@ -503,6 +609,7 @@ struct CompactTransitionPlaybackOverlayView: View {
                 .strokeBorder(.white.opacity(0.08))
         }
         .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
+        .playbackHaptics(player)
     }
 }
 
@@ -611,6 +718,7 @@ struct CompactTransitionPlaybackRailView: View {
                 .strokeBorder(.white.opacity(0.08))
         }
         .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
+        .playbackHaptics(player)
     }
 }
 
@@ -675,6 +783,7 @@ struct SidebarTransportView: View {
                 TransportControls.pathButton(size: 28, disabled: !canEditPath, action: onPath)
             }
         }
+        .playbackHaptics(player)
     }
 }
 
@@ -763,6 +872,7 @@ struct ThinTransitionTransportBar: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
         .background(.bar)
+        .playbackHaptics(player)
     }
 }
 

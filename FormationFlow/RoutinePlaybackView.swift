@@ -13,6 +13,11 @@ struct RoutinePlaybackView: View {
     }
 
     var body: some View {
+        playbackContent
+            .playbackHaptics(player)
+    }
+
+    private var playbackContent: some View {
         GeometryReader { geometry in
             let courtWidth = CourtConstants.width
             let courtHeight = CourtConstants.height
