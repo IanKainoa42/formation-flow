@@ -145,7 +145,7 @@ private enum TransportMode { case none, flow, steps }
 struct OnboardingView: View {
     @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding: Bool = false
     @Environment(\.horizontalSizeClass) private var hSize
-    @State private var page = 0
+    @State private var page = Int(ProcessInfo.processInfo.environment["OB_PAGE"] ?? "") ?? 0
 
     private let pages = OnboardingContent.pages
 

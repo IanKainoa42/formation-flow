@@ -1759,12 +1759,62 @@ struct FloorCanvasView: View {
         horizontalPanelHighlights = horizontalPanelHighlights.offsetBy(dx: -0.2 * markerScale, dy: -0.3 * markerScale)
         context.stroke(horizontalPanelHighlights, with: .color(.white.opacity(0.065)), lineWidth: max(0.45, 0.5 * markerScale))
 
+        // Center-floor mark — faint FormationFlow "FF" logo, centered on the floor.
+        drawCenterMark(in: &context)
+
         // Border
         var border = Path()
         border.addRect(CGRect(x: 0, y: 0, width: width, height: height))
         context.stroke(border, with: .color(.white.opacity(0.25)), lineWidth: 2)
 
         drawCourtVignette(in: &context, width: width, height: height)
+    }
+
+    /// Faint FormationFlow "FF" logo marking the center of the floor. The mark is
+    /// the brand logo: two F's spelled out in athlete dots (coral filled + cream
+    /// outlined) on the same grid the court uses (see ff_logo_anim.py).
+    private func drawCenterMark(in context: inout GraphicsContext) {
+        let coral = Color(red: 255 / 255, green: 75 / 255, blue: 92 / 255)
+        let cream = Color(red: 232 / 255, green: 222 / 255, blue: 198 / 255)
+
+        // Logo dot layout in (col, row) units; the mark spans cols 0...8, rows 0...4.
+        let coralDots: [(CGFloat, CGFloat)] = [
+            (0, 0), (1, 0), (2, 0), (3, 0),   // top bar
+            (0, 1),                            // left stem
+            (0, 2), (1, 2), (2, 2),            // mid bar
+            (0, 3),
+            (0, 4),
+        ]
+        let creamDots: [(CGFloat, CGFloat)] = [
+            (5, 0), (6, 0), (7, 0), (8, 0),
+            (5, 1),
+            (5, 2), (6, 2), (7, 2),
+            (5, 3),
+            (5, 4),
+        ]
+
+        let pitch: CGFloat = 3.0 * cellSize          // feet between dots → ~24ft-wide mark
+        let coralR = 0.233 * pitch                   // radii from the logo's px ratios
+        let creamR = 0.275 * pitch
+        // Centre the logo bounding box (cols 0...8, rows 0...4) on the floor centre.
+        let originX = (CourtConstants.width / 2) * cellSize - 4 * pitch
+        let originY = (CourtConstants.height / 2) * cellSize - 2 * pitch
+
+        func dotRect(_ col: CGFloat, _ row: CGFloat, _ r: CGFloat) -> CGRect {
+            let c = CGPoint(x: originX + col * pitch, y: originY + row * pitch)
+            return CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)
+        }
+
+        for (col, row) in coralDots {
+            context.fill(Path(ellipseIn: dotRect(col, row, coralR)), with: .color(coral.opacity(0.16)))
+        }
+        for (col, row) in creamDots {
+            context.stroke(
+                Path(ellipseIn: dotRect(col, row, creamR)),
+                with: .color(cream.opacity(0.20)),
+                lineWidth: max(1.0, 1.6 * markerScale)
+            )
+        }
     }
 
     private var floorLiftColor: Color {
