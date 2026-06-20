@@ -2,6 +2,12 @@
 
 Corrections, knowledge gaps, and best practices. See `/self-improvement` for format.
 
+## 2026-06-20 — Onboarding floor color: one color PER PAGE, not per-role or per-athlete
+
+- **Category:** correction
+- **What happened:** Iterated the onboarding demo-floor coloring 3 times. (1) Started with `useRoleColors: true` → each role a different color; Ian: "not like the app." (2) Switched to one shared formation color cycling the palette across the 6 pages (01 pink…06 blue) — CORRECT, but I then mis-read his "use all the colors" follow-up. (3) Built a per-athlete rainbow map (every athlete a different color on every page) → Ian: "No, I want every formation / every page should be a different color… I just told you I didn't want that." Reverted to (2).
+- **Rule:** The real app colors athletes by **formation** (one shared color per formation via `rainbowColor(forIndex:)`), role conveyed by **shape**, `useRoleColors` hardcoded false. Onboarding mirrors that: **each page gets ONE color, distinct per page, cycling the app palette.** Do NOT color by role, do NOT give each athlete its own color. "Use all the colors" = all colors appear *across the flow* (one per page), not all on one screen. App palette = `PathCalculations.rainbowColors` = [pink, orange, yellow, lime, cyan, blue, purple]. Threaded via `screenIndex`→`DemoFloor.colorIndex` in FormationFlowApp.swift. Also removed in this pass: fake bottom thumbnail strip and the center FF "doodle" (hidden in onboarding via new `FloorCanvasView.showCenterMark` flag, default true keeps it in the real app).
+
 ## 2026-05-18 — SwiftUI animation needs stable view identity — opacity-gate, don't conditional-render
 
 - **Category:** correction

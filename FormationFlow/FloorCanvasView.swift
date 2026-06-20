@@ -150,6 +150,10 @@ struct FloorCanvasView: View {
     var transitionProgress: CGFloat = 0
     var formationColor: Color = .white
     var useRoleColors: Bool = false
+    /// Faint FormationFlow "FF" brand dots at floor center. On by default in the
+    /// real editor; the onboarding demo floor switches it off (reads as a floating
+    /// doodle over the dimmed hero court).
+    var showCenterMark: Bool = true
     /// When true (preview, idle only), a light pulse continuously sweeps each
     /// transition path showing where every athlete is at that moment — an
     /// ambient, no-press preview of the move. Driven by its own clock, not the
@@ -1760,7 +1764,7 @@ struct FloorCanvasView: View {
         context.stroke(horizontalPanelHighlights, with: .color(.white.opacity(0.065)), lineWidth: max(0.45, 0.5 * markerScale))
 
         // Center-floor mark — faint FormationFlow "FF" logo, centered on the floor.
-        drawCenterMark(in: &context)
+        if showCenterMark { drawCenterMark(in: &context) }
 
         // Border
         var border = Path()

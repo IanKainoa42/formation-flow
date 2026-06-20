@@ -127,8 +127,6 @@ private struct OBPage: Identifiable {
 
     // Chrome
     let barTitle: String
-    let strip: [StripItem]
-    let stripSelected: Int?
     let actionRow: ActionRow
     let transport: TransportMode
     let pill: String?
@@ -136,7 +134,6 @@ private struct OBPage: Identifiable {
     let showMoveDelay: Bool
 }
 
-private struct StripItem { let name: String; let kind: OnboardingDemo.FormationKind }
 private enum ActionRow { case none, roster, paths }
 private enum TransportMode { case none, flow, steps }
 
@@ -145,7 +142,7 @@ private enum TransportMode { case none, flow, steps }
 struct OnboardingView: View {
     @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding: Bool = false
     @Environment(\.horizontalSizeClass) private var hSize
-    @State private var page = Int(ProcessInfo.processInfo.environment["OB_PAGE"] ?? "") ?? 0
+    @State private var page = 0
 
     private let pages = OnboardingContent.pages
 
@@ -163,6 +160,7 @@ struct OnboardingView: View {
                     ForEach(Array(pages.enumerated()), id: \.element.id) { index, spec in
                         OnboardingScreen(
                             spec: spec,
+                            screenIndex: index,
                             isPhone: isPhone,
                             page: page,
                             pageCount: pages.count,
@@ -209,6 +207,9 @@ struct OnboardingView: View {
 
 private struct OnboardingScreen: View {
     let spec: OBPage
+    /// Position in the flow — drives a distinct rainbow floor color per screen so
+    /// the six screens walk the full palette (the app colors each formation this way).
+    let screenIndex: Int
     let isPhone: Bool
     let page: Int
     let pageCount: Int
@@ -226,7 +227,7 @@ private struct OnboardingScreen: View {
     // iPad: hero floor, card floats left/right/center, chrome overlaid.
     private var padLayout: some View {
         ZStack {
-            DemoFloor(spec: spec)
+            DemoFloor(spec: spec, colorIndex: screenIndex)
             scrim
             chromeOverlay
             HStack {
@@ -247,7 +248,7 @@ private struct OnboardingScreen: View {
                 VStack(spacing: 0) {
                     phoneTopBar
                     ZStack {
-                        DemoFloor(spec: spec)
+                        DemoFloor(spec: spec, colorIndex: screenIndex)
                             .frame(height: courtH)
                             .clipped()
                         VStack {
@@ -305,13 +306,10 @@ private struct OnboardingScreen: View {
             .padding(.horizontal, 18)
             .padding(.top, 14)
             Spacer()
-            // Bottom: transport (03/04) or thumbnail strip (01/02/05/06).
+            // Bottom: transport only on the playback screens (03/04). The real
+            // editor has no bottom thumbnail strip, so nothing else renders here.
             if spec.transport != .none {
                 HStack { transportBar; Spacer() }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 14)
-            } else if !spec.strip.isEmpty {
-                HStack { thumbnailStrip; Spacer() }
                     .padding(.horizontal, 16)
                     .padding(.bottom, 14)
             }
@@ -471,46 +469,6 @@ private struct OnboardingScreen: View {
             .foregroundStyle(on ? .white : OB.txtDim)
             .padding(.horizontal, 12).padding(.vertical, 6)
             .background(RoundedRectangle(cornerRadius: 7).fill(on ? OB.accent : .clear))
-    }
-
-    // MARK: Thumbnail strip
-
-    private var thumbnailStrip: some View {
-        HStack(spacing: 10) {
-            ForEach(Array(spec.strip.enumerated()), id: \.offset) { index, item in
-                VStack(spacing: 5) {
-                    DemoFloor.thumbnail(kind: item.kind, index: index)
-                        .frame(width: 50, height: 38)
-                        .background(RoundedRectangle(cornerRadius: 7).fill(Color.black.opacity(0.4)))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 7)
-                                .stroke(spec.stripSelected == index ? stripColor(index) : OB.barBorder,
-                                        lineWidth: spec.stripSelected == index ? 2 : 1)
-                        )
-                    Text(item.name)
-                        .font(.system(size: 11, weight: .medium))
-                        .lineLimit(1)
-                        .foregroundStyle(spec.stripSelected == index ? OB.txt : OB.txtDim)
-                        .frame(width: 50)
-                }
-            }
-            VStack(spacing: 5) {
-                RoundedRectangle(cornerRadius: 7)
-                    .stroke(style: StrokeStyle(lineWidth: 1.2, dash: [4, 3]))
-                    .foregroundStyle(OB.txtFaint)
-                    .frame(width: 50, height: 38)
-                    .overlay(Image(systemName: "plus").font(.system(size: 14, weight: .semibold)).foregroundStyle(OB.txtDim))
-                Text("Add").font(.system(size: 11, weight: .medium)).foregroundStyle(OB.txtDim)
-            }
-        }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 14).fill(OB.bar.opacity(0.82)))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(OB.barBorder, lineWidth: 1))
-    }
-
-    private func stripColor(_ index: Int) -> Color {
-        [OB.accent, Color(hex: 0xFF9F0A), Color(hex: 0xFFD60A),
-         Color(hex: 0x30D158), Color(hex: 0x0A84FF), Color(hex: 0xBF5AF2)][index % 6]
     }
 
     // MARK: Intro card
@@ -747,12 +705,20 @@ private struct OnboardingScreen: View {
 
 private struct DemoFloor: View {
     let spec: OBPage
+    /// Which rainbow color this screen's floor uses (cycles the palette across the
+    /// six screens). One shared color per screen; role is conveyed by SHAPE — the
+    /// way the real editor colors a formation.
+    let colorIndex: Int
 
     var body: some View {
         GeometryReader { geo in
             let cell = geo.size.width / CourtConstants.width
             let courtH = CourtConstants.height * cell
             let yOffset = max(0, (geo.size.height - courtH) / 2)
+            // Color athletes by this screen's formation color. Paths fade from it
+            // into the next color in the palette.
+            let formColor = TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: colorIndex)
+            let nextColor = TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: colorIndex + 1)
             FloorCanvasView(
                 athletes: OnboardingDemo.shared.athletes(for: spec.formation),
                 selectedAthleteIDs: spec.selected,
@@ -763,32 +729,17 @@ private struct DemoFloor: View {
                 cellSize: cell,
                 offset: CGPoint(x: 0, y: yOffset),
                 hasTransition: false,
-                startFormationColor: OB.accent,
-                endFormationColor: Color(hex: 0x0A84FF),
-                formationColor: OB.accent,
-                useRoleColors: true,
+                startFormationColor: formColor,
+                endFormationColor: nextColor,
+                formationColor: formColor,
+                useRoleColors: false,
+                showCenterMark: false,
                 showPathPulse: spec.pulse == .flow,
                 transitionCounts: 8,
                 showCountSteps: spec.pulse == .steps
             )
         }
         .allowsHitTesting(false)
-    }
-
-    /// A tiny static court used in the bottom thumbnail strip.
-    static func thumbnail(kind: OnboardingDemo.FormationKind, index: Int) -> some View {
-        GeometryReader { geo in
-            let cell = geo.size.width / CourtConstants.width
-            let yOffset = max(0, (geo.size.height - CourtConstants.height * cell) / 2)
-            FloorCanvasView(
-                athletes: OnboardingDemo.shared.athletes(for: kind),
-                cellSize: cell,
-                offset: CGPoint(x: 0, y: yOffset),
-                formationColor: TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: index),
-                useRoleColors: false
-            )
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 7))
     }
 }
 
@@ -896,12 +847,6 @@ final class OnboardingDemo {
 private enum OnboardingContent {
     static let pages: [OBPage] = {
         let demo = OnboardingDemo.shared
-        let strip3 = [
-            StripItem(name: "Opening V", kind: .openingV),
-            StripItem(name: "Lines", kind: .lines),
-            StripItem(name: "Pyramid", kind: .pyramid)
-        ]
-        let strip4 = strip3 + [StripItem(name: "Closer", kind: .closer)]
 
         return [
             // 01 · Welcome (A)
@@ -914,7 +859,7 @@ private enum OnboardingContent {
                 side: .right, cta: "Get started", wide: false,
                 formation: .openingV, showPaths: false, pulse: .none,
                 selected: [], grouped: [],
-                barTitle: "Opening V", strip: strip3, stripSelected: 0,
+                barTitle: "Opening V",
                 actionRow: .none, transport: .none, pill: nil, showPro: false, showMoveDelay: false
             ),
             // 02 · Roster (B)
@@ -922,11 +867,11 @@ private enum OnboardingContent {
                 eyebrow: "ROSTER · 02 / 06",
                 title: [TitleRun("Assign roles. Avoid "),
                         TitleRun("reunions mid-mat.", accent: true)],
-                body: "Build your roster once and drop athletes onto a scaled floor. Each role gets its own color, so you're never squinting at sixteen identical dots wondering which one is the flyer.",
+                body: "Build your roster once and drop athletes onto a scaled floor. Each role gets its own shape, so you're never squinting at sixteen identical dots wondering which one is the flyer.",
                 side: .left, cta: nil, wide: false,
                 formation: .openingV, showPaths: false, pulse: .none,
                 selected: demo.ids([0]), grouped: [],
-                barTitle: "Opening V", strip: strip3, stripSelected: 0,
+                barTitle: "Opening V",
                 actionRow: .roster, transport: .none, pill: nil, showPro: false, showMoveDelay: false
             ),
             // 03 · Transitions (A, Flow)
@@ -938,7 +883,7 @@ private enum OnboardingContent {
                 side: .left, cta: nil, wide: false,
                 formation: .openingV, showPaths: true, pulse: .flow,
                 selected: [], grouped: [],
-                barTitle: "V → Lines", strip: [], stripSelected: nil,
+                barTitle: "V → Lines",
                 actionRow: .none, transport: .flow, pill: nil, showPro: false, showMoveDelay: false
             ),
             // 04 · Paths (A, Steps)
@@ -950,7 +895,7 @@ private enum OnboardingContent {
                 side: .right, cta: nil, wide: false,
                 formation: .openingV, showPaths: true, pulse: .steps,
                 selected: demo.ids([1, 3]), grouped: [],
-                barTitle: "V → Lines", strip: [], stripSelected: nil,
+                barTitle: "V → Lines",
                 actionRow: .paths, transport: .steps, pill: nil, showPro: false, showMoveDelay: true
             ),
             // 05 · Routine (B)
@@ -962,7 +907,7 @@ private enum OnboardingContent {
                 side: .right, cta: nil, wide: false,
                 formation: .lines, showPaths: false, pulse: .none,
                 selected: demo.ids([5, 6, 7, 8]), grouped: [demo.ids([5, 6, 7, 8])],
-                barTitle: "Lines", strip: strip4, stripSelected: 1,
+                barTitle: "Lines",
                 actionRow: .none, transport: .none,
                 pill: "4 selected · stunt group", showPro: false, showMoveDelay: false
             ),
@@ -975,7 +920,7 @@ private enum OnboardingContent {
                 side: .center, cta: "now let your imagination be.", wide: true,
                 formation: .openingV, showPaths: false, pulse: .none,
                 selected: [], grouped: [],
-                barTitle: "Opening V", strip: [], stripSelected: nil,
+                barTitle: "Opening V",
                 actionRow: .none, transport: .none, pill: nil, showPro: true, showMoveDelay: false
             )
         ]
