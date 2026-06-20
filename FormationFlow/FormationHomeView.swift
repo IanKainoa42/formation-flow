@@ -506,7 +506,10 @@ struct RoutineWorkspaceView: View {
                             onPreviousFormation: stepToPreviousFormation,
                             onNextFormation: stepToNextFormation,
                             isFirstFormation: isFirstFormation,
-                            isLastFormation: isLastFormation
+                            isLastFormation: isLastFormation,
+                            onAdjustCounts: { setPreviewCounts($0) },
+                            countsLocked: !entitlementManager.isPro,
+                            onLockedCounts: { showingUpgradeSheet = true }
                         )
                     }
                     .padding(16)
@@ -586,7 +589,10 @@ struct RoutineWorkspaceView: View {
                     onPreviousFormation: stepToPreviousFormation,
                     onNextFormation: stepToNextFormation,
                     isFirstFormation: isFirstFormation,
-                    isLastFormation: isLastFormation
+                    isLastFormation: isLastFormation,
+                    onAdjustCounts: { setPreviewCounts($0) },
+                    countsLocked: !entitlementManager.isPro,
+                    onLockedCounts: { showingUpgradeSheet = true }
                 )
                 .padding(16)
                 .background(.thinMaterial)
@@ -750,7 +756,10 @@ struct RoutineWorkspaceView: View {
                                 onPreviousFormation: stepToPreviousFormation,
                                 onNextFormation: stepToNextFormation,
                                 isFirstFormation: isFirstFormation,
-                                isLastFormation: isLastFormation
+                                isLastFormation: isLastFormation,
+                                onAdjustCounts: { setPreviewCounts($0) },
+                                countsLocked: !entitlementManager.isPro,
+                                onLockedCounts: { showingUpgradeSheet = true }
                             )
                         }
                         .padding(.horizontal, 20)
@@ -1353,6 +1362,14 @@ struct RoutineWorkspaceView: View {
 
         let generator = UIImpactFeedbackGenerator(style: .rigid)
         generator.impactOccurred()
+    }
+
+    private func setPreviewCounts(_ newCounts: Int) {
+        guard let pair = previewTransitionPair else { return }
+        store.mutateTransitionSpec(from: pair.start.id, to: pair.end.id) { spec in
+            spec.duration = Double(min(32, max(1, newCounts)))
+        }
+        refreshPreviewSession()
     }
 
     private func refreshPreviewSession() {

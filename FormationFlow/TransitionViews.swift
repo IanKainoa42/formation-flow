@@ -184,15 +184,6 @@ struct FormationPipBadge: View {
     var onNext: () -> Void
     var onRename: (() -> Void)? = nil
 
-    /// Transition length in counts. `nil` hides the length row (e.g. the
-    /// full-screen player, or a formation with no adjacent transition).
-    var transitionCounts: Int? = nil
-    /// Free tier: length editing is Pro — show the value with a lock instead of
-    /// the stepper, and route taps to the upgrade gate.
-    var countsLocked: Bool = false
-    var onAdjustCounts: ((Int) -> Void)? = nil
-    var onLockedCountsTap: (() -> Void)? = nil
-
     private static let badgeWidth: CGFloat = 220
     private static let rowWidth: CGFloat = 200
 
@@ -202,9 +193,6 @@ struct FormationPipBadge: View {
                 directionTab(active: direction, onToggle: onToggleDirection)
             }
             navBody
-            if let transitionCounts {
-                lengthRow(counts: transitionCounts)
-            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
@@ -214,54 +202,6 @@ struct FormationPipBadge: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(.white.opacity(0.08))
         }
-    }
-
-    // Length of the whole transition, in counts. A −/+ stepper so a coach can
-    // dial the move from 1 to 32 counts right on the badge; locked behind Pro.
-    private func lengthRow(counts: Int) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "metronome")
-                .font(.caption2)
-                .foregroundColor(.secondary)
-            Text("Length")
-                .font(.caption2.weight(.semibold))
-                .foregroundColor(.secondary)
-            Spacer(minLength: 4)
-            if countsLocked {
-                Button { onLockedCountsTap?() } label: {
-                    HStack(spacing: 4) {
-                        Text("\(counts) ct").font(.caption.weight(.bold).monospacedDigit())
-                        Image(systemName: "lock.fill").font(.system(size: 9))
-                    }
-                    .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Transition length \(counts) counts, locked")
-                .accessibilityHint("Upgrade to Pro to change the transition length")
-            } else {
-                stepButton("minus.circle.fill", enabled: counts > 1) { onAdjustCounts?(counts - 1) }
-                Text("\(counts) ct")
-                    .font(.callout.weight(.bold).monospacedDigit())
-                    .foregroundColor(.primary)
-                    .frame(minWidth: 38)
-                    .accessibilityLabel("Transition length \(counts) counts")
-                stepButton("plus.circle.fill", enabled: counts < 32) { onAdjustCounts?(counts + 1) }
-            }
-        }
-        .frame(width: Self.rowWidth, alignment: .leading)
-    }
-
-    private func stepButton(_ icon: String, enabled: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.title3)
-                .symbolRenderingMode(.hierarchical)
-                .foregroundColor(.primary)
-        }
-        .buttonStyle(.plain)
-        .disabled(!enabled)
-        .opacity(enabled ? 1 : 0.3)
-        .accessibilityLabel(icon.hasPrefix("minus") ? "Decrease length" : "Increase length")
     }
 
     // Pips + name. This is the prev/next/rename surface — the tab sits above it
@@ -385,6 +325,54 @@ struct FormationPipBadge: View {
 
 // MARK: - Transport Sidebar
 
+/// Transition length (counts) control for the playback transport — a −/+ stepper
+/// that reads the player's live count and persists via `onAdjust`. Pro-gated.
+struct TransitionLengthControl: View {
+    @ObservedObject var player: TransitionPlayer
+    var locked: Bool = false
+    var onAdjust: (Int) -> Void = { _ in }
+    var onLocked: () -> Void = {}
+
+    private var counts: Int { max(1, Int(player.counts.rounded())) }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "metronome").font(.caption2).foregroundStyle(.secondary)
+            Text("Length").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+            Spacer(minLength: 4)
+            if locked {
+                Button(action: onLocked) {
+                    HStack(spacing: 4) {
+                        Text("\(counts) ct").font(.callout.weight(.bold).monospacedDigit())
+                        Image(systemName: "lock.fill").font(.system(size: 9))
+                    }
+                    .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Transition length \(counts) counts, locked")
+                .accessibilityHint("Upgrade to Pro to change the transition length")
+            } else {
+                stepButton("minus.circle.fill", enabled: counts > 1) { onAdjust(counts - 1) }
+                Text("\(counts) ct")
+                    .font(.callout.weight(.bold).monospacedDigit())
+                    .frame(minWidth: 40)
+                    .accessibilityLabel("Transition length \(counts) counts")
+                stepButton("plus.circle.fill", enabled: counts < 32) { onAdjust(counts + 1) }
+            }
+        }
+    }
+
+    private func stepButton(_ icon: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon).font(.title3).symbolRenderingMode(.hierarchical)
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.3)
+        .accessibilityLabel(icon.hasPrefix("minus") ? "Decrease length" : "Increase length")
+    }
+}
+
 struct TransitionTransportSidebarView: View {
     @ObservedObject var player: TransitionPlayer
     let startFormationName: String
@@ -398,6 +386,9 @@ struct TransitionTransportSidebarView: View {
     var onNextFormation: () -> Void = {}
     var isFirstFormation: Bool = false
     var isLastFormation: Bool = false
+    var onAdjustCounts: ((Int) -> Void)? = nil
+    var countsLocked: Bool = false
+    var onLockedCounts: () -> Void = {}
 
     var body: some View {
         ScrollView {
@@ -433,6 +424,10 @@ struct TransitionTransportSidebarView: View {
 
             TransportControls.progressSlider(player: player)
             TransportControls.progressText(player: player)
+
+            if let onAdjustCounts {
+                TransitionLengthControl(player: player, locked: countsLocked, onAdjust: onAdjustCounts, onLocked: onLockedCounts)
+            }
 
             Picker("Speed", selection: Binding(
                 get: { player.speed },
@@ -471,6 +466,9 @@ struct CompactTransitionPlaybackOverlayView: View {
     var onNextFormation: () -> Void = {}
     var isFirstFormation: Bool = false
     var isLastFormation: Bool = false
+    var onAdjustCounts: ((Int) -> Void)? = nil
+    var countsLocked: Bool = false
+    var onLockedCounts: () -> Void = {}
 
     var body: some View {
         VStack(spacing: 10) {
@@ -480,6 +478,10 @@ struct CompactTransitionPlaybackOverlayView: View {
                     .foregroundColor(.secondary)
                     .lineLimit(1)
                 Spacer()
+                if let onAdjustCounts {
+                    TransitionLengthControl(player: player, locked: countsLocked, onAdjust: onAdjustCounts, onLocked: onLockedCounts)
+                        .fixedSize()
+                }
                 TransportControls.loopButton(player: player, size: 30)
                 TransportControls.swapButton(isActive: isSwapMode, size: 30, disabled: !canSwap, action: onSwap)
                 TransportControls.pathButton(size: 30, disabled: !canEditPath, action: onPath)
@@ -627,6 +629,9 @@ struct SidebarTransportView: View {
     var onNextFormation: () -> Void = {}
     var isFirstFormation: Bool = false
     var isLastFormation: Bool = false
+    var onAdjustCounts: ((Int) -> Void)? = nil
+    var countsLocked: Bool = false
+    var onLockedCounts: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -646,6 +651,10 @@ struct SidebarTransportView: View {
             }
 
             TransportControls.progressSlider(player: player)
+
+            if let onAdjustCounts {
+                TransitionLengthControl(player: player, locked: countsLocked, onAdjust: onAdjustCounts, onLocked: onLockedCounts)
+            }
 
             Picker("Speed", selection: Binding(
                 get: { player.speed },

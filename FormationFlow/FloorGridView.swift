@@ -799,7 +799,11 @@ struct FloorGridView: View {
             compactTransportSheet
         }
         .sheet(isPresented: $showingUpgradeSheet) {
+            // Sheets present in a detached environment — ProUpgradeSheet reads
+            // @EnvironmentObject entitlementManager, so it must be re-injected or
+            // it traps on present (crashed when the Pro length lock was tapped).
             ProUpgradeSheet()
+                .environmentObject(entitlementManager)
         }
         .sheet(item: $sharePayload) { payload in
             ShareSheetView(items: [payload.message, payload.image]) { completed, activityType in
@@ -1517,7 +1521,10 @@ struct FloorGridView: View {
                                 onPreviousFormation: { onCyclePreviousFormation?() },
                                 onNextFormation: { onCycleFormation?() },
                                 isFirstFormation: isFirstFormation,
-                                isLastFormation: isLastFormation
+                                isLastFormation: isLastFormation,
+                                onAdjustCounts: { setTransitionCounts($0) },
+                                countsLocked: !entitlementManager.isPro,
+                                onLockedCounts: { showingUpgradeSheet = true }
                             )
                         }
                     }
@@ -1647,11 +1654,7 @@ struct FloorGridView: View {
             onToggleDirection: onToggleTransitionDirection,
             onPrev: { onCyclePreviousFormation?() },
             onNext: { onCycleFormation?() },
-            onRename: onRenameFormation,
-            transitionCounts: hasTransition ? max(1, Int((player?.counts ?? 8).rounded())) : nil,
-            countsLocked: !entitlementManager.isPro,
-            onAdjustCounts: { setTransitionCounts($0) },
-            onLockedCountsTap: { showingUpgradeSheet = true }
+            onRename: onRenameFormation
         )
         .accessibilityLabel(formationContextLabel)
     }
@@ -1709,7 +1712,10 @@ struct FloorGridView: View {
                     onPreviousFormation: { onCyclePreviousFormation?() },
                     onNextFormation: { onCycleFormation?() },
                     isFirstFormation: isFirstFormation,
-                    isLastFormation: isLastFormation
+                    isLastFormation: isLastFormation,
+                    onAdjustCounts: { setTransitionCounts($0) },
+                    countsLocked: !entitlementManager.isPro,
+                    onLockedCounts: { showingUpgradeSheet = true }
                 )
                 .toolbar {
                     ToolbarItem(placement: .navigationBarTrailing) {
