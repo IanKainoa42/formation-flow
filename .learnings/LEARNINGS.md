@@ -211,3 +211,9 @@ Corrections, knowledge gaps, and best practices. See `/self-improvement` for for
 - **Category:** correction
 - **What happened:** Catalyst crash (EXC_BREAKPOINT in EnvironmentObject.error, ProUpgradeSheet.swift:141) when tapping the Pro-locked length stepper. ProUpgradeSheet uses `@EnvironmentObject entitlementManager`; FloorGridView presented it via `.sheet { ProUpgradeSheet() }` WITHOUT `.environmentObject(entitlementManager)`. SwiftUI sheets present in a detached environment, so EnvironmentObjects don't inherit — the getter traps.
 - **Rule:** Every `.sheet`/`.fullScreenCover`/`.popover` that presents a view using `@EnvironmentObject` MUST re-inject it: `SomeSheet().environmentObject(obj)`. Grep all presentation sites when adding a new trigger to an existing sheet. FormationFlow's two ProUpgradeSheet sites (FloorGridView, FormationHomeView) both inject now.
+
+## 2026-06-20 — Verify on the sim Ian is using, not just Catalyst
+
+- **Category:** correction
+- **What happened:** Added a faint FF-logo watermark to FloorCanvasView. Verified only on Mac Catalyst across several iterations. Ian was testing on the iPad simulator and saw nothing — the sim had a stale binary because I never built/installed to it (only Catalyst).
+- **Rule:** Per global instructions, after ANY iOS feature/fix build+install+launch on the SIMULATOR automatically. Catalyst is a fast visual-check surface but is a DIFFERENT binary — a Catalyst screenshot does not prove the sim (or device) is updated. When the user reports "I don't see X," suspect a stale build first: rebuild for their actual destination, reinstall, relaunch. Fresh sim installs also reset @AppStorage (onboarding) and wipe the routine — re-seed workspace.v1.json (.appstore/demo_routine.json) or the floor won't even render (empty-state card replaces the canvas).
