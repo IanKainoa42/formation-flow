@@ -55,21 +55,19 @@ enum OrientationLock {
 
 // MARK: - First-Launch Onboarding
 //
-// A six-screen first-launch intro recreated from the design handoff
-// (`design_handoff_formationflow_onboarding/`). Each screen layers a floating
-// marketing card over a live, dimmed `FloorCanvasView` driven by a bundled demo
-// `Routine`. iPad floats the card left/right over the hero floor; iPhone puts
-// the court up top and the copy in a bottom sheet.
+// A five-screen first-launch intro. It is a HANDS-ON tour, not a slideshow: the
+// opening lets you tap the floor to drop athletes (and clear them — the full
+// create/delete cycle), and the transitions screen drives the REAL animation
+// engine (`TransitionPlayer`) so pressing play actually moves the athletes. No
+// fake controls, no pricing — the paywall lives in the app, not the intro.
 //
-// New view file by design — `Models.swift`, `FloorGridView.swift`, and
-// `FormationHomeView.swift` are frozen (see CLAUDE.md). This reuses the public
-// `FloorCanvasView` renderer + the `RenderedAthlete` / `TransitionPathRenderItem`
-// interface without touching any locked file.
+// All code lives here (not a standalone file): `Models.swift`, `FloorGridView`
+// and `FormationHomeView` are frozen (see CLAUDE.md). This reuses the public
+// `FloorCanvasView` renderer + `TransitionPlayer` without touching a locked file.
 
 // MARK: - Theme
 
 private enum OB {
-    // Surface / chrome (dark "courtside")
     static let bg = Color(hex: 0x0A0C0F)
     static let card = Color(hex: 0x101318)
     static let bar = Color(hex: 0x0E1217)
@@ -78,9 +76,14 @@ private enum OB {
     static let txt = Color(hex: 0xF5F5F7)
     static let txtDim = Color(red: 235/255, green: 235/255, blue: 245/255).opacity(0.60)
     static let txtFaint = Color(red: 235/255, green: 235/255, blue: 245/255).opacity(0.30)
-
-    // Accent — delivered curated mix ships on pink (#FF375F).
     static let accent = Color(hex: 0xFF375F)
+
+    /// The floor color for screen `index` — cycles the app's formation palette so
+    /// the flow walks every color (one per page). Mirrors how the editor colors a
+    /// formation by index; role is conveyed by SHAPE, never by color.
+    static func pageColor(_ index: Int) -> Color {
+        TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: index)
+    }
 }
 
 private extension Color {
@@ -107,7 +110,14 @@ private struct TitleRun {
 // MARK: - Page spec
 
 private enum CardSide { case left, right, center }
-private enum PulseMode { case none, flow, steps }
+
+/// How a screen's floor behaves.
+private enum ScreenMode {
+    case interactive   // tap to drop athletes, clear to delete (screen 01)
+    case realPlay      // real TransitionPlayer animation, real play button (screen 03)
+    case still         // static formation (screens 02, 05)
+    case paths         // static formation + paths + collision flag (screen 04)
+}
 
 private struct OBPage: Identifiable {
     let id = UUID()
@@ -118,31 +128,21 @@ private struct OBPage: Identifiable {
     let cta: String?
     let wide: Bool
 
-    // Surface
+    // Floor
     let formation: OnboardingDemo.FormationKind
     let showPaths: Bool
-    let pulse: PulseMode
+    let pulse: Bool
     let selected: Set<UUID>
     let grouped: [Set<UUID>]
-
-    // Chrome
-    let barTitle: String
-    let actionRow: ActionRow
-    let transport: TransportMode
-    let pill: String?
-    let showPro: Bool
-    let showMoveDelay: Bool
+    let mode: ScreenMode
 }
-
-private enum ActionRow { case none, roster, paths }
-private enum TransportMode { case none, flow, steps }
 
 // MARK: - Onboarding entry
 
 struct OnboardingView: View {
     @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding: Bool = false
     @Environment(\.horizontalSizeClass) private var hSize
-    @State private var page = 0
+    @State private var page = Int(ProcessInfo.processInfo.environment["OB_PAGE"] ?? "") ?? 0
 
     private let pages = OnboardingContent.pages
 
@@ -173,8 +173,7 @@ struct OnboardingView: View {
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .ignoresSafeArea()
 
-                // Skip — sits just under the top bar so it clears the decorative
-                // bar icons (the back chevron / arrow / ••• are non-interactive).
+                // Skip — top-trailing, under the wordmark bar.
                 VStack {
                     HStack {
                         Spacer()
@@ -187,7 +186,7 @@ struct OnboardingView: View {
                     }
                     Spacer()
                 }
-                .padding(.top, isPhone ? 54 : 64)
+                .padding(.top, isPhone ? 52 : 60)
                 .padding(.trailing, 12)
             }
             .preferredColorScheme(.dark)
@@ -207,8 +206,7 @@ struct OnboardingView: View {
 
 private struct OnboardingScreen: View {
     let spec: OBPage
-    /// Position in the flow — drives a distinct rainbow floor color per screen so
-    /// the six screens walk the full palette (the app colors each formation this way).
+    /// Position in the flow — drives the per-page rainbow floor color.
     let screenIndex: Int
     let isPhone: Bool
     let page: Int
@@ -217,19 +215,24 @@ private struct OnboardingScreen: View {
     let dismiss: () -> Void
 
     var body: some View {
-        if isPhone {
-            phoneLayout
-        } else {
-            padLayout
+        if isPhone { phoneLayout } else { padLayout }
+    }
+
+    // The live floor for this screen, chosen by mode.
+    @ViewBuilder private var floor: some View {
+        switch spec.mode {
+        case .interactive: InteractiveDemoFloor(spec: spec, colorIndex: screenIndex)
+        case .realPlay:    RealPlayDemoFloor(colorIndex: screenIndex)
+        default:           DemoFloor(spec: spec, colorIndex: screenIndex)
         }
     }
 
-    // iPad: hero floor, card floats left/right/center, chrome overlaid.
+    // iPad: hero floor full-bleed, card floats left/right/center.
     private var padLayout: some View {
         ZStack {
-            DemoFloor(spec: spec, colorIndex: screenIndex)
+            floor
             scrim
-            chromeOverlay
+            wordmarkBar.allowsHitTesting(false)
             HStack {
                 if spec.side != .left { Spacer(minLength: 0) }
                 introCard(maxWidth: spec.wide ? 470 : 432)
@@ -239,33 +242,19 @@ private struct OnboardingScreen: View {
         }
     }
 
-    // iPhone: court up top, copy as a bottom sheet.
+    // iPhone: wordmark bar, floor sized to the court (no dead gap), copy fills the rest.
     private var phoneLayout: some View {
         GeometryReader { geo in
-            let courtH = min(geo.size.height * 0.40, geo.size.width * 56 / 72)
-            ZStack(alignment: .top) {
-                OB.bg.ignoresSafeArea()
-                VStack(spacing: 0) {
-                    phoneTopBar
-                    ZStack {
-                        DemoFloor(spec: spec, colorIndex: screenIndex)
-                            .frame(height: courtH)
-                            .clipped()
-                        VStack {
-                            HStack { phoneActionOverlay; Spacer() }
-                            Spacer()
-                        }
-                        .padding(8)
-                    }
+            let courtH = geo.size.width * CourtConstants.height / CourtConstants.width
+            VStack(spacing: 0) {
+                phoneWordmarkBar
+                floor
                     .frame(height: courtH)
-                    Spacer(minLength: 0)
-                }
-                VStack {
-                    Spacer()
-                    bottomSheet
-                }
-                .ignoresSafeArea(edges: .bottom)
+                    .clipped()
+                bottomSheet
+                    .frame(maxHeight: .infinity, alignment: .top)
             }
+            .ignoresSafeArea(edges: .bottom)
         }
     }
 
@@ -273,14 +262,14 @@ private struct OnboardingScreen: View {
 
     private var scrim: some View {
         Group {
-            if spec.showPro || spec.side == .center {
+            if spec.side == .center {
                 RadialGradient(
                     colors: [Color.black.opacity(0.10), Color.black.opacity(0.78)],
                     center: .center, startRadius: 60, endRadius: 620
                 )
             } else {
                 LinearGradient(
-                    colors: [Color.black.opacity(0.12), Color.black.opacity(0.62)],
+                    colors: [Color.black.opacity(0.10), Color.black.opacity(0.55)],
                     startPoint: .top, endPoint: .bottom
                 )
             }
@@ -289,193 +278,47 @@ private struct OnboardingScreen: View {
         .allowsHitTesting(false)
     }
 
-    // MARK: Chrome (iPad)
+    // MARK: Wordmark bars (brand only — no fake nav controls)
 
-    private var chromeOverlay: some View {
-        VStack(spacing: 0) {
-            padTopBar
-            // Left-aligned action row / collision badge / multi-select pill.
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 10) {
-                    if spec.actionRow == .roster { rosterActionRow }
-                    if spec.actionRow == .paths { pathsActionRow }
-                    if let pill = spec.pill { selectPill(pill) }
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 18)
-            .padding(.top, 14)
+    private var wordmarkBar: some View {
+        VStack {
+            wordmark
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 15)
+                .background(OB.bar.opacity(0.66))
+                .overlay(Rectangle().fill(OB.barBorder).frame(height: 1), alignment: .bottom)
             Spacer()
-            // Bottom: transport only on the playback screens (03/04). The real
-            // editor has no bottom thumbnail strip, so nothing else renders here.
-            if spec.transport != .none {
-                HStack { transportBar; Spacer() }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 14)
-            }
         }
-        .allowsHitTesting(false)
     }
 
-    private var padTopBar: some View {
-        HStack(spacing: 14) {
-            HStack(spacing: 6) {
-                Image(systemName: "chevron.left")
-                Text("Saved Formations")
-            }
-            .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(OB.accent)
-
-            iconTile("arrow.uturn.backward", accent: false)
-            Text(spec.barTitle)
-                .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(OB.txt)
-            Spacer()
-            wordmark
-            Spacer()
-            circleIcon("arrow.right")
-            circleIcon("ellipsis")
-        }
-        .padding(.horizontal, 18)
-        .frame(height: 52)
-        .background(OB.bar.opacity(0.72))
-        .overlay(Rectangle().fill(OB.barBorder).frame(height: 1), alignment: .bottom)
+    private var phoneWordmarkBar: some View {
+        wordmark
+            .frame(maxWidth: .infinity)
+            .frame(height: 46)
+            .background(OB.bar.opacity(0.72))
+            .overlay(Rectangle().fill(OB.barBorder).frame(height: 1), alignment: .bottom)
     }
 
     private var wordmark: some View {
-        HStack(spacing: 8) {
-            RoundedRectangle(cornerRadius: 5)
-                .fill(OB.accent)
-                .frame(width: 18, height: 18)
-                .overlay(Image(systemName: "scribble.variable").font(.system(size: 10, weight: .bold)).foregroundStyle(.white))
-            Text("FORMATIONFLOW")
-                .font(.system(size: 15, weight: .bold, design: .monospaced))
-                .tracking(1.5)
-                .foregroundStyle(OB.txt)
-        }
+        Text("FORMATIONFLOW")
+            .font(.system(size: 15, weight: .bold, design: .monospaced))
+            .tracking(2.0)
+            .foregroundStyle(OB.txt)
     }
 
-    // MARK: Chrome (iPhone)
-
-    private var phoneTopBar: some View {
-        HStack {
-            HStack(spacing: 4) {
-                Image(systemName: "chevron.left")
-                Text("Saved")
-            }
-            .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(OB.accent)
-            Spacer()
-            Text(spec.barTitle)
-                .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(OB.txt)
-            Spacer()
-            circleIcon("ellipsis")
-        }
-        .padding(.horizontal, 16)
-        .frame(height: 46)
-        .background(OB.bar.opacity(0.72))
-        .overlay(Rectangle().fill(OB.barBorder).frame(height: 1), alignment: .bottom)
-    }
-
-    @ViewBuilder private var phoneActionOverlay: some View {
-        if let pill = spec.pill {
-            selectPill(pill)
-        } else if spec.actionRow == .paths {
-            collisionBadge
-        }
-    }
-
-    // MARK: Action rows
-
-    private var rosterActionRow: some View {
-        HStack(spacing: 8) {
-            iconTile("plus", accent: true)
-            iconTile("list.bullet", accent: false)
-            iconTile("note.text", accent: false)
-        }
-    }
-
-    private var pathsActionRow: some View {
-        HStack(spacing: 8) {
-            collisionBadge
-            iconTile("eye", accent: true)
-        }
-    }
-
-    private var collisionBadge: some View {
-        HStack(spacing: 5) {
-            Image(systemName: "exclamationmark.triangle.fill")
-            Text("1 · path")
-        }
-        .font(.system(size: 13, weight: .semibold, design: .monospaced))
-        .foregroundStyle(OB.accent)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(Capsule().fill(OB.accent.opacity(0.14)))
-        .overlay(Capsule().stroke(OB.accent.opacity(0.5), lineWidth: 1))
-    }
-
-    private func selectPill(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 14, weight: .semibold, design: .monospaced))
-            .foregroundStyle(Color(hex: 0x4DA3FF))
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(Capsule().fill(Color(hex: 0x4DA3FF).opacity(0.14)))
-            .overlay(Capsule().stroke(Color(hex: 0x4DA3FF).opacity(0.5), lineWidth: 1))
-    }
-
-    // MARK: Transport
-
-    private var transportBar: some View {
-        HStack(spacing: 12) {
-            // Flow | Steps segmented
-            HStack(spacing: 0) {
-                segment("FLOW", on: spec.transport == .flow)
-                segment("STEPS", on: spec.transport == .steps)
-            }
-            .padding(3)
-            .background(RoundedRectangle(cornerRadius: 9).fill(OB.tile))
-
-            HStack(spacing: 8) {
-                Image(systemName: "backward.end.fill").foregroundStyle(OB.txtDim)
-                Image(systemName: spec.pulse == .flow ? "pause.fill" : "play.fill")
-                    .foregroundStyle(.white)
-                    .frame(width: 30, height: 30)
-                    .background(Circle().fill(OB.accent))
-                Image(systemName: "forward.end.fill").foregroundStyle(OB.txtDim)
-            }
-            .font(.system(size: 13, weight: .bold))
-
-            Text("3.4").font(.system(size: 14, weight: .semibold, design: .monospaced)).foregroundStyle(OB.txt)
-
-            ZStack(alignment: .leading) {
-                Capsule().fill(Color.white.opacity(0.14)).frame(height: 3)
-                Capsule().fill(OB.accent).frame(width: 150, height: 3)
-                Circle().fill(.white).frame(width: 11, height: 11).offset(x: 150)
-            }
-            .frame(width: 200)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(RoundedRectangle(cornerRadius: 16).fill(OB.bar.opacity(0.82)))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(OB.barBorder, lineWidth: 1))
-    }
-
-    private func segment(_ label: String, on: Bool) -> some View {
-        Text(label)
-            .font(.system(size: 13, weight: .bold, design: .monospaced))
-            .foregroundStyle(on ? .white : OB.txtDim)
-            .padding(.horizontal, 12).padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 7).fill(on ? OB.accent : .clear))
-    }
-
-    // MARK: Intro card
+    // MARK: Intro card (iPad)
 
     private func introCard(maxWidth: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            cardContent
+            eyebrowView
+            titleView(size: 34)
+            bodyView(size: 14.5)
+            HStack(alignment: .center) {
+                pageDots
+                Spacer()
+                if let cta = spec.cta { ctaButton(cta) }
+            }
+            .padding(.top, 4)
         }
         .padding(32)
         .frame(maxWidth: maxWidth, alignment: .leading)
@@ -484,19 +327,7 @@ private struct OnboardingScreen: View {
         .shadow(color: Color.black.opacity(0.6), radius: 40, x: 0, y: 30)
     }
 
-    @ViewBuilder private var cardContent: some View {
-        eyebrowView
-        titleView(size: 34)
-        bodyView(size: 14.5)
-        if spec.showMoveDelay { moveDelayControl }
-        if spec.showPro { proList }
-        HStack(alignment: .center) {
-            pageDots
-            Spacer()
-            if let cta = spec.cta { ctaButton(cta) }
-        }
-        .padding(.top, 4)
-    }
+    // MARK: Bottom sheet (iPhone) — fills the space below the court
 
     private var bottomSheet: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -504,18 +335,17 @@ private struct OnboardingScreen: View {
                 .frame(maxWidth: .infinity)
                 .padding(.bottom, 2)
             eyebrowView
-            titleView(size: 25)
-            bodyView(size: 13.5)
-            if spec.showMoveDelay { moveDelayControl }
-            if spec.showPro { proList }
+            titleView(size: 26)
+            bodyView(size: 14)
+            Spacer(minLength: 8)
             pageDots
             if let cta = spec.cta {
                 ctaButton(cta).frame(maxWidth: .infinity)
             }
         }
         .padding(.horizontal, 22)
-        .padding(.top, 14)
-        .padding(.bottom, 34)
+        .padding(.top, 18)
+        .padding(.bottom, 38)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24)
@@ -568,157 +398,35 @@ private struct OnboardingScreen: View {
     }
 
     private func ctaButton(_ text: String) -> some View {
-        Button(action: spec.cta == "Get started" ? advance : dismiss) {
+        Button(action: advance) {
             HStack(spacing: 8) {
                 Text(text)
                     .font(.system(size: 15, weight: .bold, design: .monospaced))
-                if text == "Get started" {
-                    Image(systemName: "arrow.right").font(.system(size: 13, weight: .bold))
-                }
+                Image(systemName: "arrow.right").font(.system(size: 13, weight: .bold))
             }
             .foregroundStyle(.white)
             .padding(.horizontal, 18)
             .frame(height: 44)
-            .frame(maxWidth: spec.showPro ? .infinity : nil)
             .background(RoundedRectangle(cornerRadius: 12).fill(OB.accent))
             .shadow(color: OB.accent.opacity(0.55), radius: 14, x: 0, y: 8)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .allowsHitTesting(true)
-    }
-
-    // MARK: Move-delay control (screen 04)
-
-    private var moveDelayControl: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("MOVE DELAY")
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    .tracking(1.2)
-                    .foregroundStyle(OB.txtDim)
-                Spacer()
-                Text("·2 ct")
-                    .font(.system(size: 13, weight: .bold, design: .monospaced))
-                    .foregroundStyle(OB.accent)
-            }
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.14)).frame(height: 4)
-                    Capsule().fill(OB.accent).frame(width: geo.size.width * 0.28, height: 4)
-                    Circle().fill(.white).frame(width: 13, height: 13)
-                        .offset(x: geo.size.width * 0.28 - 6)
-                }
-            }
-            .frame(height: 14)
-            HStack(spacing: 8) {
-                delayPill("Smooth", style: .on)
-                delayPill("Sharp", style: .off)
-                delayPill("+ Waypoint", style: .accent)
-            }
-        }
-        .padding(16)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.04)))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(OB.barBorder, lineWidth: 1))
-    }
-
-    private enum PillStyle { case on, off, accent }
-    private func delayPill(_ text: String, style: PillStyle) -> some View {
-        Text(text)
-            .font(.system(size: 13, weight: .semibold, design: .monospaced))
-            .foregroundStyle(style == .off ? OB.txtDim : .white)
-            .padding(.horizontal, 12)
-            .frame(height: 34)
-            .frame(maxWidth: style == .accent ? .infinity : nil)
-            .background(
-                RoundedRectangle(cornerRadius: 9)
-                    .fill(style == .accent ? OB.accent : (style == .on ? OB.tile : .clear))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 9)
-                    .stroke(style == .off ? OB.barBorder : .clear, lineWidth: 1)
-            )
-    }
-
-    // MARK: Pro list (screen 06)
-
-    private var proList: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("FORMATIONFLOW\nPRO")
-                    .font(.system(size: 13, weight: .bold, design: .monospaced))
-                    .foregroundStyle(OB.accent)
-                Spacer()
-                VStack(alignment: .trailing, spacing: 0) {
-                    Text("$4.99").font(.system(size: 17, weight: .bold)).foregroundStyle(OB.txt)
-                    Text("once").font(.system(size: 12)).foregroundStyle(OB.txtDim)
-                }
-            }
-            .padding(.bottom, 12)
-            proRow("Unlimited formations", "Free caps at 2")
-            proRow("Every athlete role", "Free is base only")
-            proRow("Full-routine playback", "Scrub end to end")
-            proRow("Waypoints & timing", "Bend + stagger paths", last: true)
-        }
-        .padding(16)
-        .background(RoundedRectangle(cornerRadius: 16).fill(Color.white.opacity(0.04)))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(OB.barBorder, lineWidth: 1))
-    }
-
-    private func proRow(_ title: String, _ sub: String, last: Bool = false) -> some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(OB.accent)
-                    .padding(.top, 2)
-                Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(OB.txt)
-                Spacer()
-                Text(sub).font(.system(size: 12)).foregroundStyle(OB.txtDim)
-                    .multilineTextAlignment(.trailing)
-            }
-            .padding(.vertical, 9)
-            if !last { Divider().overlay(OB.barBorder) }
-        }
-    }
-
-    // MARK: Small chrome atoms
-
-    private func iconTile(_ name: String, accent: Bool) -> some View {
-        Image(systemName: name)
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(accent ? .white : OB.txtDim)
-            .frame(width: 30, height: 30)
-            .background(RoundedRectangle(cornerRadius: 8).fill(accent ? OB.accent : OB.tile))
-    }
-
-    private func circleIcon(_ name: String) -> some View {
-        Image(systemName: name)
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(OB.accent)
-            .frame(width: 30, height: 30)
-            .overlay(Circle().stroke(OB.accent.opacity(0.5), lineWidth: 1))
     }
 }
 
-// MARK: - Demo floor (live, non-interactive FloorCanvasView)
+// MARK: - Static demo floor (non-interactive)
 
 private struct DemoFloor: View {
     let spec: OBPage
-    /// Which rainbow color this screen's floor uses (cycles the palette across the
-    /// six screens). One shared color per screen; role is conveyed by SHAPE — the
-    /// way the real editor colors a formation.
     let colorIndex: Int
 
     var body: some View {
         GeometryReader { geo in
             let cell = geo.size.width / CourtConstants.width
-            let courtH = CourtConstants.height * cell
-            let yOffset = max(0, (geo.size.height - courtH) / 2)
-            // Color athletes by this screen's formation color. Paths fade from it
-            // into the next color in the palette.
-            let formColor = TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: colorIndex)
-            let nextColor = TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: colorIndex + 1)
+            let yOffset = max(0, (geo.size.height - CourtConstants.height * cell) / 2)
+            let formColor = OB.pageColor(colorIndex)
+            let nextColor = OB.pageColor(colorIndex + 1)
             FloorCanvasView(
                 athletes: OnboardingDemo.shared.athletes(for: spec.formation),
                 selectedAthleteIDs: spec.selected,
@@ -734,16 +442,181 @@ private struct DemoFloor: View {
                 formationColor: formColor,
                 useRoleColors: false,
                 showCenterMark: false,
-                showPathPulse: spec.pulse == .flow,
-                transitionCounts: 8,
-                showCountSteps: spec.pulse == .steps
+                showPathPulse: spec.pulse,
+                transitionCounts: 8
             )
         }
         .allowsHitTesting(false)
     }
 }
 
-// MARK: - Bundled demo routine (background surface only)
+// MARK: - Interactive demo floor (tap to drop, clear to delete)
+
+private struct InteractiveDemoFloor: View {
+    let spec: OBPage
+    let colorIndex: Int
+
+    @State private var placed: [RenderedAthlete] = []
+
+    // Cycle shapes as the user taps so they see the role-shape variety.
+    private static let roleCycle: [AthleteRole] = [.base, .flyer, .spotter, .tumbler, .backspot]
+
+    var body: some View {
+        GeometryReader { geo in
+            let cell = geo.size.width / CourtConstants.width
+            let yOffset = max(0, (geo.size.height - CourtConstants.height * cell) / 2)
+            let formColor = OB.pageColor(colorIndex)
+            let nextColor = OB.pageColor(colorIndex + 1)
+
+            ZStack {
+                FloorCanvasView(
+                    athletes: OnboardingDemo.shared.athletes(for: spec.formation) + placed,
+                    transitionPaths: spec.showPaths ? OnboardingDemo.shared.paths : [],
+                    cellSize: cell,
+                    offset: CGPoint(x: 0, y: yOffset),
+                    hasTransition: false,
+                    startFormationColor: formColor,
+                    endFormationColor: nextColor,
+                    formationColor: formColor,
+                    useRoleColors: false,
+                    showCenterMark: false,
+                    showPathPulse: spec.pulse,
+                    transitionCounts: 8
+                )
+
+                // Tap layer — drop an athlete at the tapped floor cell.
+                Color.clear
+                    .contentShape(Rectangle())
+                    .gesture(
+                        SpatialTapGesture(coordinateSpace: .local)
+                            .onEnded { value in
+                                let fx = value.location.x / cell
+                                let fy = (value.location.y - yOffset) / cell
+                                guard fx >= 1, fx <= CourtConstants.width - 1,
+                                      fy >= 1, fy <= CourtConstants.height - 1 else { return }
+                                let role = Self.roleCycle[placed.count % Self.roleCycle.count]
+                                let athlete = RenderedAthlete(
+                                    id: UUID(),
+                                    label: "\(placed.count + 1)",
+                                    role: role,
+                                    position: CGPoint(x: (fx).rounded(), y: (fy).rounded())
+                                )
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    placed.append(athlete)
+                                }
+                            }
+                    )
+
+                // Prompt / clear overlay.
+                VStack {
+                    Spacer()
+                    if placed.isEmpty {
+                        floorHint("Tap the floor to drop an athlete", icon: "hand.tap.fill")
+                    } else {
+                        Button {
+                            withAnimation(.easeOut(duration: 0.2)) { placed.removeAll() }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "trash")
+                                Text("Clear \(placed.count)")
+                            }
+                            .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 16)
+                            .frame(height: 38)
+                            .background(Capsule().fill(Color.black.opacity(0.55)))
+                            .overlay(Capsule().stroke(OB.barBorder, lineWidth: 1))
+                            .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.bottom, 16)
+            }
+        }
+    }
+
+    private func floorHint(_ text: String, icon: String) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: icon)
+            Text(text)
+        }
+        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+        .foregroundStyle(OB.txt)
+        .padding(.horizontal, 14)
+        .frame(height: 36)
+        .background(Capsule().fill(Color.black.opacity(0.5)))
+        .overlay(Capsule().stroke(OB.barBorder, lineWidth: 1))
+    }
+}
+
+// MARK: - Real-play demo floor (drives the actual TransitionPlayer)
+
+private struct RealPlayDemoFloor: View {
+    let colorIndex: Int
+    @StateObject private var player: TransitionPlayer
+
+    init(colorIndex: Int) {
+        self.colorIndex = colorIndex
+        let demo = OnboardingDemo.shared
+        let p = TransitionPlayer(
+            startAthletes: demo.athletes(for: .openingV),
+            endAthletes: demo.athletes(for: .lines),
+            transitionSpec: demo.transitionSpec()
+        )
+        p.isLooping = true
+        p.autoRewindOnIdle = false
+        _player = StateObject(wrappedValue: p)
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let cell = geo.size.width / CourtConstants.width
+            let yOffset = max(0, (geo.size.height - CourtConstants.height * cell) / 2)
+            let formColor = OB.pageColor(colorIndex)
+            let nextColor = OB.pageColor(colorIndex + 1)
+
+            ZStack {
+                FloorCanvasView(
+                    athletes: player.currentAthletes,
+                    transitionPaths: OnboardingDemo.shared.paths,
+                    cellSize: cell,
+                    offset: CGPoint(x: 0, y: yOffset),
+                    hasTransition: true,
+                    startFormationColor: formColor,
+                    endFormationColor: nextColor,
+                    transitionProgress: player.progress,
+                    formationColor: formColor,
+                    useRoleColors: false,
+                    showCenterMark: false,
+                    transitionCounts: 8
+                )
+
+                // One REAL control — play/pause the actual engine.
+                VStack {
+                    Spacer()
+                    Button {
+                        if player.isPlaying { player.pause() } else { player.play() }
+                    } label: {
+                        Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 56, height: 56)
+                            .background(Circle().fill(OB.accent))
+                            .shadow(color: OB.accent.opacity(0.5), radius: 14, x: 0, y: 6)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
+                }
+                .padding(.bottom, 16)
+            }
+        }
+        .onDisappear { player.pause() }
+    }
+}
+
+// MARK: - Bundled demo data (background surface only — never persisted)
 
 final class OnboardingDemo {
     static let shared = OnboardingDemo()
@@ -795,19 +668,19 @@ final class OnboardingDemo {
         }
 
         // V → Lines transition paths. A couple bend through a smooth waypoint;
-        // one carries a move delay (the "·2 ct" stagger shown on screen 04).
+        // one carries a move delay (a staggered entrance).
         var built: [TransitionPathRenderItem] = []
         for (i, member) in roster.enumerated() {
             let start = vPositions[i]
             let end = linePositions[i]
             var waypoints: [PathWaypoint] = []
             var delay: CGFloat = 0
-            if i == 1 { // A2 — bends + staggers
+            if i == 1 {
                 waypoints = [PathWaypoint(position: CGPoint(x: (start.x + end.x) / 2 - 5,
                                                             y: (start.y + end.y) / 2 - 4),
                                           isSmooth: true)]
                 delay = 2
-            } else if i == 3 { // A4 — bends
+            } else if i == 3 {
                 waypoints = [PathWaypoint(position: CGPoint(x: (start.x + end.x) / 2 + 4,
                                                             y: (start.y + end.y) / 2 + 3),
                                           isSmooth: true)]
@@ -837,91 +710,84 @@ final class OnboardingDemo {
         }
     }
 
-    // Convenience id lookups for selection sets.
+    /// A real `TransitionSpec` (V → Lines) so the player animates the demo paths.
+    func transitionSpec() -> TransitionSpec {
+        let transitions = paths.map { path in
+            AthleteTransition(
+                athleteID: path.athleteID,
+                moveDelay: path.moveDelay,
+                pathControlPoint: path.controlPoint,
+                pathWaypoints: path.waypoints
+            )
+        }
+        return TransitionSpec(
+            fromFormationID: UUID(),
+            toFormationID: UUID(),
+            duration: 8,
+            athleteTransitions: transitions
+        )
+    }
+
     func id(_ index: Int) -> UUID { roster[index].id }
     func ids(_ indices: [Int]) -> Set<UUID> { Set(indices.map { roster[$0].id }) }
 }
 
-// MARK: - Page content (delivered curated voice mix 01-A·02-B·03-A·04-A·05-B·06-A)
+// MARK: - Page content (comedic, hands-on, no pricing)
 
 private enum OnboardingContent {
     static let pages: [OBPage] = {
         let demo = OnboardingDemo.shared
-
         return [
-            // 01 · Welcome (A)
+            // 01 · Welcome — interactive, ambient pulse
             OBPage(
-                eyebrow: "WELCOME · 01 / 06",
-                title: [TitleRun("Your full team shows up "),
-                        TitleRun("the day before", accent: true),
-                        TitleRun(" competition.")],
-                body: "Cool. Plan the entire routine here instead — place every athlete, map every transition, press play. The mat is for cleaning it up, not figuring it out.",
+                eyebrow: "WELCOME · 01 / 05",
+                title: [TitleRun("Your whole team will "),
+                        TitleRun("never", accent: true),
+                        TitleRun(" be at practice on time.")],
+                body: "It's fine. Build the whole routine without them — tap the floor to drop an athlete, stack the masterpiece they'll fail to show up for, then wipe it and start again.",
                 side: .right, cta: "Get started", wide: false,
-                formation: .openingV, showPaths: false, pulse: .none,
-                selected: [], grouped: [],
-                barTitle: "Opening V",
-                actionRow: .none, transport: .none, pill: nil, showPro: false, showMoveDelay: false
+                formation: .openingV, showPaths: true, pulse: true,
+                selected: [], grouped: [], mode: .interactive
             ),
-            // 02 · Roster (B)
+            // 02 · Roles = shapes — different formation
             OBPage(
-                eyebrow: "ROSTER · 02 / 06",
-                title: [TitleRun("Assign roles. Avoid "),
-                        TitleRun("reunions mid-mat.", accent: true)],
-                body: "Build your roster once and drop athletes onto a scaled floor. Each role gets its own shape, so you're never squinting at sixteen identical dots wondering which one is the flyer.",
+                eyebrow: "ROSTER · 02 / 05",
+                title: [TitleRun("Every role is its "),
+                        TitleRun("own shape.", accent: true)],
+                body: "Bases, flyers, spotters, backspots, tumblers — each role draws as a different shape on the floor, so you read a sixteen-person pyramid at a glance instead of squinting at identical dots.",
                 side: .left, cta: nil, wide: false,
-                formation: .openingV, showPaths: false, pulse: .none,
-                selected: demo.ids([0]), grouped: [],
-                barTitle: "Opening V",
-                actionRow: .roster, transport: .none, pill: nil, showPro: false, showMoveDelay: false
+                formation: .pyramid, showPaths: false, pulse: false,
+                selected: [], grouped: [], mode: .still
             ),
-            // 03 · Transitions (A, Flow)
+            // 03 · Transitions — REAL play
             OBPage(
-                eyebrow: "TRANSITIONS · 03 / 06",
-                title: [TitleRun("Press play. Watch the chaos "),
-                        TitleRun("resolve itself.", accent: true)],
-                body: "Animate the move between any two formations in real time. Flow mode pulses the paths; Steps mode counts out the footwork. Either way you see it before they walk it.",
+                eyebrow: "TRANSITIONS · 03 / 05",
+                title: [TitleRun("Press play. They "),
+                        TitleRun("actually move.", accent: true)],
+                body: "This is the real engine, not a video. Hit play and watch the team walk the transition between two formations in real time — so the traffic jam happens on screen, not on the mat.",
                 side: .left, cta: nil, wide: false,
-                formation: .openingV, showPaths: true, pulse: .flow,
-                selected: [], grouped: [],
-                barTitle: "V → Lines",
-                actionRow: .none, transport: .flow, pill: nil, showPro: false, showMoveDelay: false
+                formation: .openingV, showPaths: true, pulse: false,
+                selected: [], grouped: [], mode: .realPlay
             ),
-            // 04 · Paths (A, Steps)
+            // 04 · Paths & collisions
             OBPage(
-                eyebrow: "PATHS · 04 / 06",
+                eyebrow: "PATHS · 04 / 05",
                 title: [TitleRun("Two athletes, one spot, "),
                         TitleRun("zero collisions.", accent: true)],
-                body: "Bend any path with waypoints — smooth or sharp — and stagger entrances with a move delay measured in 8-counts. The app flags crossings before they become a pile-up.",
+                body: "Bend a path around a pile-up, stagger who leaves when, and let the app flag the crossings for you — before someone's elbow finds someone's face.",
                 side: .right, cta: nil, wide: false,
-                formation: .openingV, showPaths: true, pulse: .steps,
-                selected: demo.ids([1, 3]), grouped: [],
-                barTitle: "V → Lines",
-                actionRow: .paths, transport: .steps, pill: nil, showPro: false, showMoveDelay: true
+                formation: .openingV, showPaths: true, pulse: false,
+                selected: demo.ids([1, 3]), grouped: [], mode: .paths
             ),
-            // 05 · Routine (B)
+            // 05 · Closing — no price
             OBPage(
-                eyebrow: "ROUTINE · 05 / 06",
-                title: [TitleRun("One routine. Every formation. "),
-                        TitleRun("Scrubbable.", accent: true)],
-                body: "Link formations into a sequence and preview the whole thing front to back. Grab a stunt group and move all four at once — your thumbs will thank you.",
-                side: .right, cta: nil, wide: false,
-                formation: .lines, showPaths: false, pulse: .none,
-                selected: demo.ids([5, 6, 7, 8]), grouped: [demo.ids([5, 6, 7, 8])],
-                barTitle: "Lines",
-                actionRow: .none, transport: .none,
-                pill: "4 selected · stunt group", showPro: false, showMoveDelay: false
-            ),
-            // 06 · Ready / Pro (A)
-            OBPage(
-                eyebrow: "READY · 06 / 06",
-                title: [TitleRun("No team, no signal, "),
-                        TitleRun("no excuses.", accent: true)],
-                body: "Everything lives on your device — works on the mat with zero bars, stays private, no account. Go Pro for unlimited formations, every role, and full-routine playback. Four hours a week. Don't spend them on a transition you could've solved at home.",
-                side: .center, cta: "now let your imagination be.", wide: true,
-                formation: .openingV, showPaths: false, pulse: .none,
-                selected: [], grouped: [],
-                barTitle: "Opening V",
-                actionRow: .none, transport: .none, pill: nil, showPro: true, showMoveDelay: false
+                eyebrow: "READY · 05 / 05",
+                title: [TitleRun("It all works "),
+                        TitleRun("offline.", accent: true)],
+                body: "No account, no Wi-Fi, no waiting — the whole routine lives on this device and runs courtside with zero bars. The only thing missing is the one you haven't built yet.",
+                side: .center, cta: "Let's go", wide: true,
+                formation: .closer, showPaths: false, pulse: false,
+                selected: [], grouped: [], mode: .still
             )
         ]
     }()

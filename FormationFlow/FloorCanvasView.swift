@@ -1810,12 +1810,12 @@ struct FloorCanvasView: View {
         }
 
         for (col, row) in coralDots {
-            context.fill(Path(ellipseIn: dotRect(col, row, coralR)), with: .color(coral.opacity(0.26)))
+            context.fill(Path(ellipseIn: dotRect(col, row, coralR)), with: .color(coral.opacity(0.55)))
         }
         for (col, row) in creamDots {
             context.stroke(
                 Path(ellipseIn: dotRect(col, row, creamR)),
-                with: .color(cream.opacity(0.28)),
+                with: .color(cream.opacity(0.50)),
                 lineWidth: max(1.2, 1.8 * markerScale)
             )
         }

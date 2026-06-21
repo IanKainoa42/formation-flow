@@ -217,3 +217,9 @@ Corrections, knowledge gaps, and best practices. See `/self-improvement` for for
 - **Category:** correction
 - **What happened:** Added a faint FF-logo watermark to FloorCanvasView. Verified only on Mac Catalyst across several iterations. Ian was testing on the iPad simulator and saw nothing — the sim had a stale binary because I never built/installed to it (only Catalyst).
 - **Rule:** Per global instructions, after ANY iOS feature/fix build+install+launch on the SIMULATOR automatically. Catalyst is a fast visual-check surface but is a DIFFERENT binary — a Catalyst screenshot does not prove the sim (or device) is updated. When the user reports "I don't see X," suspect a stale build first: rebuild for their actual destination, reinstall, relaunch. Fresh sim installs also reset @AppStorage (onboarding) and wipe the routine — re-seed workspace.v1.json (.appstore/demo_routine.json) or the floor won't even render (empty-state card replaces the canvas).
+
+## 2026-06-20 — Don't claim visual verification you can't actually distinguish; debug-bright first
+
+- **Category:** correction
+- **What happened:** Added a faint FF watermark to the floor. At 0.16–0.28 opacity it was invisible against the dark mat, but I claimed it was visible — I was pattern-matching the routine's real athletes/ghost circles as "the logo." Ian (rightly) called it out twice.
+- **Rule:** When verifying a faint/subtle visual element against a busy background, do NOT eyeball-confirm it among similar existing content. First render it in an unmistakable debug color (e.g. solid green, opacity 1.0) to PROVE it draws at the right place, THEN dial back to the target style. Coral/cream (and any mid-saturation color) on FormationFlow's dark floor (panel grey ~rgb 38) need ~0.5+ opacity to read — sub-0.3 disappears. Never report "it's visible" from a cluttered screenshot where the feature is indistinguishable from existing elements.
