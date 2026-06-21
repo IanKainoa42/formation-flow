@@ -55,11 +55,17 @@ enum OrientationLock {
 
 // MARK: - First-Launch Onboarding
 //
-// A five-screen first-launch intro. It is a HANDS-ON tour, not a slideshow: the
-// opening lets you tap the floor to drop athletes (and clear them — the full
-// create/delete cycle), and the transitions screen drives the REAL animation
-// engine (`TransitionPlayer`) so pressing play actually moves the athletes. No
-// fake controls, no pricing — the paywall lives in the app, not the intro.
+// A five-screen first-launch intro that walks the EXACT app workflow, in order,
+// across one coherent routine (empty floor → V → Lines):
+//   01 PLACE      — tap an empty floor to drop your team (first formation)
+//   02 FORMATIONS — rearrange the same team into the next formation
+//   03 PATHS      — the transition between them; bend paths, flag collisions
+//   04 PLAY       — press play; the REAL engine animates the transition
+//   05 READY      — it all works offline
+// It is a HANDS-ON tour, not a slideshow: screen 01 lets you place/clear athletes
+// (the real create/delete cycle) and screen 04 drives the actual `TransitionPlayer`
+// so play really moves the team. No fake controls, no pricing — the paywall lives
+// in the app, not the intro.
 //
 // All code lives here (not a standalone file): `Models.swift`, `FloorGridView`
 // and `FormationHomeView` are frozen (see CLAUDE.md). This reuses the public
@@ -142,7 +148,7 @@ private struct OBPage: Identifiable {
 struct OnboardingView: View {
     @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding: Bool = false
     @Environment(\.horizontalSizeClass) private var hSize
-    @State private var page = Int(ProcessInfo.processInfo.environment["OB_PAGE"] ?? "") ?? 0
+    @State private var page = 0
 
     private let pages = OnboardingContent.pages
 
@@ -621,7 +627,7 @@ private struct RealPlayDemoFloor: View {
 final class OnboardingDemo {
     static let shared = OnboardingDemo()
 
-    enum FormationKind { case openingV, lines, pyramid, closer }
+    enum FormationKind { case empty, openingV, lines, pyramid, closer }
 
     struct Member { let id: UUID; let label: String; let role: AthleteRole }
 
@@ -700,6 +706,7 @@ final class OnboardingDemo {
     func athletes(for kind: FormationKind) -> [RenderedAthlete] {
         let positions: [CGPoint]
         switch kind {
+        case .empty: return []
         case .openingV: positions = vPositions
         case .lines: positions = linePositions
         case .pyramid: positions = pyramidPositions
@@ -738,51 +745,50 @@ private enum OnboardingContent {
     static let pages: [OBPage] = {
         let demo = OnboardingDemo.shared
         return [
-            // 01 · Welcome — interactive, ambient pulse
+            // 01 · PLACE — step one: tap an empty floor to build your first formation
             OBPage(
-                eyebrow: "WELCOME · 01 / 05",
-                title: [TitleRun("Your whole team will "),
-                        TitleRun("never", accent: true),
-                        TitleRun(" be at practice on time.")],
-                body: "It's fine. Build the whole routine without them — tap the floor to drop an athlete, stack the masterpiece they'll fail to show up for, then wipe it and start again.",
+                eyebrow: "PLACE · 01 / 05",
+                title: [TitleRun("Start by placing "),
+                        TitleRun("your team.", accent: true)],
+                body: "Tap the empty floor to drop each athlete where they stand — that's your first formation. Every role draws as its own shape, so the floor reads at a glance. Tap clear to wipe it and start over.",
                 side: .right, cta: "Get started", wide: false,
-                formation: .openingV, showPaths: true, pulse: true,
+                formation: .empty, showPaths: false, pulse: false,
                 selected: [], grouped: [], mode: .interactive
             ),
-            // 02 · Roles = shapes — different formation
+            // 02 · FORMATIONS — step two: rearrange the same team into the next one
             OBPage(
-                eyebrow: "ROSTER · 02 / 05",
-                title: [TitleRun("Every role is its "),
-                        TitleRun("own shape.", accent: true)],
-                body: "Bases, flyers, spotters, backspots, tumblers — each role draws as a different shape on the floor, so you read a sixteen-person pyramid at a glance instead of squinting at identical dots.",
+                eyebrow: "FORMATIONS · 02 / 05",
+                title: [TitleRun("Then build "),
+                        TitleRun("the next one.", accent: true)],
+                body: "Add another formation and move the same team into it. Your routine becomes an ordered list of formations — the shapes your team hits, one after another.",
                 side: .left, cta: nil, wide: false,
-                formation: .pyramid, showPaths: false, pulse: false,
+                formation: .lines, showPaths: false, pulse: true,
                 selected: [], grouped: [], mode: .still
             ),
-            // 03 · Transitions — REAL play
+            // 03 · PATHS — step three: the transition between two formations
             OBPage(
-                eyebrow: "TRANSITIONS · 03 / 05",
-                title: [TitleRun("Press play. They "),
-                        TitleRun("actually move.", accent: true)],
-                body: "This is the real engine, not a video. Hit play and watch the team walk the transition between two formations in real time — so the traffic jam happens on screen, not on the mat.",
-                side: .left, cta: nil, wide: false,
-                formation: .openingV, showPaths: true, pulse: false,
-                selected: [], grouped: [], mode: .realPlay
-            ),
-            // 04 · Paths & collisions
-            OBPage(
-                eyebrow: "PATHS · 04 / 05",
-                title: [TitleRun("Two athletes, one spot, "),
-                        TitleRun("zero collisions.", accent: true)],
-                body: "Bend a path around a pile-up, stagger who leaves when, and let the app flag the crossings for you — before someone's elbow finds someone's face.",
+                eyebrow: "PATHS · 03 / 05",
+                title: [TitleRun("Connect them with "),
+                        TitleRun("clean paths.", accent: true)],
+                body: "Between every two formations the app draws each athlete's path. Bend one around a pile-up, stagger who leaves when, and let collisions get flagged — before two athletes fight for the same spot.",
                 side: .right, cta: nil, wide: false,
                 formation: .openingV, showPaths: true, pulse: false,
                 selected: demo.ids([1, 3]), grouped: [], mode: .paths
             ),
-            // 05 · Closing — no price
+            // 04 · PLAY — step four: preview the real animation engine
+            OBPage(
+                eyebrow: "PLAY · 04 / 05",
+                title: [TitleRun("Press play. They "),
+                        TitleRun("actually move.", accent: true)],
+                body: "This is the real animation engine, not a video. Hit play and watch the team walk the whole transition in real time, at the real tempo — so the traffic jam happens here, not on the mat.",
+                side: .left, cta: nil, wide: false,
+                formation: .openingV, showPaths: true, pulse: false,
+                selected: [], grouped: [], mode: .realPlay
+            ),
+            // 05 · READY — closing, no price
             OBPage(
                 eyebrow: "READY · 05 / 05",
-                title: [TitleRun("It all works "),
+                title: [TitleRun("And it all works "),
                         TitleRun("offline.", accent: true)],
                 body: "No account, no Wi-Fi, no waiting — the whole routine lives on this device and runs courtside with zero bars. The only thing missing is the one you haven't built yet.",
                 side: .center, cta: "Let's go", wide: true,
