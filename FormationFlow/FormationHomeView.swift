@@ -764,7 +764,7 @@ struct RoutineWorkspaceView: View {
                         }
                         .padding(.horizontal, 20)
                         .padding(.vertical, 12)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .formationGlassPanel(cornerRadius: 16, shadowRadius: 12)
                         .padding(.horizontal, 16)
                         .padding(.bottom, 16)
                     }

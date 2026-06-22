@@ -1269,8 +1269,7 @@ struct FloorGridView: View {
                 }
             }
             .padding(32)
-            .background(.thinMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 24))
+            .formationGlassPanel(cornerRadius: 24, material: .thinMaterial, shadowRadius: 16)
             .padding(.horizontal, isCompactLayout ? 20 : 0)
             Spacer()
         }
@@ -2024,12 +2023,7 @@ struct FloorGridView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(.white.opacity(0.08))
-            }
-            .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
+            .formationGlassPanel(cornerRadius: 18, shadowRadius: 10)
         } else if selectedAthleteIDs.count > 1 {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -2083,12 +2077,7 @@ struct FloorGridView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(.white.opacity(0.08))
-            }
-            .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
+            .formationGlassPanel(cornerRadius: 18, shadowRadius: 10)
         }
     }
 

@@ -200,7 +200,16 @@ struct FloorCanvasView: View {
             // A fixed dark "stage" behind the court (not the system background) so
             // the floor reads as the hero in both light and dark mode — no white
             // letterbox margins when the wide court is fit to a tall phone screen.
-            .background(Color(white: 0.08))
+            .background(
+                LinearGradient(
+                    colors: [
+                        FormationEditorTheme.stageBackgroundLift,
+                        FormationEditorTheme.stageBackground
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Formation court grid")
             .accessibilityValue("\(athletes.count) athletes on the court")
@@ -1710,8 +1719,8 @@ struct FloorCanvasView: View {
         let numCols = Int(CourtConstants.width / 8)
 
         // Alternating vertical panel fills
-        let panelLight = Color(white: 0.17)
-        let panelDark = Color(white: 0.13)
+        let panelLight = FormationEditorTheme.floorPanelLight
+        let panelDark = FormationEditorTheme.floorPanelDark
         for col in 0..<numCols {
             let x = CGFloat(col) * panelWidth
             let color = col % 2 == 0 ? panelLight : panelDark
@@ -1719,6 +1728,8 @@ struct FloorCanvasView: View {
             rect.addRect(CGRect(x: x, y: 0, width: panelWidth, height: height))
             context.fill(rect, with: .color(color))
         }
+
+        drawFloorTexture(in: &context, width: width, height: height, panelWidth: panelWidth)
 
         // Fine 1ft grid (very subtle)
         var fine = Path()
@@ -1731,7 +1742,8 @@ struct FloorCanvasView: View {
             fine.addLine(to: CGPoint(x: width, y: y))
         }
         context.stroke(fine, with: .color(.black.opacity(0.07)), lineWidth: 0.8)
-        context.stroke(fine, with: .color(floorLiftColor.opacity(0.07)), lineWidth: 0.45)
+        context.stroke(fine, with: .color(FormationEditorTheme.floorFineGrid), lineWidth: 0.35)
+        context.stroke(fine, with: .color(floorLiftColor.opacity(0.08)), lineWidth: 0.45)
 
         // Vertical panel dividers
         var verticalPanels = Path()
@@ -1772,6 +1784,47 @@ struct FloorCanvasView: View {
         context.stroke(border, with: .color(.white.opacity(0.25)), lineWidth: 2)
 
         drawCourtVignette(in: &context, width: width, height: height)
+    }
+
+    private func drawFloorTexture(
+        in context: inout GraphicsContext,
+        width: CGFloat,
+        height: CGFloat,
+        panelWidth: CGFloat
+    ) {
+        let grainSpacing = max(cellSize * 2.15, 12)
+        var horizontalGrain = Path()
+        var grainIndex = 0
+        for y in stride(from: grainSpacing * 0.55, through: height, by: grainSpacing) {
+            let wobble = CGFloat((grainIndex % 3) - 1) * 0.28 * markerScale
+            horizontalGrain.move(to: CGPoint(x: cellSize * 0.35, y: y))
+            horizontalGrain.addLine(to: CGPoint(x: width - cellSize * 0.35, y: y + wobble))
+            grainIndex += 1
+        }
+        context.stroke(
+            horizontalGrain,
+            with: .color(FormationEditorTheme.floorGrain),
+            lineWidth: max(0.35, 0.48 * markerScale)
+        )
+
+        var shallowGrooves = Path()
+        for x in stride(from: panelWidth * 0.5, through: width, by: panelWidth) {
+            shallowGrooves.move(to: CGPoint(x: x - 0.35 * markerScale, y: 0))
+            shallowGrooves.addLine(to: CGPoint(x: x - 0.35 * markerScale, y: height))
+        }
+        context.stroke(
+            shallowGrooves,
+            with: .color(FormationEditorTheme.floorGroove),
+            lineWidth: max(0.45, 0.6 * markerScale)
+        )
+
+        var edgeLift = Path()
+        edgeLift.addRect(CGRect(x: 0, y: 0, width: width, height: height))
+        context.stroke(
+            edgeLift,
+            with: .color(floorLiftColor.opacity(0.10)),
+            lineWidth: max(1.2, 1.8 * markerScale)
+        )
     }
 
     /// Faint FormationFlow "FF" logo marking the center of the floor. The mark is

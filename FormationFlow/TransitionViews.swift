@@ -302,11 +302,7 @@ struct FormationPipBadge: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
         .frame(width: Self.badgeWidth, alignment: .leading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(.white.opacity(0.08))
-        }
+        .formationGlassPanel(cornerRadius: 10, shadowRadius: 8)
     }
 
     // Pips + name. This is the prev/next/rename surface — the tab sits above it
@@ -603,12 +599,7 @@ struct CompactTransitionPlaybackOverlayView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(.white.opacity(0.08))
-        }
-        .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
+        .formationGlassPanel(cornerRadius: 20, shadowRadius: 12)
         .playbackHaptics(player)
     }
 }
@@ -712,12 +703,7 @@ struct CompactTransitionPlaybackRailView: View {
         .padding(.vertical, 12)
         .frame(width: availableWidth, alignment: .leading)
         .frame(maxHeight: .infinity, alignment: .top)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(.white.opacity(0.08))
-        }
-        .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
+        .formationGlassPanel(cornerRadius: 22, shadowRadius: 12)
         .playbackHaptics(player)
     }
 }

@@ -53,6 +53,72 @@ enum OrientationLock {
     }
 }
 
+// MARK: - Editor Theme
+
+enum FormationEditorTheme {
+    static let stageBackground = Color(red: 0.055, green: 0.058, blue: 0.064)
+    static let stageBackgroundLift = Color(red: 0.095, green: 0.103, blue: 0.112)
+    static let glassStroke = Color.white.opacity(0.11)
+    static let glassHighlight = Color.white.opacity(0.075)
+    static let glassShadow = Color.black.opacity(0.26)
+
+    static let floorPanelLight = Color(red: 0.172, green: 0.178, blue: 0.178)
+    static let floorPanelDark = Color(red: 0.126, green: 0.132, blue: 0.136)
+    static let floorFineGrid = Color.white.opacity(0.025)
+    static let floorGrain = Color.white.opacity(0.055)
+    static let floorGroove = Color.black.opacity(0.18)
+}
+
+private struct FormationGlassPanelModifier: ViewModifier {
+    let cornerRadius: CGFloat
+    let material: Material
+    let shadowRadius: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .background {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(material)
+                    .overlay {
+                        LinearGradient(
+                            colors: [
+                                FormationEditorTheme.glassHighlight,
+                                Color.white.opacity(0.015),
+                                Color.clear
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                    }
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(FormationEditorTheme.glassStroke, lineWidth: 0.8)
+            }
+            .shadow(
+                color: FormationEditorTheme.glassShadow,
+                radius: shadowRadius,
+                x: 0,
+                y: shadowRadius * 0.35
+            )
+    }
+}
+
+extension View {
+    func formationGlassPanel(
+        cornerRadius: CGFloat = 18,
+        material: Material = .ultraThinMaterial,
+        shadowRadius: CGFloat = 14
+    ) -> some View {
+        modifier(FormationGlassPanelModifier(
+            cornerRadius: cornerRadius,
+            material: material,
+            shadowRadius: shadowRadius
+        ))
+    }
+}
+
 // MARK: - First-Launch Onboarding
 //
 // A five-screen first-launch intro that walks the EXACT app workflow, in order,
