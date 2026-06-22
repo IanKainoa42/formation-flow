@@ -331,7 +331,7 @@ struct RoutineWorkspaceView: View {
                 isSwapMode: $isSwapMode,
                 triggerDeleteAthlete: $triggerDeleteAthlete,
                 formationID: formationID,
-                onCycleFormation: cycleToNextFormation,
+                onCycleFormation: stepToNextFormation,
                 onCyclePreviousFormation: stepToPreviousFormation,
                 isFirstFormation: isFirstFormation,
                 isLastFormation: isLastFormation,
@@ -655,7 +655,7 @@ struct RoutineWorkspaceView: View {
             isSwapMode: $isSwapMode,
             triggerDeleteAthlete: $triggerDeleteAthlete,
             formationID: formationID,
-            onCycleFormation: cycleToNextFormation,
+            onCycleFormation: stepToNextFormation,
             onCyclePreviousFormation: stepToPreviousFormation,
             isFirstFormation: isFirstFormation,
             isLastFormation: isLastFormation,
@@ -1188,14 +1188,6 @@ struct RoutineWorkspaceView: View {
         duplicateFormation(after: selectedFormationID)
     }
 
-    private func cycleToNextFormation() {
-        let formations = store.routine.formations
-        guard formations.count > 1 else { return }
-        let currentIndex = store.formationIndex(id: selectedFormationID) ?? 0
-        let nextIndex = (currentIndex + 1) % formations.count
-        selectFormation(formations[nextIndex].id)
-    }
-
     private func stepToPreviousFormation() {
         let formations = store.routine.formations
         guard let currentIndex = store.formationIndex(id: selectedFormationID), currentIndex > 0 else { return }
@@ -1356,9 +1348,19 @@ struct RoutineWorkspaceView: View {
             t.pathControlPoint = nil
             t.pathWaypoints = waypoints
         }
-        previewReferenceMode = .outOfSelected
-        refreshPreviewSession()
         store.saveNow()
+
+        // Drawing forward off the last formation should walk you INTO the new
+        // section — navigate onto it so you see the athlete sitting at the spot you
+        // drew to. The new formation is now last, so smartPickReferenceMode() flips
+        // the preview to "Into" (the path you just drew = the incoming transition).
+        selectFormation(newFormationID)
+        // Re-select the drawn athlete after the navigation onChange handlers have
+        // cleared the selection, so the incoming path renders under the default
+        // selected-only display scope instead of being filtered out.
+        DispatchQueue.main.async {
+            selectedAthleteIDs = [athleteID]
+        }
 
         let generator = UIImpactFeedbackGenerator(style: .rigid)
         generator.impactOccurred()

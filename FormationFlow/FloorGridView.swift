@@ -161,6 +161,13 @@ struct FloorGridView: View {
     @State private var pathDragAthleteID: UUID?
     @State private var isSketchingPath = false
     @State private var isLongPressSketching = false
+    /// True from the moment a long-press sketch arms until the main drag gesture's
+    /// onEnded observes it. The long-press gesture and the main drag gesture receive
+    /// the SAME touch and both fire onEnded in an undefined order; this flag lets the
+    /// main gesture recognize "this touch was a long-press sketch — endLongPressSketch
+    /// owns the commit" regardless of which onEnded runs first, so we never
+    /// double-commit, wipe the pending sketch points, or fall through to a tap.
+    @State private var didConsumeLongPressTouch = false
     @State private var draggingWaypointID: UUID?
     @State private var pendingWaypointDeletionID: UUID?
     @State private var pathSketchPoints: [CGPoint] = []
@@ -532,6 +539,10 @@ struct FloorGridView: View {
     private var pathSketchPreviewPaths: [PathSketchPreviewRenderItem] {
         guard
             isSketchingPath,
+            // A bootstrap sketch (drawing forward off the last formation) has no
+            // existing transition pair to anchor a smoothed preview to — the raw
+            // freehand line is the live indicator instead.
+            bootstrapAthleteID == nil,
             pathSketchPoints.count >= 2,
             let player,
             let anchorAthleteID = longPressSketchAnchorAthleteID
@@ -2614,6 +2625,13 @@ struct FloorGridView: View {
         focusedPathHandle = nil
         longPressSketchAnchorAthleteID = anchorAthleteID
         pathSketchAnchorSide = endpoint == .start ? .start : .end
+        // On the last formation there is no forward transition to edit — drawing
+        // bootstraps a new formation instead (the onEnded commit routes through
+        // commitBootstrapSketch when bootstrapAthleteID is set). The sketch already
+        // anchors at the athlete's current position, which is the correct forward start.
+        if isLastFormation, onBootstrapFromAthlete != nil {
+            bootstrapAthleteID = anchorAthleteID
+        }
         isSketchingPath = true
         pathSketchPoints = [clampedPathPoint(anchorAthlete.position)]
         longPressArmingToken = nil
@@ -3197,15 +3215,25 @@ struct FloorGridView: View {
             }
             .onEnded { value in
                 let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize)
+                // The long-press sketch gesture and this drag gesture share the same
+                // touch and both fire onEnded in an undefined order. When the touch was
+                // a long-press sketch, endLongPressSketch() owns the commit and cleanup —
+                // this gesture must NOT commit (double-commit), wipe pathSketchPoints
+                // (clobbering a not-yet-run endLongPressSketch), or fall through to tap
+                // handling (which clears the selection). Capture the fact up front so the
+                // decision is the same whichever onEnded ran first.
+                let wasLongPressSketch = isLongPressSketching || didConsumeLongPressTouch
                 defer {
                     isDraggingAthletes = false
                     isDraggingEndpoint = false
                     isDraggingPathHandle = false
-                    isSketchingPath = false
                     isPanningCanvas = false
                     draggingWaypointID = nil
                     pathDragAthleteID = nil
-                    pathSketchPoints = []
+                    if !wasLongPressSketch {
+                        isSketchingPath = false
+                        pathSketchPoints = []
+                    }
                     isDrawingSelectionLasso = false
                     selectionLasso = nil
                     dragStartPositions = [:]
@@ -3218,6 +3246,11 @@ struct FloorGridView: View {
                         cancelLongPressCountdown()
                     }
                     store.saveNow()
+                }
+
+                if wasLongPressSketch {
+                    didConsumeLongPressTouch = false
+                    return
                 }
 
                 if isSwapMode, let swapSourceAthleteID {
@@ -3926,8 +3959,13 @@ struct FloorGridView: View {
         at scaledPoint: CGPoint,
         cellSize: CGFloat
     ) -> (athleteID: UUID, anchor: CGPoint, side: PathSketchAnchorSide)? {
+        // On the last formation a draw should always go FORWARD — i.e. bootstrap a
+        // new formation — rather than reverse-editing the incoming transition (which
+        // is awkward/counterintuitive). Yield here so beginLongPressSketch falls
+        // through to bootstrapAthleteHit.
         guard !isSwapMode,
               showTransitionPaths, hasTransition,
+              !isLastFormation,
               let player
         else { return nil }
 
@@ -3952,15 +3990,16 @@ struct FloorGridView: View {
         return best
     }
 
-    /// When no successor formation exists, hit-tests the current formation's
-    /// athletes so a long-press can bootstrap a new formation + path to it.
+    /// On the last formation (no successor), hit-tests the current formation's
+    /// athletes so a draw bootstraps a new formation + forward path to it. Fires
+    /// regardless of whether the incoming transition is being previewed — being the
+    /// last formation already guarantees there is no forward transition to edit.
     private func bootstrapAthleteHit(
         at scaledPoint: CGPoint,
         cellSize: CGFloat
     ) -> (athleteID: UUID, anchor: CGPoint)? {
         guard !isSwapMode,
               onBootstrapFromAthlete != nil,
-              !hasTransition,
               let formationIndex,
               formationIndex == store.routine.formations.count - 1
         else { return nil }
@@ -4055,6 +4094,7 @@ struct FloorGridView: View {
             longPressSketchAnchorAthleteID = hit.athleteID
             isLongPressSketching = true
             isSketchingPath = true
+            didConsumeLongPressTouch = true
             pathSketchPoints = [clampedPathPoint(hit.anchor)]
             pathSketchAnchorSide = hit.side
             longPressArmingPosition = hit.anchor
@@ -4072,6 +4112,7 @@ struct FloorGridView: View {
             }
             isLongPressSketching = true
             isSketchingPath = true
+            didConsumeLongPressTouch = true
             pathSketchPoints = [clampedPathPoint(bootstrap.anchor)]
             pathSketchAnchorSide = .start
             bootstrapAthleteID = bootstrap.athleteID

@@ -121,17 +121,19 @@ extension View {
 
 // MARK: - First-Launch Onboarding
 //
-// A five-screen first-launch intro that walks the EXACT app workflow, in order,
-// across one coherent routine (empty floor → V → Lines):
-//   01 PLACE      — tap an empty floor to drop your team (first formation)
-//   02 FORMATIONS — rearrange the same team into the next formation
-//   03 PATHS      — the transition between them; bend paths, flag collisions
-//   04 PLAY       — press play; the REAL engine animates the transition
-//   05 READY      — it all works offline
-// It is a HANDS-ON tour, not a slideshow: screen 01 lets you place/clear athletes
-// (the real create/delete cycle) and screen 04 drives the actual `TransitionPlayer`
-// so play really moves the team. No fake controls, no pricing — the paywall lives
-// in the app, not the intro.
+// A six-screen first-launch intro that walks the EXACT app workflow, in order,
+// across one coherent routine (empty floor → V → Lines), using the app's REAL
+// controls — not mock chrome:
+//   01 ADD          — tap the "+ Add" button (auto-spawn), drag to place
+//   02 FORMATIONS   — "Duplicate as Next" clones the formation; team rearranges
+//   03 INTO/OUT OF  — the pip-badge tab: each formation links both directions
+//   04 PATHS        — draw/bend the route, stagger timing, flag collisions
+//   05 PREVIEW      — the "Flow / Step" toggle + real play engine
+//   06 READY        — it all works offline
+// It is a HANDS-ON tour, not a slideshow: screen 01 spawns/drags real athletes,
+// 02 + 05 drive the actual `TransitionPlayer`, and 03/05 use the same Into-Out and
+// Flow/Step controls as the editor. No fake controls, no pricing — the paywall
+// lives in the app, not the intro.
 //
 // All code lives here (not a standalone file): `Models.swift`, `FloorGridView`
 // and `FormationHomeView` are frozen (see CLAUDE.md). This reuses the public
@@ -183,12 +185,14 @@ private struct TitleRun {
 
 private enum CardSide { case left, right, center }
 
-/// How a screen's floor behaves.
+/// How a screen's floor behaves. Each mirrors a real app control, not a mockup.
 private enum ScreenMode {
-    case interactive   // tap to drop athletes, clear to delete (screen 01)
-    case realPlay      // real TransitionPlayer animation, real play button (screen 03)
-    case still         // static formation (screens 02, 05)
-    case paths         // static formation + paths + collision flag (screen 04)
+    case addPlace      // 01 — real "Add" (+) button spawns athletes; drag to place
+    case duplicate     // 02 — "Duplicate as Next" clones the formation; team rearranges
+    case inOut         // 03 — "Into / Out of" tab flips which transition is shown
+    case paths         // 04 — static formation + paths + waypoints + collision flag
+    case flowStep      // 05 — "Flow / Step" preview toggle + real play engine
+    case still         // 06 — static formation (closer)
 }
 
 private struct OBPage: Identifiable {
@@ -293,9 +297,12 @@ private struct OnboardingScreen: View {
     // The live floor for this screen, chosen by mode.
     @ViewBuilder private var floor: some View {
         switch spec.mode {
-        case .interactive: InteractiveDemoFloor(spec: spec, colorIndex: screenIndex)
-        case .realPlay:    RealPlayDemoFloor(colorIndex: screenIndex)
-        default:           DemoFloor(spec: spec, colorIndex: screenIndex)
+        case .addPlace:  AddPlaceDemoFloor(colorIndex: screenIndex)
+        case .duplicate: DuplicateDemoFloor(colorIndex: screenIndex)
+        case .inOut:     InOutDemoFloor(colorIndex: screenIndex)
+        case .paths:     PathsDemoFloor(colorIndex: screenIndex)
+        case .flowStep:  FlowStepDemoFloor(colorIndex: screenIndex)
+        default:         DemoFloor(spec: spec, colorIndex: screenIndex)
         }
     }
 
@@ -522,85 +529,126 @@ private struct DemoFloor: View {
     }
 }
 
-// MARK: - Interactive demo floor (tap to drop, clear to delete)
+// MARK: - Shared floor chrome
 
-private struct InteractiveDemoFloor: View {
-    let spec: OBPage
+/// A small floating pill used for floor hints (matches the real editor's status pills).
+private func floorHint(_ text: String, icon: String) -> some View {
+    HStack(spacing: 7) {
+        Image(systemName: icon)
+        Text(text)
+    }
+    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+    .foregroundStyle(OB.txt)
+    .padding(.horizontal, 14)
+    .frame(height: 36)
+    .background(Capsule().fill(Color.black.opacity(0.5)))
+    .overlay(Capsule().stroke(OB.barBorder, lineWidth: 1))
+}
+
+/// Floor-feet ↔ screen helpers shared by the interactive demo floors.
+private struct FloorMetrics {
+    let cell: CGFloat
+    let yOffset: CGFloat
+    init(_ geo: GeometryProxy) {
+        cell = geo.size.width / CourtConstants.width
+        yOffset = max(0, (geo.size.height - CourtConstants.height * cell) / 2)
+    }
+    func feet(_ loc: CGPoint) -> CGPoint {
+        CGPoint(x: loc.x / cell, y: (loc.y - yOffset) / cell)
+    }
+}
+
+// MARK: - 01 · Add demo floor (real "Add" button → auto-spawn → drag to place)
+
+private struct AddPlaceDemoFloor: View {
     let colorIndex: Int
 
     @State private var placed: [RenderedAthlete] = []
+    @State private var draggingID: UUID?
+    @State private var didDrag = false
 
-    // Cycle shapes as the user taps so they see the role-shape variety.
-    private static let roleCycle: [AthleteRole] = [.base, .flyer, .spotter, .tumbler, .backspot]
+    // Roles cycle as you add so the role-shape variety is visible (bases, flyers…).
+    private static let roleCycle: [AthleteRole] = [.flyer, .base, .base, .spotter, .tumbler, .backspot]
 
     var body: some View {
         GeometryReader { geo in
-            let cell = geo.size.width / CourtConstants.width
-            let yOffset = max(0, (geo.size.height - CourtConstants.height * cell) / 2)
+            let m = FloorMetrics(geo)
             let formColor = OB.pageColor(colorIndex)
-            let nextColor = OB.pageColor(colorIndex + 1)
 
             ZStack {
                 FloorCanvasView(
-                    athletes: OnboardingDemo.shared.athletes(for: spec.formation) + placed,
-                    transitionPaths: spec.showPaths ? OnboardingDemo.shared.paths : [],
-                    cellSize: cell,
-                    offset: CGPoint(x: 0, y: yOffset),
+                    athletes: placed,
+                    selectedAthleteIDs: draggingID.map { [$0] } ?? [],
+                    cellSize: m.cell,
+                    offset: CGPoint(x: 0, y: m.yOffset),
                     hasTransition: false,
-                    startFormationColor: formColor,
-                    endFormationColor: nextColor,
                     formationColor: formColor,
                     useRoleColors: false,
-                    showCenterMark: false,
-                    showPathPulse: spec.pulse,
-                    transitionCounts: 8
+                    showCenterMark: false
                 )
 
-                // Tap layer — drop an athlete at the tapped floor cell.
+                // Drag layer — grab the nearest athlete and move it (mirrors the
+                // real long-press-drag placement, minus the long press).
                 Color.clear
                     .contentShape(Rectangle())
                     .gesture(
-                        SpatialTapGesture(coordinateSpace: .local)
-                            .onEnded { value in
-                                let fx = value.location.x / cell
-                                let fy = (value.location.y - yOffset) / cell
-                                guard fx >= 1, fx <= CourtConstants.width - 1,
-                                      fy >= 1, fy <= CourtConstants.height - 1 else { return }
-                                let role = Self.roleCycle[placed.count % Self.roleCycle.count]
-                                let athlete = RenderedAthlete(
-                                    id: UUID(),
-                                    label: "\(placed.count + 1)",
-                                    role: role,
-                                    position: CGPoint(x: (fx).rounded(), y: (fy).rounded())
-                                )
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    placed.append(athlete)
+                        DragGesture(minimumDistance: 2, coordinateSpace: .local)
+                            .onChanged { value in
+                                let p = m.feet(value.location)
+                                if draggingID == nil {
+                                    draggingID = nearestID(to: m.feet(value.startLocation))
                                 }
+                                guard let id = draggingID,
+                                      let idx = placed.firstIndex(where: { $0.id == id }) else { return }
+                                placed[idx] = placed[idx].moved(to: clamp(p))
+                                didDrag = true
+                            }
+                            .onEnded { _ in
+                                if let id = draggingID,
+                                   let idx = placed.firstIndex(where: { $0.id == id }) {
+                                    placed[idx] = placed[idx].moved(to: placed[idx].position.rounded())
+                                }
+                                draggingID = nil
                             }
                     )
 
-                // Prompt / clear overlay.
-                VStack {
+                // Bottom controls: the REAL "Add" button + a Clear, matching the
+                // editor's control strip (Add = plus.circle.fill, prominent).
+                VStack(spacing: 10) {
                     Spacer()
                     if placed.isEmpty {
-                        floorHint("Tap the floor to drop an athlete", icon: "hand.tap.fill")
-                    } else {
-                        Button {
-                            withAnimation(.easeOut(duration: 0.2)) { placed.removeAll() }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "trash")
-                                Text("Clear \(placed.count)")
-                            }
-                            .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 16)
-                            .frame(height: 38)
-                            .background(Capsule().fill(Color.black.opacity(0.55)))
-                            .overlay(Capsule().stroke(OB.barBorder, lineWidth: 1))
-                            .contentShape(Capsule())
+                        floorHint("Tap Add to spawn your first athlete", icon: "plus.circle.fill")
+                    } else if !didDrag {
+                        floorHint("Now drag anyone to place them", icon: "hand.draw.fill")
+                    }
+                    HStack(spacing: 10) {
+                        Button(action: addAthlete) {
+                            Label("Add", systemImage: "plus.circle.fill")
+                                .font(.system(size: 15, weight: .bold, design: .monospaced))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 18)
+                                .frame(height: 44)
+                                .background(RoundedRectangle(cornerRadius: 12).fill(OB.accent))
+                                .shadow(color: OB.accent.opacity(0.5), radius: 12, x: 0, y: 6)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+
+                        if !placed.isEmpty {
+                            Button {
+                                withAnimation(.easeOut(duration: 0.2)) { placed.removeAll(); didDrag = false }
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 44, height: 44)
+                                    .background(RoundedRectangle(cornerRadius: 12).fill(Color.black.opacity(0.55)))
+                                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(OB.barBorder, lineWidth: 1))
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Clear all")
+                        }
                     }
                 }
                 .padding(.bottom, 16)
@@ -608,25 +656,47 @@ private struct InteractiveDemoFloor: View {
         }
     }
 
-    private func floorHint(_ text: String, icon: String) -> some View {
-        HStack(spacing: 7) {
-            Image(systemName: icon)
-            Text(text)
-        }
-        .font(.system(size: 13, weight: .semibold, design: .monospaced))
-        .foregroundStyle(OB.txt)
-        .padding(.horizontal, 14)
-        .frame(height: 36)
-        .background(Capsule().fill(Color.black.opacity(0.5)))
-        .overlay(Capsule().stroke(OB.barBorder, lineWidth: 1))
+    private func addAthlete() {
+        let i = placed.count
+        let role = Self.roleCycle[i % Self.roleCycle.count]
+        let athlete = RenderedAthlete(
+            id: UUID(),
+            label: "A\(i + 1)",
+            role: role,
+            position: FormationTemplates.defaultSpawnPosition(for: i)
+        )
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { placed.append(athlete) }
+    }
+
+    private func nearestID(to feet: CGPoint) -> UUID? {
+        placed.min(by: {
+            hypot($0.position.x - feet.x, $0.position.y - feet.y)
+                < hypot($1.position.x - feet.x, $1.position.y - feet.y)
+        })?.id
+    }
+
+    private func clamp(_ p: CGPoint) -> CGPoint {
+        CGPoint(x: min(max(p.x, 1), CourtConstants.width - 1),
+                y: min(max(p.y, 1), CourtConstants.height - 1))
     }
 }
 
-// MARK: - Real-play demo floor (drives the actual TransitionPlayer)
+private extension CGPoint {
+    func rounded() -> CGPoint { CGPoint(x: x.rounded(), y: y.rounded()) }
+}
 
-private struct RealPlayDemoFloor: View {
+private extension RenderedAthlete {
+    func moved(to p: CGPoint) -> RenderedAthlete {
+        RenderedAthlete(id: id, label: label, role: role, position: p)
+    }
+}
+
+// MARK: - 02 · Duplicate demo floor ("Duplicate as Next" → team rearranges)
+
+private struct DuplicateDemoFloor: View {
     let colorIndex: Int
     @StateObject private var player: TransitionPlayer
+    @State private var duplicated = false
 
     init(colorIndex: Int) {
         self.colorIndex = colorIndex
@@ -636,6 +706,284 @@ private struct RealPlayDemoFloor: View {
             endAthletes: demo.athletes(for: .lines),
             transitionSpec: demo.transitionSpec()
         )
+        p.isLooping = false
+        p.autoRewindOnIdle = false
+        _player = StateObject(wrappedValue: p)
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let m = FloorMetrics(geo)
+            let formColor = OB.pageColor(colorIndex)
+            let nextColor = OB.pageColor(colorIndex + 1)
+
+            ZStack {
+                FloorCanvasView(
+                    athletes: player.currentAthletes,
+                    cellSize: m.cell,
+                    offset: CGPoint(x: 0, y: m.yOffset),
+                    hasTransition: true,
+                    startFormationColor: formColor,
+                    endFormationColor: nextColor,
+                    transitionProgress: player.progress,
+                    formationColor: duplicated ? nextColor : formColor,
+                    useRoleColors: false,
+                    showCenterMark: false
+                )
+
+                // Formation pips (ordered list) — "1" then "1 2" after duplicating.
+                VStack {
+                    HStack(spacing: 6) {
+                        formationPip("1", active: !duplicated)
+                        if duplicated {
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(OB.txtFaint)
+                            formationPip("2", active: true)
+                        }
+                    }
+                    .padding(.top, 12)
+                    Spacer()
+                }
+
+                // The REAL "Duplicate as Next" action.
+                VStack {
+                    Spacer()
+                    Button(action: duplicate) {
+                        Label(duplicated ? "Formation 2 created" : "Duplicate as Next",
+                              systemImage: duplicated ? "checkmark.circle.fill" : "plus.square.on.square")
+                            .font(.system(size: 15, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 18)
+                            .frame(height: 44)
+                            .background(RoundedRectangle(cornerRadius: 12)
+                                .fill(duplicated ? Color.black.opacity(0.55) : OB.accent))
+                            .overlay(RoundedRectangle(cornerRadius: 12)
+                                .stroke(duplicated ? OB.barBorder : .clear, lineWidth: 1))
+                            .shadow(color: duplicated ? .clear : OB.accent.opacity(0.5), radius: 12, x: 0, y: 6)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(duplicated)
+                }
+                .padding(.bottom, 16)
+            }
+        }
+        .onDisappear { player.pause() }
+    }
+
+    private func duplicate() {
+        withAnimation(.easeInOut(duration: 0.3)) { duplicated = true }
+        player.play()
+    }
+
+    private func formationPip(_ n: String, active: Bool) -> some View {
+        Text(n)
+            .font(.system(size: 12, weight: .bold, design: .monospaced))
+            .foregroundStyle(active ? .white : OB.txtFaint)
+            .frame(width: 26, height: 26)
+            .background(Circle().fill(active ? OB.accent : Color.black.opacity(0.45)))
+            .overlay(Circle().stroke(OB.barBorder, lineWidth: 1))
+    }
+}
+
+// MARK: - 03 · Into / Out demo floor (each formation links both ways)
+
+// MARK: - 04 · Paths demo floor (drag waypoint handles → live collision flag)
+
+/// Hands-on path editing: the two selected athletes (index 1 & 3) carry
+/// draggable waypoint handles, exactly like the real editor. Bend a path into a
+/// neighbor's lane and the engine flags the collision in real time.
+private struct PathsDemoFloor: View {
+    let colorIndex: Int
+
+    // Mutable copy of the V→Lines demo paths so dragged handles persist.
+    @State private var paths: [TransitionPathRenderItem] = OnboardingDemo.shared.paths
+    @State private var grabbed: GrabbedHandle?
+    @State private var didBend = false
+
+    private struct GrabbedHandle { let pathID: UUID; let waypointID: UUID }
+
+    // Athletes 1 & 3 are the ones carrying waypoints (and thus visible handles).
+    private static let selected = OnboardingDemo.shared.ids([1, 3])
+
+    var body: some View {
+        GeometryReader { geo in
+            let m = FloorMetrics(geo)
+            let formColor = OB.pageColor(colorIndex)
+            let nextColor = OB.pageColor(colorIndex + 1)
+            let collisions = PathCalculations.findPathCollisionIDs(paths: paths, counts: 8)
+
+            ZStack {
+                FloorCanvasView(
+                    athletes: OnboardingDemo.shared.athletes(for: .openingV),
+                    selectedAthleteIDs: Self.selected,
+                    transitionPaths: paths,
+                    collisionIDs: [],
+                    pathCollisionIDs: collisions,
+                    cellSize: m.cell,
+                    offset: CGPoint(x: 0, y: m.yOffset),
+                    hasTransition: false,
+                    startFormationColor: formColor,
+                    endFormationColor: nextColor,
+                    formationColor: formColor,
+                    useRoleColors: false,
+                    showCenterMark: false,
+                    showPathPulse: false,
+                    transitionCounts: 8
+                )
+
+                // Handle-drag layer — grab the nearest selected waypoint and bend it.
+                Color.clear
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 1, coordinateSpace: .local)
+                            .onChanged { value in
+                                if grabbed == nil {
+                                    grabbed = nearestHandle(to: m.feet(value.startLocation))
+                                }
+                                guard let g = grabbed else { return }
+                                moveWaypoint(g, to: clamp(m.feet(value.location)))
+                                didBend = true
+                            }
+                            .onEnded { _ in grabbed = nil }
+                    )
+
+                // Adaptive hint: teach the gesture, then name a collision when one fires.
+                VStack {
+                    Spacer()
+                    if !collisions.isEmpty {
+                        floorHint("Collision — they'd fight for the same spot", icon: "exclamationmark.triangle.fill")
+                    } else if !didBend {
+                        floorHint("Drag a handle to bend the path", icon: "hand.draw.fill")
+                    }
+                }
+                .padding(.bottom, 16)
+                .animation(.easeInOut(duration: 0.2), value: collisions.isEmpty)
+            }
+        }
+    }
+
+    private func nearestHandle(to feet: CGPoint) -> GrabbedHandle? {
+        var best: GrabbedHandle?
+        var bestDist: CGFloat = 4   // grab radius in feet
+        for path in paths where Self.selected.contains(path.athleteID) {
+            for wp in path.waypoints {
+                let d = hypot(wp.position.x - feet.x, wp.position.y - feet.y)
+                if d < bestDist { bestDist = d; best = GrabbedHandle(pathID: path.athleteID, waypointID: wp.id) }
+            }
+        }
+        return best
+    }
+
+    private func moveWaypoint(_ g: GrabbedHandle, to feet: CGPoint) {
+        guard let pi = paths.firstIndex(where: { $0.athleteID == g.pathID }) else { return }
+        let p = paths[pi]
+        let newWaypoints = p.waypoints.map { wp -> PathWaypoint in
+            wp.id == g.waypointID
+                ? PathWaypoint(id: wp.id, position: feet, isSmooth: wp.isSmooth, holdDuration: wp.holdDuration)
+                : wp
+        }
+        paths[pi] = TransitionPathRenderItem(
+            athleteID: p.athleteID,
+            startPosition: p.startPosition,
+            endPosition: p.endPosition,
+            controlPoint: p.controlPoint,
+            waypoints: newWaypoints,
+            moveDelay: p.moveDelay
+        )
+    }
+
+    private func clamp(_ p: CGPoint) -> CGPoint {
+        CGPoint(x: min(max(p.x, 1), CourtConstants.width - 1),
+                y: min(max(p.y, 1), CourtConstants.height - 1))
+    }
+}
+
+// MARK: - 03 · Into / Out of demo floor ("Into / Out of" tab flips the transition)
+
+private struct InOutDemoFloor: View {
+    let colorIndex: Int
+    @State private var showingInto = true
+
+    var body: some View {
+        GeometryReader { geo in
+            let m = FloorMetrics(geo)
+            let demo = OnboardingDemo.shared
+            let formColor = OB.pageColor(colorIndex)
+            let neighborColor = OB.pageColor(colorIndex + (showingInto ? -1 : 1))
+
+            ZStack {
+                FloorCanvasView(
+                    athletes: demo.athletes(for: .lines),     // formation 2 = the "current" one
+                    transitionPaths: showingInto ? demo.intoPaths : demo.outPaths,
+                    cellSize: m.cell,
+                    offset: CGPoint(x: 0, y: m.yOffset),
+                    hasTransition: false,
+                    startFormationColor: showingInto ? neighborColor : formColor,
+                    endFormationColor: showingInto ? formColor : neighborColor,
+                    formationColor: formColor,
+                    useRoleColors: false,
+                    showCenterMark: false,
+                    showPathPulse: true
+                )
+
+                // The real FormationPipBadge "Into / Out of" segmented tab.
+                VStack {
+                    inOutTab.padding(.top, 12)
+                    Spacer()
+                    floorHint(showingInto ? "Coming in from formation 1"
+                                          : "Going out to formation 3",
+                              icon: showingInto ? "arrow.down.right" : "arrow.up.right")
+                        .padding(.bottom, 16)
+                }
+            }
+        }
+    }
+
+    private var inOutTab: some View {
+        HStack(spacing: 0) {
+            segment("Into", selected: showingInto) { showingInto = true }
+            segment("Out of", selected: !showingInto) { showingInto = false }
+        }
+        .padding(3)
+        .background(Capsule().fill(Color.black.opacity(0.5)))
+        .overlay(Capsule().stroke(OB.barBorder, lineWidth: 1))
+    }
+
+    private func segment(_ text: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: { withAnimation(.easeInOut(duration: 0.2)) { action() } }) {
+            Text(text)
+                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                .foregroundStyle(selected ? .white : OB.txtDim)
+                .padding(.horizontal, 16)
+                .frame(height: 30)
+                .background(Capsule().fill(selected ? OB.accent : .clear))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - 05 · Flow / Step demo floor (preview toggle + real play engine)
+
+private struct FlowStepDemoFloor: View {
+    let colorIndex: Int
+    @StateObject private var player: TransitionPlayer
+    @State private var mode: TransitionPreviewMode = .flow
+
+    // The preview routes two athletes head-on so a collision is always visible.
+    private let scenario: OnboardingDemo.PreviewScenario
+
+    init(colorIndex: Int) {
+        self.colorIndex = colorIndex
+        let scn = OnboardingDemo.shared.previewScenario()
+        self.scenario = scn
+        let p = TransitionPlayer(
+            startAthletes: scn.start,
+            endAthletes: scn.end,
+            transitionSpec: scn.spec
+        )
         p.isLooping = true
         p.autoRewindOnIdle = false
         _player = StateObject(wrappedValue: p)
@@ -643,17 +991,22 @@ private struct RealPlayDemoFloor: View {
 
     var body: some View {
         GeometryReader { geo in
-            let cell = geo.size.width / CourtConstants.width
-            let yOffset = max(0, (geo.size.height - CourtConstants.height * cell) / 2)
+            let m = FloorMetrics(geo)
             let formColor = OB.pageColor(colorIndex)
             let nextColor = OB.pageColor(colorIndex + 1)
+            let idle = !player.isPlaying
+            // Static path warning is always on; live circle-flash fires only when
+            // the two crossing athletes actually overlap mid-move.
+            let liveCollisions = PathCalculations.collisionSummary(in: player.currentAthletes).ids
 
             ZStack {
                 FloorCanvasView(
                     athletes: player.currentAthletes,
-                    transitionPaths: OnboardingDemo.shared.paths,
-                    cellSize: cell,
-                    offset: CGPoint(x: 0, y: yOffset),
+                    transitionPaths: scenario.paths,
+                    collisionIDs: liveCollisions,
+                    pathCollisionIDs: scenario.collisionIDs,
+                    cellSize: m.cell,
+                    offset: CGPoint(x: 0, y: m.yOffset),
                     hasTransition: true,
                     startFormationColor: formColor,
                     endFormationColor: nextColor,
@@ -661,10 +1014,23 @@ private struct RealPlayDemoFloor: View {
                     formationColor: formColor,
                     useRoleColors: false,
                     showCenterMark: false,
-                    transitionCounts: 8
+                    showPathPulse: idle && mode == .flow,
+                    transitionCounts: 8,
+                    showCountSteps: idle && mode == .step
                 )
 
-                // One REAL control — play/pause the actual engine.
+                // Top: the real "Flow / Step" preview toggle + a collision flag.
+                VStack(spacing: 10) {
+                    flowStepTab.padding(.top, 12)
+                    if !liveCollisions.isEmpty {
+                        floorHint("Collision — two athletes hit here", icon: "exclamationmark.triangle.fill")
+                            .transition(.opacity)
+                    }
+                    Spacer()
+                }
+                .animation(.easeInOut(duration: 0.2), value: liveCollisions.isEmpty)
+
+                // Bottom: the real play/pause engine control.
                 VStack {
                     Spacer()
                     Button {
@@ -680,11 +1046,31 @@ private struct RealPlayDemoFloor: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
+                    .padding(.bottom, 16)
                 }
-                .padding(.bottom, 16)
             }
         }
         .onDisappear { player.pause() }
+    }
+
+    private var flowStepTab: some View {
+        HStack(spacing: 0) {
+            ForEach(TransitionPreviewMode.allCases) { m in
+                Button(action: { withAnimation(.easeInOut(duration: 0.2)) { mode = m } }) {
+                    Label(m.label, systemImage: m.systemImage)
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .foregroundStyle(mode == m ? .white : OB.txtDim)
+                        .padding(.horizontal, 14)
+                        .frame(height: 30)
+                        .background(Capsule().fill(mode == m ? OB.accent : .clear))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(3)
+        .background(Capsule().fill(Color.black.opacity(0.5)))
+        .overlay(Capsule().stroke(OB.barBorder, lineWidth: 1))
     }
 }
 
@@ -699,6 +1085,10 @@ final class OnboardingDemo {
 
     let roster: [Member]
     let paths: [TransitionPathRenderItem]
+    /// Into = the transition arriving at formation 2 (V → Lines).
+    var intoPaths: [TransitionPathRenderItem] { paths }
+    /// Out of = the transition leaving formation 2 (Lines → pyramid).
+    let outPaths: [TransitionPathRenderItem]
 
     private let vPositions: [CGPoint]
     private let linePositions: [CGPoint]
@@ -767,6 +1157,21 @@ final class OnboardingDemo {
             ))
         }
         paths = built
+
+        // Out-of paths: the same team leaving Lines for the next formation (pyramid).
+        let lines = linePositions
+        let pyramid = pyramidPositions
+        let members = roster
+        outPaths = members.enumerated().map { i, member in
+            TransitionPathRenderItem(
+                athleteID: member.id,
+                startPosition: lines[i],
+                endPosition: pyramid[i],
+                controlPoint: nil,
+                waypoints: [],
+                moveDelay: 0
+            )
+        }
     }
 
     func athletes(for kind: FormationKind) -> [RenderedAthlete] {
@@ -803,6 +1208,63 @@ final class OnboardingDemo {
 
     func id(_ index: Int) -> UUID { roster[index].id }
     func ids(_ indices: [Int]) -> Set<UUID> { Set(indices.map { roster[$0].id }) }
+
+    // MARK: Screen 05 preview scenario
+
+    /// A bundle the preview screen plays: start/end formations, the per-athlete
+    /// paths, a real `TransitionSpec`, and the IDs the engine flags as colliding.
+    struct PreviewScenario {
+        let start: [RenderedAthlete]
+        let end: [RenderedAthlete]
+        let paths: [TransitionPathRenderItem]
+        let spec: TransitionSpec
+        let collisionIDs: Set<UUID>
+    }
+
+    /// The V→Lines move, but athletes 5 & 6 are routed head-on through the same
+    /// center spot (start/end swapped) so they cross at exactly t=0.5 — a
+    /// guaranteed collision the live flag catches during playback. Athlete 1
+    /// keeps its staggered (late) entrance. Everyone else runs clean.
+    func previewScenario() -> PreviewScenario {
+        var starts = vPositions
+        var ends = linePositions
+        let p = CGPoint(x: 22, y: 33), q = CGPoint(x: 50, y: 33)
+        starts[5] = p; ends[5] = q
+        starts[6] = q; ends[6] = p
+
+        let start = roster.enumerated().map { i, m in
+            RenderedAthlete(id: m.id, label: m.label, role: m.role, position: starts[i])
+        }
+        let end = roster.enumerated().map { i, m in
+            RenderedAthlete(id: m.id, label: m.label, role: m.role, position: ends[i])
+        }
+        let items: [TransitionPathRenderItem] = roster.enumerated().map { i, m in
+            TransitionPathRenderItem(
+                athleteID: m.id,
+                startPosition: starts[i],
+                endPosition: ends[i],
+                controlPoint: nil,
+                waypoints: i == 1 ? paths[1].waypoints : [],
+                moveDelay: i == 1 ? 2 : 0
+            )
+        }
+        let transitions = items.map {
+            AthleteTransition(
+                athleteID: $0.athleteID,
+                moveDelay: $0.moveDelay,
+                pathControlPoint: $0.controlPoint,
+                pathWaypoints: $0.waypoints
+            )
+        }
+        let spec = TransitionSpec(
+            fromFormationID: UUID(),
+            toFormationID: UUID(),
+            duration: 8,
+            athleteTransitions: transitions
+        )
+        let collisions = PathCalculations.findPathCollisionIDs(paths: items, counts: 8)
+        return PreviewScenario(start: start, end: end, paths: items, spec: spec, collisionIDs: collisions)
+    }
 }
 
 // MARK: - Page content (comedic, hands-on, no pricing)
@@ -811,49 +1273,60 @@ private enum OnboardingContent {
     static let pages: [OBPage] = {
         let demo = OnboardingDemo.shared
         return [
-            // 01 · PLACE — step one: tap an empty floor to build your first formation
+            // 01 · ADD — tap the + Add button, then drag to place
             OBPage(
-                eyebrow: "PLACE · 01 / 05",
-                title: [TitleRun("Start by placing "),
-                        TitleRun("your team.", accent: true)],
-                body: "Tap the empty floor to drop each athlete where they stand — that's your first formation. Every role draws as its own shape, so the floor reads at a glance. Tap clear to wipe it and start over.",
+                eyebrow: "ADD · 01 / 06",
+                title: [TitleRun("Tap "),
+                        TitleRun("Add", accent: true),
+                        TitleRun(" to build your team.")],
+                body: "Hit the Add button and an athlete drops onto the floor — then drag anyone to place them. Each role draws as its own shape, so the floor reads at a glance. That's your first formation.",
                 side: .right, cta: "Get started", wide: false,
                 formation: .empty, showPaths: false, pulse: false,
-                selected: [], grouped: [], mode: .interactive
+                selected: [], grouped: [], mode: .addPlace
             ),
-            // 02 · FORMATIONS — step two: rearrange the same team into the next one
+            // 02 · FORMATIONS — Duplicate as Next clones the formation
             OBPage(
-                eyebrow: "FORMATIONS · 02 / 05",
-                title: [TitleRun("Then build "),
+                eyebrow: "FORMATIONS · 02 / 06",
+                title: [TitleRun("Duplicate to build "),
                         TitleRun("the next one.", accent: true)],
-                body: "Add another formation and move the same team into it. Your routine becomes an ordered list of formations — the shapes your team hits, one after another.",
+                body: "Tap Duplicate as Next and the whole team is copied into a new formation — just slide them into their new spots. Your routine becomes an ordered list of formations, one after another.",
                 side: .left, cta: nil, wide: false,
-                formation: .lines, showPaths: false, pulse: true,
-                selected: [], grouped: [], mode: .still
+                formation: .lines, showPaths: false, pulse: false,
+                selected: [], grouped: [], mode: .duplicate
             ),
-            // 03 · PATHS — step three: the transition between two formations
+            // 03 · INTO / OUT OF — each formation links both directions
             OBPage(
-                eyebrow: "PATHS · 03 / 05",
-                title: [TitleRun("Connect them with "),
-                        TitleRun("clean paths.", accent: true)],
-                body: "Between every two formations the app draws each athlete's path. Bend one around a pile-up, stagger who leaves when, and let collisions get flagged — before two athletes fight for the same spot.",
+                eyebrow: "INTO / OUT OF · 03 / 06",
+                title: [TitleRun("Every formation links "),
+                        TitleRun("both ways.", accent: true)],
+                body: "Each formation has a transition coming Into it and one going Out of it. Flip the tab to set up either side — it's how the whole routine flows from one shape to the next.",
                 side: .right, cta: nil, wide: false,
+                formation: .lines, showPaths: true, pulse: true,
+                selected: [], grouped: [], mode: .inOut
+            ),
+            // 04 · PATHS — shape the route, stagger timing, flag collisions
+            OBPage(
+                eyebrow: "PATHS · 04 / 06",
+                title: [TitleRun("Shape each athlete's "),
+                        TitleRun("route.", accent: true)],
+                body: "Drag a waypoint handle to bend an athlete's route around a pile-up. The app flags a collision the instant two paths would fight for the same spot — so you fix it before the mat does.",
+                side: .left, cta: nil, wide: false,
                 formation: .openingV, showPaths: true, pulse: false,
                 selected: demo.ids([1, 3]), grouped: [], mode: .paths
             ),
-            // 04 · PLAY — step four: preview the real animation engine
+            // 05 · FLOW / STEP — two ways to preview, real play engine
             OBPage(
-                eyebrow: "PLAY · 04 / 05",
-                title: [TitleRun("Press play. They "),
-                        TitleRun("actually move.", accent: true)],
-                body: "This is the real animation engine, not a video. Hit play and watch the team walk the whole transition in real time, at the real tempo — so the traffic jam happens here, not on the mat.",
-                side: .left, cta: nil, wide: false,
+                eyebrow: "PREVIEW · 05 / 06",
+                title: [TitleRun("Preview it "),
+                        TitleRun("Flow or Step.", accent: true)],
+                body: "Flow sweeps a smooth comet down every path; Step breaks the move into one beat per count, like footwork on the mat. Press play on the real engine, at real tempo — watch a late entrance wait its turn, and the path flash red where two athletes would collide.",
+                side: .right, cta: nil, wide: false,
                 formation: .openingV, showPaths: true, pulse: false,
-                selected: [], grouped: [], mode: .realPlay
+                selected: [], grouped: [], mode: .flowStep
             ),
-            // 05 · READY — closing, no price
+            // 06 · READY — closing, no price
             OBPage(
-                eyebrow: "READY · 05 / 05",
+                eyebrow: "READY · 06 / 06",
                 title: [TitleRun("And it all works "),
                         TitleRun("offline.", accent: true)],
                 body: "No account, no Wi-Fi, no waiting — the whole routine lives on this device and runs courtside with zero bars. The only thing missing is the one you haven't built yet.",
