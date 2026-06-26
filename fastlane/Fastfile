@@ -80,6 +80,23 @@ platform :ios do
     # 2. Hand-assemble + re-sign the IPA (the documented openrsync workaround).
     sh("cp -R #{"#{archive}/Products/Applications/#{scheme}.app".shellescape} #{payload.shellescape}/")
     sh("cp #{profile.shellescape} #{"#{app}/embedded.mobileprovision".shellescape}")
+
+    # 2a. Normalize BuildMachineOSBuild when archiving on a *beta* macOS.
+    #     Apple rejects App Store binaries whose BuildMachineOSBuild is a
+    #     prerelease macOS seed with ITMS-90111 ("Unsupported SDK or Xcode
+    #     version" — the message is misleading; the real trigger is the beta
+    #     build host). Ian's Mac runs beta macOS (e.g. 26A5353q), so stamp the
+    #     latest *released* macOS build instead. No-op on a released host.
+    #     Must run BEFORE the re-sign below so the new signature covers it.
+    host_build = `sw_vers -buildVersion`.strip
+    if host_build =~ /[a-z]\z/ # beta/seed build numbers end in a lowercase letter
+      released = ENV["SHIP_RELEASED_OS_BUILD"] || "25F80" # macOS Tahoe 26.5.1
+      UI.important("Beta macOS #{host_build} detected — stamping BuildMachineOSBuild=#{released} to dodge ITMS-90111")
+      info = "#{app}/Info.plist"
+      sh("/usr/libexec/PlistBuddy -c 'Set :BuildMachineOSBuild #{released}' #{info.shellescape} || " \
+         "/usr/libexec/PlistBuddy -c 'Add :BuildMachineOSBuild string #{released}' #{info.shellescape}")
+    end
+
     sh("codesign -d --entitlements - --xml #{app.shellescape} > #{ent.shellescape}")
     sh("plutil -remove get-task-allow #{ent.shellescape} || true")
     sh("codesign --force --sign #{cert_sha1.shellescape} " \
