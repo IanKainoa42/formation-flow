@@ -72,10 +72,25 @@ platform :ios do
 
     sh("rm -rf #{work.shellescape} && mkdir -p #{payload.shellescape}")
 
+    # 0. Auto-derive the build number from ASC so it can never collide — however
+    # this lane is invoked (raw `fastlane beta`/`release` or via `/ship`). Override
+    # CURRENT_PROJECT_VERSION on the archive command itself (no agvtool, no
+    # project-file mutation). On ANY ASC lookup failure, fall back to the project's
+    # own value so a transient ASC hiccup never blocks a ship.
+    app_id = ENV["SHIP_BUNDLE_ID"] || "com.ianrichardson.formationflow"
+    build_override = ""
+    begin
+      latest = latest_testflight_build_number(api_key: api_key, app_identifier: app_id, initial_build_number: 0).to_i
+      build_override = " CURRENT_PROJECT_VERSION=#{latest + 1}"
+      UI.message("Auto build number from ASC: #{latest + 1} (ASC max #{latest})")
+    rescue => e
+      UI.important("ASC build-number lookup failed (#{e.message}); using project's CURRENT_PROJECT_VERSION")
+    end
+
     # 1. Archive — this works; only `-exportArchive` is broken.
     sh("xcodebuild -project #{project.shellescape} -scheme #{scheme.shellescape} " \
        "-configuration Release -destination 'generic/platform=iOS' " \
-       "-archivePath #{archive.shellescape} -allowProvisioningUpdates archive")
+       "-archivePath #{archive.shellescape} -allowProvisioningUpdates archive#{build_override}")
 
     # 2. Hand-assemble + re-sign the IPA (the documented openrsync workaround).
     sh("cp -R #{"#{archive}/Products/Applications/#{scheme}.app".shellescape} #{payload.shellescape}/")
