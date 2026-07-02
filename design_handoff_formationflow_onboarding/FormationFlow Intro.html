@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>FormationFlow — Intro</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #0a0c0f; overflow: hidden; }
+  * { box-sizing: border-box; }
+</style>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="formationflow-intro.jsx"></script>
+<script type="text/babel">
+  const { DesignCanvas, DCSection, DCArtboard } = window;
+  const { TweaksPanel, TweakSection, TweakColor, TweakRadio, useTweaks } = window;
+  const I = window.FFIntro;
+  const { FFThemeCtx, FFCopyCtx } = window;
+
+  const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+    "voiceMode": "Mix",
+    "accent": "#FF375F"
+  }/*EDITMODE-END*/;
+
+  const ACCENT_OPTIONS = [
+    '#0A84FF',  // system blue (app default)
+    '#30D158',  // green
+    '#BF5AF2',  // purple
+    '#FF9F0A',  // orange
+    '#FF375F',  // pink
+  ];
+
+  function App() {
+    const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+    return (
+      <FFThemeCtx.Provider value={{ accent: t.accent }}>
+        <FFCopyCtx.Provider value={t.voiceMode}>
+          <DesignCanvas>
+            <DCSection
+              id="ipad"
+              title="FormationFlow · iPad onboarding"
+              subtitle="Six landscape screens — dark courtside surface, deadpan voice">
+              <DCArtboard id="01" label="01 · Welcome"     width={1066} height={800}><I.Screen01/></DCArtboard>
+              <DCArtboard id="02" label="02 · Roster"      width={1066} height={800}><I.Screen02/></DCArtboard>
+              <DCArtboard id="03" label="03 · Transitions" width={1066} height={800}><I.Screen03/></DCArtboard>
+              <DCArtboard id="04" label="04 · Paths"       width={1066} height={800}><I.Screen04/></DCArtboard>
+              <DCArtboard id="05" label="05 · Routine"     width={1066} height={800}><I.Screen05/></DCArtboard>
+              <DCArtboard id="06" label="06 · Ready / Pro" width={1066} height={800}><I.Screen06/></DCArtboard>
+            </DCSection>
+            <DCSection
+              id="iphone"
+              title="FormationFlow · iPhone onboarding"
+              subtitle="Same arc, portrait — court up top, copy as a bottom sheet">
+              <DCArtboard id="p01" label="01 · Welcome"     width={393} height={852}><I.PScreen01/></DCArtboard>
+              <DCArtboard id="p02" label="02 · Roster"      width={393} height={852}><I.PScreen02/></DCArtboard>
+              <DCArtboard id="p03" label="03 · Transitions" width={393} height={852}><I.PScreen03/></DCArtboard>
+              <DCArtboard id="p04" label="04 · Paths"       width={393} height={852}><I.PScreen04/></DCArtboard>
+              <DCArtboard id="p05" label="05 · Routine"     width={393} height={852}><I.PScreen05/></DCArtboard>
+              <DCArtboard id="p06" label="06 · Ready / Pro" width={393} height={852}><I.PScreen06/></DCArtboard>
+            </DCSection>
+          </DesignCanvas>
+
+          <TweaksPanel>
+            <TweakSection title="Copy" subtitle="Mix = curated per-screen picks. A / B forces one writer everywhere.">
+              <TweakRadio label="Voice" value={t.voiceMode} options={['Mix', 'A', 'B']} onChange={(v) => setTweak('voiceMode', v)}/>
+            </TweakSection>
+            <TweakSection title="Brand" subtitle="App accent — drives the UI tint + intro card">
+              <TweakColor label="Accent" value={t.accent} options={ACCENT_OPTIONS} onChange={(v) => setTweak('accent', v)}/>
+            </TweakSection>
+          </TweaksPanel>
+        </FFCopyCtx.Provider>
+      </FFThemeCtx.Provider>
+    );
+  }
+
+  ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
