@@ -176,6 +176,13 @@ iPad portrait vs landscape cannot be distinguished by size class alone (both are
 
 ---
 
+## Visual Verification (canvas/rendering changes)
+
+Two verification-claim corrections happened within the same session window (2026-06-20):
+
+- **Catalyst ≠ the simulator Ian is testing on.** They are different binaries. A build/install/screenshot on Mac Catalyst does NOT prove the iPad simulator (or device) has the change — if Ian reports "I don't see X" after a Catalyst-only verification, the simulator likely has a stale binary. After any canvas/rendering change, build+install+launch on the **actual target** (the simulator Ian is using, or device) before claiming it's visible there. Fresh sim installs also reset `@AppStorage` and wipe the routine — re-seed `workspace.v1.json` (copy `.appstore/demo_routine.json` into the app's `Documents/`) or the floor renders empty-state instead of the canvas.
+- **Do not eyeball-confirm a faint/subtle visual element against a busy background.** A watermark at 0.16–0.28 opacity was claimed "visible" by pattern-matching existing athlete/ghost circles — it wasn't actually distinguishable. Verify a subtle element by first rendering it in an unmistakable debug color (solid green, opacity 1.0) to prove it draws at the right place, THEN dial back to the target style. On FormationFlow's dark floor (panel grey ~rgb 38), coral/cream/mid-saturation colors need ~0.5+ opacity to read — sub-0.3 disappears visually.
+
 ## Known Fragile Areas
 
 `FormationFlow/Models.swift` is the entire data layer. It has been modified 6 times in a single week (4 optimization passes + 1 security migration + 1 privacy fix). Stability now matters more than micro-optimizations.
