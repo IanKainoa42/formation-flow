@@ -156,7 +156,7 @@ struct MultiSelectionInspectorView: View {
                 .accessibilityHint("Deselect these athletes")
                 .help("Clear selection")
             }
-            Text("Drag or rotate the group on the floor. Use the controls below to update everyone selected.")
+            Text("Drag to move the group, pinch to adjust spacing, or twist to rotate. Use the controls below to update everyone selected.")
                 .font(.body)
                 .foregroundColor(.secondary)
 

@@ -140,6 +140,8 @@ struct FloorGridView: View {
     @State private var undoStack: [FormationMoveUndoSnapshot] = []
     @State private var rotationStartPositions: [UUID: CGPoint] = [:]
     @State private var lastRotationDetent: Int = 0
+    @State private var spacingStartPositions: [UUID: CGPoint] = [:]
+    @State private var spacingDidChange = false
     @State private var zoomScale: CGFloat = 1.0
     @State private var lastZoomScale: CGFloat = 1.0
     @State private var canvasPanOffset: CGSize = .zero
@@ -870,6 +872,8 @@ struct FloorGridView: View {
             lastCanvasPanOffset = .zero
             rotationStartPositions = [:]
             lastRotationDetent = 0
+            spacingStartPositions = [:]
+            spacingDidChange = false
             clearTransitionDragState()
             selectedAthleteIDs = []
         }
@@ -901,6 +905,10 @@ struct FloorGridView: View {
         }
         .onChange(of: selectedAthleteIDs) { _, newSelection in
             pendingWaypointDeletionID = nil
+            if !spacingStartPositions.isEmpty, Set(spacingStartPositions.keys) != newSelection {
+                spacingStartPositions = [:]
+                spacingDidChange = false
+            }
             if newSelection.count == 1,
                let athleteID = newSelection.first,
                let group = transitionGroup(containing: athleteID),
@@ -1375,9 +1383,18 @@ struct FloorGridView: View {
             .simultaneousGesture(waypointDoubleTapGesture(cellSize: cellSize, offset: offset))
             .simultaneousGesture(longPressSketchGesture(cellSize: cellSize, offset: offset))
             .simultaneousGesture(
+                MagnifyGesture()
+                    .onChanged { value in
+                        handleSpacingMagnification(value.magnification)
+                    }
+                    .onEnded { value in
+                        finishSpacingMagnification(value.magnification)
+                    }
+            )
+            .simultaneousGesture(
                 RotationGesture()
                     .onChanged { value in
-                        guard selectedAthleteIDs.count >= 2 else { return }
+                        guard selectedAthleteIDs.count >= 2, spacingStartPositions.isEmpty else { return }
                         if rotationStartPositions.isEmpty {
                             // Capture starting positions for undo + rotation reference
                             rotationStartPositions = renderedAthletes.reduce(into: [UUID: CGPoint]()) { result, athlete in
@@ -1415,11 +1432,11 @@ struct FloorGridView: View {
             )
             #if canImport(UIKit)
             // Two-finger tap = play/pause. Two-finger pan = scrub whenever a
-            // transition exists. (Pinch-to-zoom was removed; the two-finger pan
-            // is now exclusively a scrub gesture.)
+            // transition exists, except while a multi-selection owns two-finger
+            // gestures for spacing and rotation.
             .background(
                 TwoFingerPlaybackGesture(
-                    scrubEnabled: hasTransition,
+                    scrubEnabled: hasTransition && selectedAthleteIDs.count < 2,
                     onPlayToggle: {
                         guard let player, hasTransition else { return }
                         player.isPlaying ? player.pause() : player.play()
@@ -2040,7 +2057,7 @@ struct FloorGridView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("\(selectedAthleteIDs.count) athletes selected")
                         .font(.headline)
-                    Text("Drag them together on the floor. Use swap for one athlete at a time.")
+                    Text("Drag to move together. Pinch to adjust spacing, or twist to rotate.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .lineLimit(2)
@@ -3868,6 +3885,75 @@ struct FloorGridView: View {
         }
     }
 
+    // MARK: - Multi-Selection Spacing
+
+    /// A small dead zone lets an intentional two-finger twist reach the existing
+    /// rotation gesture without a tiny amount of finger spread stealing it.
+    private var spacingMagnificationActivationDelta: CGFloat { 0.04 }
+
+    private func handleSpacingMagnification(_ magnification: CGFloat) {
+        guard selectedAthleteIDs.count >= 2, !isSwapMode else { return }
+
+        if spacingStartPositions.isEmpty {
+            guard abs(magnification - 1) >= spacingMagnificationActivationDelta else { return }
+            guard lastRotationDetent == 0 else { return }
+
+            let selectedAthletes = editableAthletesForDrag(endpoint: displayedFormationEndpoint)
+            spacingStartPositions = selectedAthletes.reduce(into: [UUID: CGPoint]()) { result, athlete in
+                if selectedAthleteIDs.contains(athlete.id) {
+                    result[athlete.id] = athlete.position
+                }
+            }
+            guard spacingStartPositions.count >= 2 else {
+                spacingStartPositions = [:]
+                return
+            }
+
+            // Once the pinch clearly wins, abandon any not-yet-snapped twist.
+            rotationStartPositions = [:]
+            lastRotationDetent = 0
+            UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: 0.7)
+        }
+
+        spacingDidChange = applySpacingMagnification(magnification)
+    }
+
+    private func finishSpacingMagnification(_ magnification: CGFloat) {
+        guard !spacingStartPositions.isEmpty else { return }
+
+        spacingDidChange = applySpacingMagnification(magnification)
+        if spacingDidChange {
+            appendUndoSnapshot(positions: spacingStartPositions)
+            refreshTransitionFromStore()
+            store.saveNow()
+            UISelectionFeedbackGenerator().selectionChanged()
+        }
+        spacingStartPositions = [:]
+        spacingDidChange = false
+    }
+
+    @discardableResult
+    private func applySpacingMagnification(_ magnification: CGFloat) -> Bool {
+        guard spacingStartPositions.count >= 2 else { return false }
+
+        let positions = SelectionSpacing.scaledPositions(
+            spacingStartPositions,
+            magnification: magnification,
+            courtSize: CGSize(width: CourtConstants.width, height: CourtConstants.height)
+        )
+        let didChange = positions != spacingStartPositions
+        let editableID = displayedEditableFormationID
+
+        store.mutateFormation(id: editableID) { formation in
+            for (athleteID, position) in positions {
+                guard let placementIndex = formation.placementIndex(for: athleteID) else { continue }
+                formation.placements[placementIndex].position = position
+            }
+        }
+        refreshTransitionFromStore()
+        return didChange
+    }
+
     private var selectionLassoForDisplay: FloorSelectionLasso? {
         guard isDrawingSelectionLasso, let selectionLasso, !selectionLasso.isTapCandidate else { return nil }
         return selectionLasso
@@ -4756,6 +4842,54 @@ struct FloorGridView: View {
 
     private func performResetSelectedPath() {
         resetPathForSelectedAthlete()
+    }
+}
+
+enum SelectionSpacing {
+    static func scaledPositions(
+        _ positions: [UUID: CGPoint],
+        magnification: CGFloat,
+        courtSize: CGSize
+    ) -> [UUID: CGPoint] {
+        guard positions.count >= 2 else { return positions }
+
+        let sum = positions.values.reduce(CGPoint.zero) {
+            CGPoint(x: $0.x + $1.x, y: $0.y + $1.y)
+        }
+        let center = CGPoint(
+            x: sum.x / CGFloat(positions.count),
+            y: sum.y / CGFloat(positions.count)
+        )
+
+        // Keep the whole selection on the floor without independently clamping
+        // members, which would distort the line or shape at an edge.
+        var maximumScale: CGFloat = 8
+        for position in positions.values {
+            let dx = position.x - center.x
+            let dy = position.y - center.y
+            if dx > 0 {
+                maximumScale = min(maximumScale, (courtSize.width - center.x) / dx)
+            } else if dx < 0 {
+                maximumScale = min(maximumScale, -center.x / dx)
+            }
+            if dy > 0 {
+                maximumScale = min(maximumScale, (courtSize.height - center.y) / dy)
+            } else if dy < 0 {
+                maximumScale = min(maximumScale, -center.y / dy)
+            }
+        }
+
+        let scale = max(0.1, min(magnification, maximumScale))
+        return positions.mapValues { position in
+            CGPoint(
+                x: roundedCourtCoordinate(center.x + (position.x - center.x) * scale, upperBound: courtSize.width),
+                y: roundedCourtCoordinate(center.y + (position.y - center.y) * scale, upperBound: courtSize.height)
+            )
+        }
+    }
+
+    private static func roundedCourtCoordinate(_ value: CGFloat, upperBound: CGFloat) -> CGFloat {
+        max(0, min(upperBound, value.rounded()))
     }
 }
 
