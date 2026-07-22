@@ -79,6 +79,89 @@ final class RoutineStoreTests: XCTestCase {
         XCTAssertEqual(duplicated.placements[0].position, CGPoint(x: 24, y: 18))
     }
 
+
+    func testDuplicateRoutine() {
+        let athleteID = store.addAthlete()
+        let initialFormationID = store.routine.formations[0].id
+
+        // Mutate original formation to ensure properties are copied
+        store.mutateFormation(id: initialFormationID) { formation in
+            formation.name = "Start Formation"
+            formation.notes = "Test notes"
+            formation.placements[0].position = CGPoint(x: 15, y: 15)
+        }
+
+        // Add a second formation to create a transition spec
+        let secondFormationID = store.addFormation(after: initialFormationID)
+        store.mutateFormation(id: secondFormationID) { formation in
+            formation.placements[0].position = CGPoint(x: 25, y: 25)
+        }
+        store.mutateAthleteTransition(from: initialFormationID, to: secondFormationID, athleteID: athleteID) { transition in
+            transition.moveDelayCounts = 4
+        }
+
+        let originalRoutine = store.routine
+        XCTAssertEqual(store.workspace.routines.count, 1)
+
+        // Duplicate the routine
+        let duplicatedRoutineID = store.duplicateRoutine(id: originalRoutine.id)
+        XCTAssertNotNil(duplicatedRoutineID)
+        XCTAssertEqual(store.workspace.routines.count, 2)
+
+        let duplicatedRoutine = store.workspace.routines.first { $0.id == duplicatedRoutineID }!
+
+        // Basic properties
+        XCTAssertNotEqual(originalRoutine.id, duplicatedRoutine.id)
+        XCTAssertNotEqual(originalRoutine.name, duplicatedRoutine.name)
+        XCTAssertEqual(duplicatedRoutine.name, "Routine 2")
+
+        // Roster should match exactly (athletes maintain IDs across routines for simplicity)
+        XCTAssertEqual(originalRoutine.roster, duplicatedRoutine.roster)
+
+        // Formations should be deep copied (new IDs, same properties)
+        XCTAssertEqual(originalRoutine.formations.count, duplicatedRoutine.formations.count)
+
+        for i in 0..<originalRoutine.formations.count {
+            let origForm = originalRoutine.formations[i]
+            let dupForm = duplicatedRoutine.formations[i]
+
+            XCTAssertNotEqual(origForm.id, dupForm.id, "Formation UUIDs should be regenerated")
+            XCTAssertEqual(origForm.name, dupForm.name)
+            XCTAssertEqual(origForm.notes, dupForm.notes)
+            XCTAssertEqual(origForm.placements, dupForm.placements)
+        }
+
+        // Transition specs should be updated with new formation IDs
+        XCTAssertEqual(originalRoutine.transitionSpecs.count, duplicatedRoutine.transitionSpecs.count)
+        XCTAssertEqual(originalRoutine.transitionSpecs.count, 1)
+
+        let origSpec = originalRoutine.transitionSpecs[0]
+        let dupSpec = duplicatedRoutine.transitionSpecs[0]
+
+        XCTAssertNotEqual(origSpec.fromFormationID, dupSpec.fromFormationID)
+        XCTAssertNotEqual(origSpec.toFormationID, dupSpec.toFormationID)
+
+        // Verify they map correctly to the duplicated formation IDs
+        XCTAssertEqual(dupSpec.fromFormationID, duplicatedRoutine.formations[0].id)
+        XCTAssertEqual(dupSpec.toFormationID, duplicatedRoutine.formations[1].id)
+
+        // Verify transition contents are preserved
+        XCTAssertEqual(dupSpec.athleteTransitions.count, 1)
+        XCTAssertEqual(dupSpec.athleteTransitions[0].athleteID, athleteID)
+        XCTAssertEqual(dupSpec.athleteTransitions[0].moveDelayCounts, 4)
+    }
+
+
+    func testDuplicateRoutineInvalidIDReturnsNil() {
+        XCTAssertEqual(store.workspace.routines.count, 1)
+
+        let invalidID = UUID()
+        let result = store.duplicateRoutine(id: invalidID)
+
+        XCTAssertNil(result)
+        XCTAssertEqual(store.workspace.routines.count, 1)
+    }
+
     func testDeleteFormation() {
         let initialFormationID = store.routine.formations[0].id
         let newFormationID = store.addFormation(after: initialFormationID)
