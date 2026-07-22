@@ -247,7 +247,7 @@ struct ProUpgradeSheet: View {
                 purchaseState = .error("Purchase could not be completed.")
             }
         } catch {
-            logger.error("💥 Purchase threw error: \(error.localizedDescription, privacy: .public)")
+            logger.error("💥 Purchase threw error: \(error.localizedDescription, privacy: .private)")
             // The user may already own Pro (e.g. "You've already downloaded this" when
             // re-buying an owned non-consumable). Attempt a restore/sync before erroring —
             // if they own it, this unlocks silently and the sheet dismisses via isPro.

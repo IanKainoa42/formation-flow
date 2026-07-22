@@ -100,7 +100,7 @@ final class EntitlementManager: ObservableObject {
         do {
             try await AppStore.sync()
         } catch {
-            Self.logger.error("AppStore.sync failed during restore: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("AppStore.sync failed during restore: \(error.localizedDescription, privacy: .private)")
         }
         await checkEntitlement()
     }
