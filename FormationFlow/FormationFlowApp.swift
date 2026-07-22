@@ -1279,7 +1279,9 @@ private enum OnboardingContent {
                 title: [TitleRun("Tap "),
                         TitleRun("Add", accent: true),
                         TitleRun(" to summon some humans.")],
-                body: "Hit Add and an athlete appears out of nowhere — then drag them wherever you want. Each role draws as its own shape, so you can spot a base from a flyer without squinting. Best part: in here, they stand exactly where you put them. Wild, we know.",
+                body: "Hit Add and an athlete appears out of nowhere — then drag them wherever you want. " +
+                "Each role draws as its own shape, so you can spot a base from a flyer without " +
+                "squinting. Best part: in here, they stand exactly where you put them. Wild, we know.",
                 side: .right, cta: "Let's build", wide: false,
                 formation: .empty, showPaths: false, pulse: false,
                 selected: [], grouped: [], mode: .addPlace
@@ -1289,7 +1291,9 @@ private enum OnboardingContent {
                 eyebrow: "COPY-PASTE · 02 / 06",
                 title: [TitleRun("Clone the whole squad in "),
                         TitleRun("one tap.", accent: true)],
-                body: "Tap Duplicate as Next and your entire team is copied into a fresh formation — now just slide everyone to their new spots. It's cloning without the lab coat or the awkward ethics questions. Stack a few and congratulations: you've got a routine.",
+                body: "Tap Duplicate as Next and your entire team is copied into a fresh formation — now " +
+                "just slide everyone to their new spots. It's cloning without the lab coat or the " +
+                "awkward ethics questions. Stack a few and congratulations: you've got a routine.",
                 side: .left, cta: nil, wide: false,
                 formation: .lines, showPaths: false, pulse: false,
                 selected: [], grouped: [], mode: .duplicate
@@ -1299,7 +1303,9 @@ private enum OnboardingContent {
                 eyebrow: "INTO / OUT OF · 03 / 06",
                 title: [TitleRun("A way in. "),
                         TitleRun("A way out.", accent: true)],
-                body: "Every formation has a move coming Into it and a move going Out of it. Flip the tab to choreograph either side. Picture a polite entrance and a dramatic exit — and yes, both are entirely your fault.",
+                body: "Every formation has a move coming Into it and a move going Out of it. Flip the tab " +
+                "to choreograph either side. Picture a polite entrance and a dramatic exit — and yes, " +
+                "both are entirely your fault.",
                 side: .right, cta: nil, wide: false,
                 formation: .lines, showPaths: true, pulse: true,
                 selected: [], grouped: [], mode: .inOut
@@ -1309,7 +1315,9 @@ private enum OnboardingContent {
                 eyebrow: "TRAFFIC CONTROL · 04 / 06",
                 title: [TitleRun("Bend paths before heads "),
                         TitleRun("collide.", accent: true)],
-                body: "Drag a handle to curve an athlete's route around the pile-up. The instant two paths fight over the same square foot, the app waves a red flag — so the crash happens here, on a screen, instead of live in front of every parent with their phone out.",
+                body: "Drag a handle to curve an athlete's route around the pile-up. The instant two paths " +
+                "fight over the same square foot, the app waves a red flag — so the crash happens " +
+                "here, on a screen, instead of live in front of every parent with their phone out.",
                 side: .left, cta: nil, wide: false,
                 formation: .openingV, showPaths: true, pulse: false,
                 selected: demo.ids([1, 3]), grouped: [], mode: .paths
@@ -1319,7 +1327,10 @@ private enum OnboardingContent {
                 eyebrow: "SHOWTIME · 05 / 06",
                 title: [TitleRun("Watch it run — "),
                         TitleRun("Flow or Step.", accent: true)],
-                body: "Flow sweeps a smooth comet down every path. Step chops the move into one beat per count, like counting it out on the mat. Press play and the real engine runs it at real tempo — the late entrance waits its turn, collisions flash red, and it never once asks for a water break.",
+                body: "Flow sweeps a smooth comet down every path. Step chops the move into one beat per " +
+                "count, like counting it out on the mat. Press play and the real engine runs it at " +
+                "real tempo — the late entrance waits its turn, collisions flash red, and it never " +
+                "once asks for a water break.",
                 side: .right, cta: nil, wide: false,
                 formation: .openingV, showPaths: true, pulse: false,
                 selected: [], grouped: [], mode: .flowStep
@@ -1329,7 +1340,9 @@ private enum OnboardingContent {
                 eyebrow: "GO TIME · 06 / 06",
                 title: [TitleRun("It all runs "),
                         TitleRun("offline.", accent: true)],
-                body: "No account, no Wi-Fi, no spinning wheel of doom — the whole routine lives right on this device and runs in a gym with worse signal than a parking garage. The only formation missing is the one you haven't built yet. So go.",
+                body: "No account, no Wi-Fi, no spinning wheel of doom — the whole routine lives right on " +
+                "this device and runs in a gym with worse signal than a parking garage. The only " +
+                "formation missing is the one you haven't built yet. So go.",
                 side: .center, cta: "Hit the mat", wide: true,
                 formation: .closer, showPaths: false, pulse: false,
                 selected: [], grouped: [], mode: .still
