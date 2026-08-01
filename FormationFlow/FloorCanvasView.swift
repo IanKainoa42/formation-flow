@@ -137,6 +137,8 @@ struct FloorCanvasView: View {
     var pathCollisionIDs: Set<UUID> = []
     var pathCollisionMarkerPositions: [CGPoint] = []
     var pathCollisionMarkerProgresses: [CGFloat] = []
+    /// Keeps collision paths and markers visible while suppressing their blink/pulse clocks.
+    var animatePathCollisionWarnings = true
     var blinkingResolvedIDs: Set<UUID> = []
     var blinkPhase: Int = 0
     var cellSize: CGFloat = 12
@@ -219,7 +221,7 @@ struct FloorCanvasView: View {
     private var mainCanvas: some View {
         // Only tick the timeline when a path is colliding (and motion is allowed),
         // so the collision blink animates without burning redraws when idle.
-        let blinkActive = !pathCollisionIDs.isEmpty && !reduceMotion
+        let blinkActive = animatePathCollisionWarnings && !pathCollisionIDs.isEmpty && !reduceMotion
         let blinkInterval: Double = 0.45
         let pulseActive = showPathPulse && !transitionPaths.isEmpty && !reduceMotion
         // Step mode animates a blip that snaps from count to count, so it needs the
@@ -377,6 +379,7 @@ struct FloorCanvasView: View {
 
     private func collisionPulsePhase(forMarkerAt index: Int) -> CGFloat? {
         guard
+            animatePathCollisionWarnings,
             !reduceMotion,
             pathCollisionMarkerProgresses.indices.contains(index)
         else {

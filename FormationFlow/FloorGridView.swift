@@ -1364,6 +1364,7 @@ struct FloorGridView: View {
                 pathCollisionIDs: pathCollisionIDs,
                 pathCollisionMarkerPositions: player?.cachedPathCollisionMarkers ?? [],
                 pathCollisionMarkerProgresses: player?.cachedPathCollisionMarkerProgresses ?? [],
+                animatePathCollisionWarnings: !isCanvasInteractionActive,
                 cellSize: cellSize,
                 offset: offset,
                 swapSourceID: swapSourceAthleteID,
@@ -3711,7 +3712,7 @@ struct FloorGridView: View {
             point: clampedPathPoint(point),
             segmentIndex: 0
         )
-        refreshTransitionFromStore(recomputePathCollisions: false)
+        refreshTransitionFromStore(collisionRefreshMode: .interactivePreview)
         return waypointID
     }
 
@@ -3774,7 +3775,7 @@ struct FloorGridView: View {
                     waypointID: draggingWaypointID,
                     point: pathPoint
                 )
-                refreshTransitionFromStore(recomputePathCollisions: false)
+                refreshTransitionFromStore(collisionRefreshMode: .interactivePreview)
             }
         } else {
             // Legacy control point drag
@@ -3793,7 +3794,7 @@ struct FloorGridView: View {
                     t.pathControlPoint = newControlPoint
                     t.pathWaypoints = []
                 }
-                refreshTransitionFromStore(recomputePathCollisions: false)
+                refreshTransitionFromStore(collisionRefreshMode: .interactivePreview)
             }
         }
     }
@@ -3842,7 +3843,7 @@ struct FloorGridView: View {
             guard let placementIndex = formation.placementIndex(for: selectedAthleteID) else { return }
             formation.placements[placementIndex].position = nextPosition
         }
-        refreshTransitionFromStore(recomputePathCollisions: false)
+        refreshTransitionFromStore(collisionRefreshMode: .interactivePreview)
     }
 
     private func handleFormationDragContinued(_ value: DragGesture.Value, cellSize: CGFloat) {
@@ -3876,7 +3877,7 @@ struct FloorGridView: View {
                 formation.placements[placementIndex].position = nextPosition
             }
         }
-        refreshTransitionFromStore(recomputePathCollisions: false)
+        refreshTransitionFromStore(collisionRefreshMode: .interactivePreview)
     }
 
     // MARK: - Rotation
@@ -3922,7 +3923,7 @@ struct FloorGridView: View {
             }
         }
         rotationDidApplyChange = true
-        refreshTransitionFromStore(recomputePathCollisions: false)
+        refreshTransitionFromStore(collisionRefreshMode: .interactivePreview)
     }
 
     // MARK: - Multi-Selection Spacing
@@ -3998,7 +3999,7 @@ struct FloorGridView: View {
                 formation.placements[placementIndex].position = position
             }
         }
-        refreshTransitionFromStore(recomputePathCollisions: false)
+        refreshTransitionFromStore(collisionRefreshMode: .interactivePreview)
         return didChange
     }
 
@@ -4522,13 +4523,13 @@ struct FloorGridView: View {
         lastAppliedEndpointDragPosition = nil
     }
 
-    private func refreshTransitionFromStore(recomputePathCollisions: Bool = true) {
+    private func refreshTransitionFromStore(collisionRefreshMode: PathCollisionRefreshMode = .full) {
         guard let player, let startFormationID, let endFormationID else { return }
         player.refresh(
             startAthletes: store.renderedAthletes(for: startFormationID),
             endAthletes: store.renderedAthletes(for: endFormationID),
             transitionSpec: store.transitionSpec(for: startFormationID, to: endFormationID),
-            recomputePathCollisions: recomputePathCollisions
+            collisionRefreshMode: collisionRefreshMode
         )
     }
 

@@ -2073,6 +2073,11 @@ struct PathCalculations {
         let redirectOffset: CGPoint
     }
 
+    enum PathCollisionDetailLevel {
+        case markersOnly
+        case full
+    }
+
     private struct PathCollisionSample {
         let position: CGPoint
         let pathProgress: CGFloat
@@ -2724,7 +2729,8 @@ struct PathCalculations {
         paths: [TransitionPathRenderItem],
         counts: CGFloat = 8,
         steps: Int = 60,
-        minDistance: CGFloat = CourtConstants.collisionDistance
+        minDistance: CGFloat = CourtConstants.collisionDistance,
+        detailLevel: PathCollisionDetailLevel = .full
     ) -> (ids: Set<UUID>, markers: [CGPoint], markerProgresses: [CGFloat], responses: [UUID: [CollisionResponse]]) {
         guard paths.count > 1 else { return ([], [], [], [:]) }
 
@@ -2859,19 +2865,22 @@ struct PathCalculations {
                                             let midpoint = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
                                             if !markers.contains(where: { squaredDistance(from: $0, to: midpoint) < 1 }) {
                                                 markers.append(midpoint)
-                                                let contactStartProgress = collisionContactStartProgress(
-                                                    firstSamples: sampledPaths[index],
-                                                    secondSamples: sampledPaths[otherIndex],
-                                                    step: step,
-                                                    steps: steps,
-                                                    minDistanceSquared: minDistanceSquared
-                                                )
-                                                markerProgresses.append(
-                                                    max(0, contactStartProgress - collisionPulseLeadProgress)
-                                                )
+                                                if case .full = detailLevel {
+                                                    let contactStartProgress = collisionContactStartProgress(
+                                                        firstSamples: sampledPaths[index],
+                                                        secondSamples: sampledPaths[otherIndex],
+                                                        step: step,
+                                                        steps: steps,
+                                                        minDistanceSquared: minDistanceSquared
+                                                    )
+                                                    markerProgresses.append(
+                                                        max(0, contactStartProgress - collisionPulseLeadProgress)
+                                                    )
+                                                }
                                             }
 
-                                            if timings[index].travel > collisionResponseMinimumTravel {
+                                            if case .full = detailLevel,
+                                               timings[index].travel > collisionResponseMinimumTravel {
                                                 responses[paths[index].athleteID, default: []].append(
                                                     CollisionResponse(
                                                         progress: sampledPaths[index][step].pathProgress,
@@ -2886,7 +2895,8 @@ struct PathCalculations {
                                                 )
                                             }
 
-                                            if timings[otherIndex].travel > collisionResponseMinimumTravel {
+                                            if case .full = detailLevel,
+                                               timings[otherIndex].travel > collisionResponseMinimumTravel {
                                                 responses[paths[otherIndex].athleteID, default: []].append(
                                                     CollisionResponse(
                                                         progress: sampledPaths[otherIndex][step].pathProgress,
@@ -2910,8 +2920,10 @@ struct PathCalculations {
             }
         }
 
-        for athleteID in responses.keys {
-            responses[athleteID] = responses[athleteID]?.sorted { $0.progress < $1.progress }
+        if case .full = detailLevel {
+            for athleteID in responses.keys {
+                responses[athleteID] = responses[athleteID]?.sorted { $0.progress < $1.progress }
+            }
         }
 
         return (collisionIDs, markers, markerProgresses, responses)
@@ -2927,7 +2939,8 @@ struct PathCalculations {
             paths: paths,
             counts: counts,
             steps: steps,
-            minDistance: minDistance
+            minDistance: minDistance,
+            detailLevel: .markersOnly
         )
         return (details.ids, details.markers)
     }
@@ -2965,6 +2978,11 @@ struct PathCalculations {
 }
 
 // MARK: - Transition Player
+
+enum PathCollisionRefreshMode {
+    case interactivePreview
+    case full
+}
 
 @MainActor
 final class TransitionPlayer: ObservableObject {
@@ -3016,6 +3034,8 @@ final class TransitionPlayer: ObservableObject {
     private(set) var cachedPathCollisionMarkers: [CGPoint] = []
     private(set) var cachedPathCollisionMarkerProgresses: [CGFloat] = []
     private var collisionResponseCache: [UUID: [PathCalculations.CollisionResponse]] = [:]
+    private var lastInteractiveCollisionPreviewTime: TimeInterval = -.infinity
+    private let interactiveCollisionPreviewInterval: TimeInterval = 1.0 / 30.0
 
     private var animationTimer: AnimationTimer?
     private var idleResetTask: Task<Void, Never>?
@@ -3058,7 +3078,7 @@ final class TransitionPlayer: ObservableObject {
         }
     }
 
-    private func updateTimingCache(recomputePathCollisions: Bool = true) {
+    private func updateTimingCache(collisionRefreshMode: PathCollisionRefreshMode = .full) {
         var newTimingCache: [UUID: (endAthlete: RenderedAthlete, transition: AthleteTransition, travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat, thresholds: [CGFloat], nodes: [CGPoint], lengths: [CGFloat], totalLength: CGFloat)] = [:]
         newTimingCache.reserveCapacity(startAthletes.count)
 
@@ -3090,7 +3110,7 @@ final class TransitionPlayer: ObservableObject {
 
         self.timingCache = newTimingCache
         self.maxEffectiveTime = newMaxEffectiveTime
-        updatePathCaches(recomputeCollisions: recomputePathCollisions)
+        updatePathCaches(collisionRefreshMode: collisionRefreshMode)
 
         let finalMaxEffectiveTime = newTimingCache.map { athleteID, cached in
             let collisionHold = collisionResponseCache[athleteID]?.reduce(CGFloat(0)) { $0 + $1.holdCounts } ?? 0
@@ -3110,7 +3130,7 @@ final class TransitionPlayer: ObservableObject {
         }
     }
 
-    private func updatePathCaches(recomputeCollisions: Bool) {
+    private func updatePathCaches(collisionRefreshMode: PathCollisionRefreshMode) {
         cachedTransitionPaths = startAthletes.compactMap { athlete in
             guard let cached = timingCache[athlete.id] else { return nil }
             return TransitionPathRenderItem(
@@ -3123,18 +3143,28 @@ final class TransitionPlayer: ObservableObject {
             )
         }
 
-        // Gesture updates need the latest path geometry immediately, but the
-        // 60-sample collision pass is too expensive to repeat for every touch
-        // event. Clear collision-derived state while editing and rebuild it once
-        // the gesture commits so stale warnings/responses are never displayed.
-        guard recomputeCollisions else {
-            cachedPathCollisionIDs = []
-            cachedPathCollisionMarkers = []
+        if case .interactivePreview = collisionRefreshMode {
+            // Keep the editing diagnostic live without restoring the expensive
+            // playback response work or running it at 120 Hz on ProMotion input.
             cachedPathCollisionMarkerProgresses = []
             collisionResponseCache = [:]
+
+            let now = ProcessInfo.processInfo.systemUptime
+            guard now - lastInteractiveCollisionPreviewTime >= interactiveCollisionPreviewInterval else {
+                return
+            }
+            lastInteractiveCollisionPreviewTime = now
+
+            let preview = PathCalculations.findPathCollisionMarkers(
+                paths: cachedTransitionPaths,
+                counts: CGFloat(counts)
+            )
+            cachedPathCollisionIDs = preview.ids
+            cachedPathCollisionMarkers = preview.markers
             return
         }
 
+        lastInteractiveCollisionPreviewTime = -.infinity
         let collisions = PathCalculations.findPathCollisionDetails(
             paths: cachedTransitionPaths,
             counts: CGFloat(counts)
@@ -3155,7 +3185,7 @@ final class TransitionPlayer: ObservableObject {
         startAthletes: [RenderedAthlete],
         endAthletes: [RenderedAthlete],
         transitionSpec: TransitionSpec,
-        recomputePathCollisions: Bool = true
+        collisionRefreshMode: PathCollisionRefreshMode = .full
     ) {
         // Batch property updates to avoid cascading didSet → updateTimingCache()
         // which previously ran findPathCollisionIDs 3-4 times per refresh.
@@ -3167,7 +3197,7 @@ final class TransitionPlayer: ObservableObject {
         isBatchRefreshing = false
         updateEndLookup()
         updateTransitionLookup()
-        updateTimingCache(recomputePathCollisions: recomputePathCollisions)
+        updateTimingCache(collisionRefreshMode: collisionRefreshMode)
         updateAthletesForProgress()
     }
 
