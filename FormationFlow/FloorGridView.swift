@@ -136,11 +136,15 @@ struct FloorGridView: View {
     @State private var isDrawingSelectionLasso = false
     @State private var selectionLasso: FloorSelectionLasso? = nil
     @State private var dragStartPositions: [UUID: CGPoint] = [:]
+    @State private var lastAppliedFormationDragPositions: [UUID: CGPoint] = [:]
+    @State private var lastAppliedEndpointDragPosition: CGPoint?
     @State private var draggingAthleteIDs: Set<UUID> = []
     @State private var undoStack: [FormationMoveUndoSnapshot] = []
     @State private var rotationStartPositions: [UUID: CGPoint] = [:]
     @State private var lastRotationDetent: Int = 0
+    @State private var rotationDidApplyChange = false
     @State private var spacingStartPositions: [UUID: CGPoint] = [:]
+    @State private var lastAppliedSpacingPositions: [UUID: CGPoint] = [:]
     @State private var spacingDidChange = false
     @State private var zoomScale: CGFloat = 1.0
     @State private var lastZoomScale: CGFloat = 1.0
@@ -154,6 +158,17 @@ struct FloorGridView: View {
     @State private var rosterDeleteIDs: [UUID] = []
     @State private var collisionCycleIndex: Int = 0
     @State private var pathCollisionCycleIndex: Int = 0
+
+    private var isCanvasInteractionActive: Bool {
+        isDraggingAthletes
+            || isDraggingEndpoint
+            || isDraggingPathHandle
+            || isPanningCanvas
+            || isDrawingSelectionLasso
+            || isSketchingPath
+            || !rotationStartPositions.isEmpty
+            || !spacingStartPositions.isEmpty
+    }
 
     // Transition editing state
     @State private var focusedEndpoint: PreviewEditableEndpoint?
@@ -872,8 +887,12 @@ struct FloorGridView: View {
             lastCanvasPanOffset = .zero
             rotationStartPositions = [:]
             lastRotationDetent = 0
+            rotationDidApplyChange = false
             spacingStartPositions = [:]
+            lastAppliedSpacingPositions = [:]
             spacingDidChange = false
+            lastAppliedFormationDragPositions = [:]
+            lastAppliedEndpointDragPosition = nil
             clearTransitionDragState()
             selectedAthleteIDs = []
         }
@@ -907,6 +926,7 @@ struct FloorGridView: View {
             pendingWaypointDeletionID = nil
             if !spacingStartPositions.isEmpty, Set(spacingStartPositions.keys) != newSelection {
                 spacingStartPositions = [:]
+                lastAppliedSpacingPositions = [:]
                 spacingDidChange = false
             }
             if newSelection.count == 1,
@@ -1354,9 +1374,9 @@ struct FloorGridView: View {
                 endFormationColor: transitionEndColor,
                 transitionProgress: displayProgress,
                 formationColor: currentFormationColor,
-                showPathPulse: hasTransition && showTransitionPaths && !isTransportEngaged && transitionPreviewMode == .flow,
+                showPathPulse: hasTransition && showTransitionPaths && !isTransportEngaged && !isCanvasInteractionActive && transitionPreviewMode == .flow,
                 transitionCounts: player?.counts ?? 8,
-                showCountSteps: hasTransition && showTransitionPaths && !isTransportEngaged && transitionPreviewMode == .step,
+                showCountSteps: hasTransition && showTransitionPaths && !isTransportEngaged && !isCanvasInteractionActive && transitionPreviewMode == .step,
                 ghostAthletes: pathDisplayScope == .allFormations ? previousFormationAthletes : [],
                 ghostColor: previousFormationColor,
                 ghostNextAthletes: pathDisplayScope == .allFormations ? nextFormationAthletes : [],
@@ -1403,6 +1423,7 @@ struct FloorGridView: View {
                                 }
                             }
                             lastRotationDetent = 0
+                            rotationDidApplyChange = false
                         }
                         // Hard-cut to 45° detents — the formation only ever lands on a
                         // clean grid-aligned orientation, never an awkward in-between.
@@ -1416,18 +1437,24 @@ struct FloorGridView: View {
                         guard selectedAthleteIDs.count >= 2, !rotationStartPositions.isEmpty else {
                             rotationStartPositions = [:]
                             lastRotationDetent = 0
+                            rotationDidApplyChange = false
                             return
                         }
                         let detent = rotationDetent(for: value.radians)
-                        // A net rotation of zero is a no-op — don't reset positions or
-                        // push a useless undo entry for an incidental two-finger twitch.
-                        if detent != 0 {
+                        if detent != lastRotationDetent {
                             applyRotation(angle: CGFloat(detent) * rotationSnapIncrement)
+                        }
+                        // A net rotation of zero is a no-op for undo, even if the
+                        // live gesture crossed a detent and returned to its start.
+                        if detent != 0 {
                             appendUndoSnapshot(positions: rotationStartPositions)
+                        }
+                        if rotationDidApplyChange {
                             refreshTransitionFromStore()
                         }
                         rotationStartPositions = [:]
                         lastRotationDetent = 0
+                        rotationDidApplyChange = false
                     }
             )
             #if canImport(UIKit)
@@ -3254,6 +3281,8 @@ struct FloorGridView: View {
                     isDrawingSelectionLasso = false
                     selectionLasso = nil
                     dragStartPositions = [:]
+                    lastAppliedFormationDragPositions = [:]
+                    lastAppliedEndpointDragPosition = nil
                     draggingAthleteIDs = []
                     endpointDragStartPosition = nil
                     clearActiveGuides()
@@ -3556,6 +3585,7 @@ struct FloorGridView: View {
     private func beginAthleteDragFeedback() {
         guard !isDraggingAthletes else { return }
         isDraggingAthletes = true
+        lastAppliedFormationDragPositions = dragStartPositions
         draggingAthleteIDs = selectedAthleteIDs
         let generator = UIImpactFeedbackGenerator(style: .light)
         generator.impactOccurred(intensity: 0.7)
@@ -3681,7 +3711,7 @@ struct FloorGridView: View {
             point: clampedPathPoint(point),
             segmentIndex: 0
         )
-        refreshTransitionFromStore()
+        refreshTransitionFromStore(recomputePathCollisions: false)
         return waypointID
     }
 
@@ -3744,7 +3774,7 @@ struct FloorGridView: View {
                     waypointID: draggingWaypointID,
                     point: pathPoint
                 )
-                refreshTransitionFromStore()
+                refreshTransitionFromStore(recomputePathCollisions: false)
             }
         } else {
             // Legacy control point drag
@@ -3763,7 +3793,7 @@ struct FloorGridView: View {
                     t.pathControlPoint = newControlPoint
                     t.pathWaypoints = []
                 }
-                refreshTransitionFromStore()
+                refreshTransitionFromStore(recomputePathCollisions: false)
             }
         }
     }
@@ -3802,11 +3832,17 @@ struct FloorGridView: View {
             y: clampedCoordinate(endpointDragStartPosition.y + snapResult.translation.y, upperBound: CourtConstants.height)
         )
 
+        if lastAppliedEndpointDragPosition == nil {
+            lastAppliedEndpointDragPosition = endpointDragStartPosition
+        }
+        guard nextPosition != lastAppliedEndpointDragPosition else { return }
+        lastAppliedEndpointDragPosition = nextPosition
+
         store.mutateFormation(id: editableFormationID) { formation in
             guard let placementIndex = formation.placementIndex(for: selectedAthleteID) else { return }
             formation.placements[placementIndex].position = nextPosition
         }
-        refreshTransitionFromStore()
+        refreshTransitionFromStore(recomputePathCollisions: false)
     }
 
     private func handleFormationDragContinued(_ value: DragGesture.Value, cellSize: CGFloat) {
@@ -3824,21 +3860,23 @@ struct FloorGridView: View {
         // viewed formation can be either endpoint of the previewed pair.
         let editableID = displayedEditableFormationID
 
-        store.mutateFormation(id: editableID) { formation in
-            for athleteID in selectedAthleteIDs {
-                guard
-                    let startPosition = dragStartPositions[athleteID],
-                    let placementIndex = formation.placementIndex(for: athleteID)
-                else { continue }
+        let nextPositions = selectedAthleteIDs.reduce(into: [UUID: CGPoint]()) { result, athleteID in
+            guard let startPosition = dragStartPositions[athleteID] else { return }
+            result[athleteID] = CGPoint(
+                x: clampedCoordinate(startPosition.x + snapResult.translation.x, upperBound: CourtConstants.width),
+                y: clampedCoordinate(startPosition.y + snapResult.translation.y, upperBound: CourtConstants.height)
+            )
+        }
+        guard !nextPositions.isEmpty, nextPositions != lastAppliedFormationDragPositions else { return }
+        lastAppliedFormationDragPositions = nextPositions
 
-                let nextPosition = CGPoint(
-                    x: clampedCoordinate(startPosition.x + snapResult.translation.x, upperBound: CourtConstants.width),
-                    y: clampedCoordinate(startPosition.y + snapResult.translation.y, upperBound: CourtConstants.height)
-                )
+        store.mutateFormation(id: editableID) { formation in
+            for (athleteID, nextPosition) in nextPositions {
+                guard let placementIndex = formation.placementIndex(for: athleteID) else { continue }
                 formation.placements[placementIndex].position = nextPosition
             }
         }
-        refreshTransitionFromStore()
+        refreshTransitionFromStore(recomputePathCollisions: false)
     }
 
     // MARK: - Rotation
@@ -3883,6 +3921,8 @@ struct FloorGridView: View {
                 )
             }
         }
+        rotationDidApplyChange = true
+        refreshTransitionFromStore(recomputePathCollisions: false)
     }
 
     // MARK: - Multi-Selection Spacing
@@ -3906,8 +3946,10 @@ struct FloorGridView: View {
             }
             guard spacingStartPositions.count >= 2 else {
                 spacingStartPositions = [:]
+                lastAppliedSpacingPositions = [:]
                 return
             }
+            lastAppliedSpacingPositions = spacingStartPositions
 
             // Once the pinch clearly wins, abandon any not-yet-snapped twist.
             rotationStartPositions = [:]
@@ -3921,14 +3963,18 @@ struct FloorGridView: View {
     private func finishSpacingMagnification(_ magnification: CGFloat) {
         guard !spacingStartPositions.isEmpty else { return }
 
+        let hadLiveMutation = lastAppliedSpacingPositions != spacingStartPositions
         spacingDidChange = applySpacingMagnification(magnification)
         if spacingDidChange {
             appendUndoSnapshot(positions: spacingStartPositions)
-            refreshTransitionFromStore()
-            store.saveNow()
             UISelectionFeedbackGenerator().selectionChanged()
         }
+        if hadLiveMutation || lastAppliedSpacingPositions != spacingStartPositions {
+            refreshTransitionFromStore()
+            store.saveNow()
+        }
         spacingStartPositions = [:]
+        lastAppliedSpacingPositions = [:]
         spacingDidChange = false
     }
 
@@ -3942,6 +3988,8 @@ struct FloorGridView: View {
             courtSize: CGSize(width: CourtConstants.width, height: CourtConstants.height)
         )
         let didChange = positions != spacingStartPositions
+        guard positions != lastAppliedSpacingPositions else { return didChange }
+        lastAppliedSpacingPositions = positions
         let editableID = displayedEditableFormationID
 
         store.mutateFormation(id: editableID) { formation in
@@ -3950,7 +3998,7 @@ struct FloorGridView: View {
                 formation.placements[placementIndex].position = position
             }
         }
-        refreshTransitionFromStore()
+        refreshTransitionFromStore(recomputePathCollisions: false)
         return didChange
     }
 
@@ -4471,14 +4519,16 @@ struct FloorGridView: View {
         isDraggingEndpoint = false
         draggingWaypointID = nil
         endpointDragStartPosition = nil
+        lastAppliedEndpointDragPosition = nil
     }
 
-    private func refreshTransitionFromStore() {
+    private func refreshTransitionFromStore(recomputePathCollisions: Bool = true) {
         guard let player, let startFormationID, let endFormationID else { return }
         player.refresh(
             startAthletes: store.renderedAthletes(for: startFormationID),
             endAthletes: store.renderedAthletes(for: endFormationID),
-            transitionSpec: store.transitionSpec(for: startFormationID, to: endFormationID)
+            transitionSpec: store.transitionSpec(for: startFormationID, to: endFormationID),
+            recomputePathCollisions: recomputePathCollisions
         )
     }
 

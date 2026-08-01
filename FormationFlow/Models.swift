@@ -3058,7 +3058,7 @@ final class TransitionPlayer: ObservableObject {
         }
     }
 
-    private func updateTimingCache() {
+    private func updateTimingCache(recomputePathCollisions: Bool = true) {
         var newTimingCache: [UUID: (endAthlete: RenderedAthlete, transition: AthleteTransition, travel: CGFloat, hold: CGFloat, effectiveTime: CGFloat, thresholds: [CGFloat], nodes: [CGPoint], lengths: [CGFloat], totalLength: CGFloat)] = [:]
         newTimingCache.reserveCapacity(startAthletes.count)
 
@@ -3090,7 +3090,7 @@ final class TransitionPlayer: ObservableObject {
 
         self.timingCache = newTimingCache
         self.maxEffectiveTime = newMaxEffectiveTime
-        updatePathCaches()
+        updatePathCaches(recomputeCollisions: recomputePathCollisions)
 
         let finalMaxEffectiveTime = newTimingCache.map { athleteID, cached in
             let collisionHold = collisionResponseCache[athleteID]?.reduce(CGFloat(0)) { $0 + $1.holdCounts } ?? 0
@@ -3110,7 +3110,7 @@ final class TransitionPlayer: ObservableObject {
         }
     }
 
-    private func updatePathCaches() {
+    private func updatePathCaches(recomputeCollisions: Bool) {
         cachedTransitionPaths = startAthletes.compactMap { athlete in
             guard let cached = timingCache[athlete.id] else { return nil }
             return TransitionPathRenderItem(
@@ -3121,6 +3121,18 @@ final class TransitionPlayer: ObservableObject {
                 waypoints: cached.transition.pathWaypoints,
                 moveDelay: cached.transition.moveDelay
             )
+        }
+
+        // Gesture updates need the latest path geometry immediately, but the
+        // 60-sample collision pass is too expensive to repeat for every touch
+        // event. Clear collision-derived state while editing and rebuild it once
+        // the gesture commits so stale warnings/responses are never displayed.
+        guard recomputeCollisions else {
+            cachedPathCollisionIDs = []
+            cachedPathCollisionMarkers = []
+            cachedPathCollisionMarkerProgresses = []
+            collisionResponseCache = [:]
+            return
         }
 
         let collisions = PathCalculations.findPathCollisionDetails(
@@ -3142,7 +3154,8 @@ final class TransitionPlayer: ObservableObject {
     func refresh(
         startAthletes: [RenderedAthlete],
         endAthletes: [RenderedAthlete],
-        transitionSpec: TransitionSpec
+        transitionSpec: TransitionSpec,
+        recomputePathCollisions: Bool = true
     ) {
         // Batch property updates to avoid cascading didSet → updateTimingCache()
         // which previously ran findPathCollisionIDs 3-4 times per refresh.
@@ -3154,7 +3167,7 @@ final class TransitionPlayer: ObservableObject {
         isBatchRefreshing = false
         updateEndLookup()
         updateTransitionLookup()
-        updateTimingCache()
+        updateTimingCache(recomputePathCollisions: recomputePathCollisions)
         updateAthletesForProgress()
     }
 
@@ -3370,11 +3383,19 @@ final class TransitionPreviewSession: ObservableObject {
         let transitionSpec = store.transitionSpec(for: startFormationID, to: endFormationID)
 
         if let player, self.startFormationID == startFormationID, self.endFormationID == endFormationID {
-            player.refresh(
-                startAthletes: startAthletes,
-                endAthletes: endAthletes,
-                transitionSpec: transitionSpec
-            )
+            // FloorGridView refreshes its preview synchronously after editor
+            // mutations. Avoid repeating that work when the broader workspace
+            // publication reaches FormationHomeView on the following render.
+            if player.startAthletes != startAthletes
+                || player.endAthletes != endAthletes
+                || player.transitionSpec != transitionSpec
+            {
+                player.refresh(
+                    startAthletes: startAthletes,
+                    endAthletes: endAthletes,
+                    transitionSpec: transitionSpec
+                )
+            }
         } else {
             let newPlayer = TransitionPlayer(
                 startAthletes: startAthletes,
