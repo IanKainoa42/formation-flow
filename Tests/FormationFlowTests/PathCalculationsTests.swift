@@ -227,8 +227,12 @@ final class PathCalculationsTests: XCTestCase {
 
         let response1 = try XCTUnwrap(details.responses[athlete1]?.first)
         let response2 = try XCTUnwrap(details.responses[athlete2]?.first)
+        let collisionStart1 = try XCTUnwrap(details.startProgresses[athlete1])
+        let collisionStart2 = try XCTUnwrap(details.startProgresses[athlete2])
         let markerProgress = try XCTUnwrap(details.markerProgresses.first)
         XCTAssertEqual(markerProgress, 0.422, accuracy: 0.02)
+        XCTAssertEqual(collisionStart1, 0.45, accuracy: 0.02)
+        XCTAssertEqual(collisionStart2, 0.45, accuracy: 0.02)
         XCTAssertLessThan(markerProgress, response1.progress)
         XCTAssertEqual(response1.holdCounts, 0.1)
         XCTAssertEqual(response2.holdCounts, 0.1)

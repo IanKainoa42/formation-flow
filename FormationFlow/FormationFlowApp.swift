@@ -812,7 +812,11 @@ private struct PathsDemoFloor: View {
             let m = FloorMetrics(geo)
             let formColor = OB.pageColor(colorIndex)
             let nextColor = OB.pageColor(colorIndex + 1)
-            let collisions = PathCalculations.findPathCollisionIDs(paths: paths, counts: 8)
+            let collisions = PathCalculations.findPathCollisionDetails(
+                paths: paths,
+                counts: 8,
+                detailLevel: .markersOnly
+            )
 
             ZStack {
                 FloorCanvasView(
@@ -820,7 +824,8 @@ private struct PathsDemoFloor: View {
                     selectedAthleteIDs: Self.selected,
                     transitionPaths: paths,
                     collisionIDs: [],
-                    pathCollisionIDs: collisions,
+                    pathCollisionIDs: collisions.ids,
+                    pathCollisionStartProgresses: collisions.startProgresses,
                     cellSize: m.cell,
                     offset: CGPoint(x: 0, y: m.yOffset),
                     hasTransition: false,
@@ -852,14 +857,14 @@ private struct PathsDemoFloor: View {
                 // Adaptive hint: teach the gesture, then name a collision when one fires.
                 VStack {
                     Spacer()
-                    if !collisions.isEmpty {
+                    if !collisions.ids.isEmpty {
                         floorHint("Collision — they'd fight for the same spot", icon: "exclamationmark.triangle.fill")
                     } else if !didBend {
                         floorHint("Drag a handle to bend the path", icon: "hand.draw.fill")
                     }
                 }
                 .padding(.bottom, 16)
-                .animation(.easeInOut(duration: 0.2), value: collisions.isEmpty)
+                .animation(.easeInOut(duration: 0.2), value: collisions.ids.isEmpty)
             }
         }
     }
@@ -1005,6 +1010,7 @@ private struct FlowStepDemoFloor: View {
                     transitionPaths: scenario.paths,
                     collisionIDs: liveCollisions,
                     pathCollisionIDs: scenario.collisionIDs,
+                    pathCollisionStartProgresses: scenario.collisionStartProgresses,
                     cellSize: m.cell,
                     offset: CGPoint(x: 0, y: m.yOffset),
                     hasTransition: true,
@@ -1219,6 +1225,7 @@ final class OnboardingDemo {
         let paths: [TransitionPathRenderItem]
         let spec: TransitionSpec
         let collisionIDs: Set<UUID>
+        let collisionStartProgresses: [UUID: CGFloat]
     }
 
     /// The V→Lines move, but athletes 5 & 6 are routed head-on through the same
@@ -1262,8 +1269,19 @@ final class OnboardingDemo {
             duration: 8,
             athleteTransitions: transitions
         )
-        let collisions = PathCalculations.findPathCollisionIDs(paths: items, counts: 8)
-        return PreviewScenario(start: start, end: end, paths: items, spec: spec, collisionIDs: collisions)
+        let collisions = PathCalculations.findPathCollisionDetails(
+            paths: items,
+            counts: 8,
+            detailLevel: .markersOnly
+        )
+        return PreviewScenario(
+            start: start,
+            end: end,
+            paths: items,
+            spec: spec,
+            collisionIDs: collisions.ids,
+            collisionStartProgresses: collisions.startProgresses
+        )
     }
 }
 

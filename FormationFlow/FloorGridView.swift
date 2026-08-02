@@ -1394,6 +1394,7 @@ struct FloorGridView: View {
                 pathCollisionIDs: pathCollisionIDs,
                 pathCollisionMarkerPositions: player?.cachedPathCollisionMarkers ?? [],
                 pathCollisionMarkerProgresses: player?.cachedPathCollisionMarkerProgresses ?? [],
+                pathCollisionStartProgresses: player?.cachedPathCollisionStartProgresses ?? [:],
                 animatePathCollisionWarnings: !isCanvasInteractionActive,
                 cellSize: cellSize,
                 offset: offset,
@@ -4905,6 +4906,7 @@ struct FloorGridView: View {
             pathCollisionIDs: pathCollisionIDs,
             pathCollisionMarkerPositions: player?.cachedPathCollisionMarkers ?? [],
             pathCollisionMarkerProgresses: player?.cachedPathCollisionMarkerProgresses ?? [],
+            pathCollisionStartProgresses: player?.cachedPathCollisionStartProgresses ?? [:],
             startFormationColor: transitionStartColor,
             endFormationColor: transitionEndColor,
             transitionProgress: displayProgress

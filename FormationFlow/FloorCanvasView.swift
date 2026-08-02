@@ -137,6 +137,7 @@ struct FloorCanvasView: View {
     var pathCollisionIDs: Set<UUID> = []
     var pathCollisionMarkerPositions: [CGPoint] = []
     var pathCollisionMarkerProgresses: [CGFloat] = []
+    var pathCollisionStartProgresses: [UUID: CGFloat] = [:]
     /// Keeps collision paths and markers visible while suppressing their blink/pulse clocks.
     var animatePathCollisionWarnings = true
     var blinkingResolvedIDs: Set<UUID> = []
@@ -266,14 +267,13 @@ struct FloorCanvasView: View {
                 drawGroupHarnesses(in: &context)
                 // Step mode: work out who can't reach their spot in the counts, and
                 // whether the counts are spent (the rest phase). Once they're out of
-                // time, their whole path blinks blue↔purple — the same treatment the
-                // collision paths get in red↔orange.
+                // time, only the unreachable suffix blinks blue↔purple.
                 let stepCycle: StepCycle? = stepActive
                     ? computeStepCycle(time: timeline.date.timeIntervalSinceReferenceDate)
                     : nil
-                let pathStepWarn: (ids: Set<UUID>, color: Color)? = {
+                let pathStepWarn: (ids: Set<UUID>, startProgresses: [UUID: CGFloat], color: Color)? = {
                     guard let c = stepCycle, c.countsDone, !c.shortIDs.isEmpty else { return nil }
-                    return (c.shortIDs, c.warnColor)
+                    return (c.shortIDs, c.shortStartProgresses, c.warnColor)
                 }()
                 drawTransitionPaths(in: &context, collisionColor: collisionColor, stepWarn: pathStepWarn)
                 if showCountSteps {
@@ -826,25 +826,37 @@ struct FloorCanvasView: View {
         return startsAtWaypoint || endsAtWaypoint
     }
 
-    private func drawTransitionPaths(in context: inout GraphicsContext, collisionColor: Color, stepWarn: (ids: Set<UUID>, color: Color)? = nil) {
+    private func drawTransitionPaths(
+        in context: inout GraphicsContext,
+        collisionColor: Color,
+        stepWarn: (ids: Set<UUID>, startProgresses: [UUID: CGFloat], color: Color)? = nil
+    ) {
         let pathOpacityMultiplier: CGFloat = focusedEndpoint != nil ? 0.5 : 1.0
         for item in transitionPaths {
             let start = CGPoint(x: item.startPosition.x * cellSize, y: item.startPosition.y * cellSize)
             let end = CGPoint(x: item.endPosition.x * cellSize, y: item.endPosition.y * cellSize)
             let isSelected = selectedAthleteIDs.contains(item.athleteID)
             let isColliding = pathCollisionIDs.contains(item.athleteID)
-            // "Out of time" path — blinks blue↔purple, the same loud treatment a
-            // collision path gets in red↔orange. Collision still wins if both apply.
+            // Collision wins when both warnings apply, matching the existing
+            // hierarchy while letting both use a precise suffix cutoff.
             let isOutOfTime = !isColliding && (stepWarn?.ids.contains(item.athleteID) ?? false)
-            let isAlert = isColliding || isOutOfTime
-            // Color hierarchy: collision = pulsing red, out-of-time = pulsing
-            // blue/purple, selected = white, everything else = neutral dim.
-            let pathColor: Color = isColliding ? collisionColor
-                : (isOutOfTime ? (stepWarn?.color ?? .blue) : (isSelected ? .white : Color(white: 0.72)))
+            let alertStartProgress: CGFloat? = isColliding
+                ? (pathCollisionStartProgresses[item.athleteID] ?? 0)
+                : (isOutOfTime ? stepWarn?.startProgresses[item.athleteID] : nil)
+            let alertSuffixPolyline: [CGPoint]? = alertStartProgress.map {
+                pathSuffixPolyline(
+                    for: item,
+                    startingAt: $0
+                )
+            }
+            let alertColor = isColliding ? collisionColor : (stepWarn?.color ?? .blue)
+            // Keep the reachable route readable in its normal color. The active
+            // warning is overlaid only from the first conflict or missed step onward.
+            let pathColor: Color = isSelected ? .white : Color(white: 0.72)
             let isPathHovered = hoveredPathAthleteID == item.athleteID
             let isSelectedPathHovered = isSelected && isPathHovered
-            let lineWidth: CGFloat = isAlert ? 2.4 : 2
-            let basePathOpacity: CGFloat = isAlert ? 0.95 : (isSelected ? 0.85 : 0.4)
+            let lineWidth: CGFloat = 2
+            let basePathOpacity: CGFloat = isSelected ? 0.85 : 0.4
             let pathOpacity = isSelectedPathHovered ? 0.95 * pathOpacityMultiplier : basePathOpacity * pathOpacityMultiplier
 
             if !item.waypoints.isEmpty {
@@ -872,6 +884,16 @@ struct FloorCanvasView: View {
                         lineWidth: lineWidth
                     )
 
+                }
+
+                if let alertSuffixPolyline {
+                    drawPathPolyline(
+                        in: &context,
+                        points: alertSuffixPolyline,
+                        color: alertColor,
+                        opacity: 0.95 * pathOpacityMultiplier,
+                        lineWidth: 2.4
+                    )
                 }
 
                 if isSelected {
@@ -957,6 +979,16 @@ struct FloorCanvasView: View {
                 }
                 context.stroke(path, with: .color(pathColor.opacity(pathOpacity)), lineWidth: lineWidth)
 
+                if let alertSuffixPolyline {
+                    drawPathPolyline(
+                        in: &context,
+                        points: alertSuffixPolyline,
+                        color: alertColor,
+                        opacity: 0.95 * pathOpacityMultiplier,
+                        lineWidth: 2.4
+                    )
+                }
+
                 if isSelected {
                     let midpoint: CGPoint
                     if let control = item.controlPoint {
@@ -996,9 +1028,9 @@ struct FloorCanvasView: View {
 
             // Direction is shown by chevrons marching along the whole path
             // (not just one arrowhead) so it stays readable amid ghost paths.
-            // Chevron brightness follows the same hierarchy as the base stroke:
-            // collision loudest, selected bright white, others dim/neutral.
-            let chevronOpacity = (isAlert ? 0.95 : (isSelected ? 0.9 : 0.55)) * pathOpacityMultiplier
+            // Normal chevrons remain visible before the cutoff. Warning chevrons
+            // are overlaid only along the unresolved or unreachable suffix.
+            let chevronOpacity = (isSelected ? 0.9 : 0.55) * pathOpacityMultiplier
             drawDirectionChevrons(
                 in: &context,
                 along: pathPolyline(for: item),
@@ -1008,6 +1040,18 @@ struct FloorCanvasView: View {
                 size: max(5, 6 * markerScale),
                 lineWidth: max(1.8, 2.2 * markerScale)
             )
+
+            if let alertSuffixPolyline {
+                drawDirectionChevrons(
+                    in: &context,
+                    along: alertSuffixPolyline,
+                    color: alertColor,
+                    opacity: 0.95 * pathOpacityMultiplier,
+                    spacing: max(8, 10 * markerScale),
+                    size: max(5, 6 * markerScale),
+                    lineWidth: max(1.8, 2.2 * markerScale)
+                )
+            }
 
             drawGhostCircle(in: &context, center: start)
             drawGhostCircle(in: &context, center: end)
@@ -1051,6 +1095,79 @@ struct FloorCanvasView: View {
         } else {
             return [start, end]
         }
+    }
+
+    /// Samples only the part of a route at or beyond a warning cutoff. Both
+    /// collision and step analysis report the normalized path progress used here,
+    /// so curved and multi-waypoint paths switch color at the correct location.
+    private func pathSuffixPolyline(
+        for item: TransitionPathRenderItem,
+        startingAt startProgress: CGFloat
+    ) -> [CGPoint] {
+        let clampedStart = max(0, min(1, startProgress))
+        let samples = max(2, Int(ceil((1 - clampedStart) * 24)))
+
+        if !item.waypoints.isEmpty {
+            let lengths = PathCalculations.segmentLengths(item.nodes)
+            let totalLength = lengths.reduce(0, +)
+            return (0...samples).map { sample in
+                let progress = clampedStart
+                    + (1 - clampedStart) * CGFloat(sample) / CGFloat(samples)
+                let position = PathCalculations.interpolateWaypointPath(
+                    nodes: item.nodes,
+                    lengths: lengths,
+                    totalLength: totalLength,
+                    waypoints: item.waypoints,
+                    progress: progress
+                )
+                return CGPoint(x: position.x * cellSize, y: position.y * cellSize)
+            }
+        }
+
+        let start = CGPoint(x: item.startPosition.x * cellSize, y: item.startPosition.y * cellSize)
+        let end = CGPoint(x: item.endPosition.x * cellSize, y: item.endPosition.y * cellSize)
+        if let control = item.controlPoint {
+            let controlPoint = CGPoint(x: control.x * cellSize, y: control.y * cellSize)
+            return (0...samples).map { sample in
+                let progress = clampedStart
+                    + (1 - clampedStart) * CGFloat(sample) / CGFloat(samples)
+                return PathCalculations.quadraticBezierPoint(
+                    from: start,
+                    control: controlPoint,
+                    to: end,
+                    t: progress
+                )
+            }
+        }
+
+        return (0...samples).map { sample in
+            let progress = clampedStart
+                + (1 - clampedStart) * CGFloat(sample) / CGFloat(samples)
+            return CGPoint(
+                x: start.x + (end.x - start.x) * progress,
+                y: start.y + (end.y - start.y) * progress
+            )
+        }
+    }
+
+    private func drawPathPolyline(
+        in context: inout GraphicsContext,
+        points: [CGPoint],
+        color: Color,
+        opacity: CGFloat,
+        lineWidth: CGFloat
+    ) {
+        guard let first = points.first, points.count > 1 else { return }
+        var path = Path()
+        path.move(to: first)
+        for point in points.dropFirst() {
+            path.addLine(to: point)
+        }
+        context.stroke(
+            path,
+            with: .color(color.opacity(opacity)),
+            style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round)
+        )
     }
 
     /// Stroke ">" chevrons evenly along a polyline, each pointing toward the
@@ -1122,13 +1239,14 @@ struct FloorCanvasView: View {
     private static let warningPurple = Color(red: 0.72, green: 0.36, blue: 1.0)
 
     /// The state of the shared step cycle for one frame — lanes, timing, and who
-    /// ran out of counts. Computed before paths are drawn so the path stroke can
-    /// blink for out-of-time athletes, then reused to render the LED blips.
+    /// ran out of counts. Computed before paths are drawn so the unreachable
+    /// suffix can blink, then reused to render the LED blips.
     private struct StepCycle {
         let lanes: [StepLane]
         let cap: Int
         let elapsedBeats: Double
         let shortIDs: Set<UUID>
+        let shortStartProgresses: [UUID: CGFloat]
         let countsDone: Bool   // the counts are spent — everyone has stopped
         let warnColor: Color   // blinks blue↔purple on the beat
     }
@@ -1157,7 +1275,11 @@ struct FloorCanvasView: View {
         }
         guard !lanes.isEmpty else { return nil }
 
-        let shortIDs = Set(lanes.filter { $0.strides > cap }.map { $0.item.athleteID })
+        let shortLanes = lanes.filter { $0.strides > cap }
+        let shortIDs = Set(shortLanes.map { $0.item.athleteID })
+        let shortStartProgresses = shortLanes.reduce(into: [UUID: CGFloat]()) { result, lane in
+            result[lane.item.athleteID] = CGFloat(cap) / CGFloat(lane.strides)
+        }
         // Hold the parked formation longer when someone's out of time, so the
         // blue↔purple alert blinks a few times before the cycle relaunches.
         let restBeats: Double = shortIDs.isEmpty ? 1.0 : 4.0
@@ -1172,7 +1294,8 @@ struct FloorCanvasView: View {
 
         return StepCycle(
             lanes: lanes, cap: cap, elapsedBeats: elapsedBeats,
-            shortIDs: shortIDs, countsDone: countsDone, warnColor: warnColor
+            shortIDs: shortIDs, shortStartProgresses: shortStartProgresses,
+            countsDone: countsDone, warnColor: warnColor
         )
     }
 
