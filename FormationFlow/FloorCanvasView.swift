@@ -2571,6 +2571,8 @@ private struct AthleteAccessibilityElement: View {
 /// pinch/rotate keep working untouched. SwiftUI has no count-based tap/drag
 /// gesture, so this UIKit bridge is the only way to read a two-finger gesture.
 struct TwoFingerPlaybackGesture: UIViewRepresentable {
+    /// When false, both recognizers yield to multi-selection pinch/rotation.
+    var playbackEnabled: Bool = true
     /// When false, the scrub (pan) recognizer is disabled — tap-to-toggle only.
     var scrubEnabled: Bool
     /// Two-finger tap: toggle play/pause.
@@ -2592,7 +2594,8 @@ struct TwoFingerPlaybackGesture: UIViewRepresentable {
 
     func updateUIView(_ uiView: AnchorView, context: Context) {
         context.coordinator.parent = self
-        context.coordinator.pan?.isEnabled = scrubEnabled
+        context.coordinator.tap?.isEnabled = playbackEnabled
+        context.coordinator.pan?.isEnabled = playbackEnabled && scrubEnabled
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -2638,7 +2641,7 @@ struct TwoFingerPlaybackGesture: UIViewRepresentable {
             pan.maximumNumberOfTouches = 2
             pan.delegate = self
             pan.cancelsTouchesInView = false
-            pan.isEnabled = parent.scrubEnabled
+            pan.isEnabled = parent.playbackEnabled && parent.scrubEnabled
             window.addGestureRecognizer(pan)
             self.pan = pan
 

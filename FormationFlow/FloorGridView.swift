@@ -1495,7 +1495,8 @@ struct FloorGridView: View {
             // gestures for spacing and rotation.
             .background(
                 TwoFingerPlaybackGesture(
-                    scrubEnabled: hasTransition && selectedAthleteIDs.count < 2,
+                    playbackEnabled: selectedAthleteIDs.count < 2,
+                    scrubEnabled: hasTransition,
                     onPlayToggle: {
                         guard let player, hasTransition else { return }
                         player.isPlaying ? player.pause() : player.play()
