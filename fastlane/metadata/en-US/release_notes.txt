@@ -1,4 +1,5 @@
-• Draw paths for multiple athletes at once with group path sketching
-• Formation drag preview stays pinned during transitions
-• Group rotation snaps to clean angle increments
-• Improved path pulse lighting and shadows
+• Faster, smoother path editing with less redraw work while you move athletes and handles
+• Collision points stay visible during edits without distracting beam or blinking effects
+• Collision warnings now color only the affected route from the conflict onward
+• Step-limit warnings now color only the portion an athlete cannot complete in time
+• Pinch a multi-athlete selection to adjust spacing while preserving the group layout

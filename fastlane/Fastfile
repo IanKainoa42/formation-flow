@@ -72,19 +72,25 @@ platform :ios do
 
     sh("rm -rf #{work.shellescape} && mkdir -p #{payload.shellescape}")
 
-    # 0. Auto-derive the build number from ASC so it can never collide — however
-    # this lane is invoked (raw `fastlane beta`/`release` or via `/ship`). Override
-    # CURRENT_PROJECT_VERSION on the archive command itself (no agvtool, no
-    # project-file mutation). On ANY ASC lookup failure, fall back to the project's
-    # own value so a transient ASC hiccup never blocks a ship.
+    # 0. Prefer an explicit /ship build number so a concurrent Xcode Cloud upload
+    # cannot race this archive. For ad-hoc beta/release runs, auto-derive the next
+    # number from ASC. Override CURRENT_PROJECT_VERSION on the archive command
+    # itself (no agvtool or project-file mutation).
     app_id = ENV["SHIP_BUNDLE_ID"] || "com.ianrichardson.formationflow"
     build_override = ""
-    begin
-      latest = latest_testflight_build_number(api_key: api_key, app_identifier: app_id, initial_build_number: 0).to_i
-      build_override = " CURRENT_PROJECT_VERSION=#{latest + 1}"
-      UI.message("Auto build number from ASC: #{latest + 1} (ASC max #{latest})")
-    rescue => e
-      UI.important("ASC build-number lookup failed (#{e.message}); using project's CURRENT_PROJECT_VERSION")
+    requested_build = ENV["SHIP_BUILD_NUMBER"].to_s.strip
+    if !requested_build.empty?
+      UI.user_error!("SHIP_BUILD_NUMBER must be a positive integer") unless requested_build.match?(/\A[1-9]\d*\z/)
+      build_override = " CURRENT_PROJECT_VERSION=#{requested_build}"
+      UI.message("Using explicit /ship build number #{requested_build}")
+    else
+      begin
+        latest = latest_testflight_build_number(api_key: api_key, app_identifier: app_id, initial_build_number: 0).to_i
+        build_override = " CURRENT_PROJECT_VERSION=#{latest + 1}"
+        UI.message("Auto build number from ASC: #{latest + 1} (ASC max #{latest})")
+      rescue => e
+        UI.important("ASC build-number lookup failed (#{e.message}); using project's CURRENT_PROJECT_VERSION")
+      end
     end
 
     # 1. Archive — this works; only `-exportArchive` is broken.
@@ -94,6 +100,21 @@ platform :ios do
 
     # 2. Hand-assemble + re-sign the IPA (the documented openrsync workaround).
     sh("cp -R #{"#{archive}/Products/Applications/#{scheme}.app".shellescape} #{payload.shellescape}/")
+
+    # Fail before upload if Xcode ignored or replaced the requested release
+    # identity. This is especially important because Info.plist and the Xcode
+    # project have historically drifted in this repository.
+    actual_version = `/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' #{"#{app}/Info.plist".shellescape}`.strip
+    actual_build = `/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' #{"#{app}/Info.plist".shellescape}`.strip
+    requested_version = ENV["SHIP_APP_VERSION"].to_s.strip
+    if !requested_version.empty? && actual_version != requested_version
+      UI.user_error!("Archived version #{actual_version} does not match SHIP_APP_VERSION=#{requested_version}")
+    end
+    if !requested_build.empty? && actual_build != requested_build
+      UI.user_error!("Archived build #{actual_build} does not match SHIP_BUILD_NUMBER=#{requested_build}")
+    end
+    UI.message("Verified archived release identity: #{actual_version} (#{actual_build})")
+
     sh("cp #{profile.shellescape} #{"#{app}/embedded.mobileprovision".shellescape}")
 
     # 2a. Normalize BuildMachineOSBuild when archiving on a *beta* macOS.
@@ -170,17 +191,24 @@ platform :ios do
 
   desc "Submit an already-uploaded build for review, auto-release after approval. (/ship Phase 2)"
   lane :ship_submit do
+    app_version = ENV["SHIP_APP_VERSION"].to_s.strip
+    build_number = ENV["SHIP_BUILD_NUMBER"].to_s.strip
+    UI.user_error!("SHIP_APP_VERSION is required") if app_version.empty?
+    UI.user_error!("SHIP_BUILD_NUMBER is required") if build_number.empty?
+
     # ENV["SHIP_BUILD_NUMBER"] selects which uploaded build to submit.
     upload_to_app_store(
       api_key: api_key,
-      build_number: ENV["SHIP_BUILD_NUMBER"],
+      app_identifier: ENV["SHIP_BUNDLE_ID"] || "com.ianrichardson.formationflow",
+      app_version: app_version,
+      build_number: build_number,
       skip_binary_upload: true,   # binary already uploaded by ship_upload
-      skip_metadata: true,        # managed via ASC API (see :release)
+      skip_metadata: false,       # includes the required What's New text
       skip_screenshots: true,
       force: true,
-      skip_app_version_update: true,  # binary already uploaded at correct version; don't let deliver read a stray IPA
-      run_precheck_before_submit: true,
+      run_precheck_before_submit: false, # precheck needs Apple ID auth, not API-key auth
       precheck_include_in_app_purchases: false,
+      reject_if_possible: true,
       submit_for_review: true,
       automatic_release: true,
       submission_information: { export_compliance_uses_encryption: false }
