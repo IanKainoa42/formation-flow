@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		334C42A5B839654CCBC14ACF /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F4F48ABA5AD5A9438964E6B /* Models.swift */; };
 		5A25437D9A0BBC0AC8856EE5 /* FormationFlowApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21E94990B494F1D3D617A4E7 /* FormationFlowApp.swift */; };
+		76954392907776D3D5EA6400 /* RoutinePDFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E0F49798D236EBFBB832F29 /* RoutinePDFExporter.swift */; };
 		93064509B038206204B9459D /* FloorGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFC34761911C80E5631C8341 /* FloorGridView.swift */; };
 		A1B2C3D4E5F6A7B8C9D0E1F2 /* FormationHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F6A7B8C9D0E1F2A3 /* FormationHomeView.swift */; };
 		AA000001AA000001AA000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1F08C9AC2F57AAC400425930 /* Assets.xcassets */; };
@@ -33,6 +34,7 @@
 		303A4352BC4FD6FB758B338C /* FloorCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FloorCanvasView.swift; path = FormationFlow/FloorCanvasView.swift; sourceTree = SOURCE_ROOT; };
 		4F4F48ABA5AD5A9438964E6B /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Models.swift; path = FormationFlow/Models.swift; sourceTree = SOURCE_ROOT; };
 		4FD34039AE5F73A96066C39B /* AthleteDetailPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AthleteDetailPanel.swift; path = FormationFlow/AthleteDetailPanel.swift; sourceTree = SOURCE_ROOT; };
+		9E0F49798D236EBFBB832F29 /* RoutinePDFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RoutinePDFExporter.swift; path = FormationFlow/RoutinePDFExporter.swift; sourceTree = SOURCE_ROOT; };
 		B2C3D4E5F6A7B8C9D0E1F2A3 /* FormationHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FormationHomeView.swift; path = FormationFlow/FormationHomeView.swift; sourceTree = SOURCE_ROOT; };
 		BB110001BB110001BB110001 /* EntitlementManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EntitlementManager.swift; path = FormationFlow/EntitlementManager.swift; sourceTree = SOURCE_ROOT; };
 		BB110002BB110002BB110002 /* FreeTierLimits.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FreeTierLimits.swift; path = FormationFlow/FreeTierLimits.swift; sourceTree = SOURCE_ROOT; };
@@ -52,6 +54,7 @@
 				1FEE78952F3E5EB100012373 /* FormationFlow */,
 				1FEE788D2F3E5E9900012373 /* Products */,
 				BB110004BB110004BB110004 /* FormationFlow.storekit */,
+				9E0F49798D236EBFBB832F29 /* RoutinePDFExporter.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -162,6 +165,7 @@
 				EE110001EE110001EE110001 /* FormationThumbnailView.swift in Sources */,
 				EE110002EE110002EE110002 /* FormationThumbnailStrip.swift in Sources */,
 				EE110003EE110003EE110003 /* PortraitActionBar.swift in Sources */,
+				76954392907776D3D5EA6400 /* RoutinePDFExporter.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -175,12 +179,12 @@
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 287;
+				CURRENT_PROJECT_VERSION = 288;
 				INFOPLIST_FILE = FormationFlow/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = FormationFlow;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.sports";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.0.8;
+				MARKETING_VERSION = 1.0.9;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ianrichardson.formationflow;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -285,12 +289,12 @@
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 287;
+				CURRENT_PROJECT_VERSION = 288;
 				INFOPLIST_FILE = FormationFlow/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = FormationFlow;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.sports";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.0.8;
+				MARKETING_VERSION = 1.0.9;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ianrichardson.formationflow;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;

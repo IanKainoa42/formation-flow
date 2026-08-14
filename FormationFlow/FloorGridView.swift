@@ -237,6 +237,7 @@ struct FloorGridView: View {
     @State private var focusedPathHandle: CGPoint?
     @State private var playerTick: UInt = 0
     @State private var sharePayload: TransitionSharePayload?
+    @State private var documentSharePayload: DocumentSharePayload?
     @State private var shareResultMessage = ""
     @State private var showingShareResult = false
     @State private var recentPathEditSnapshot: PathEditUndoSnapshot?
@@ -876,6 +877,15 @@ struct FloorGridView: View {
                 sharePayload = nil
             }
         }
+        .sheet(item: $documentSharePayload) { payload in
+            ShareSheetView(items: [payload.url]) { completed, activityType in
+                if completed {
+                    shareResultMessage = "Export completed successfully"
+                    showingShareResult = true
+                }
+                documentSharePayload = nil
+            }
+        }
         .alert("Rename Athlete", isPresented: $showingAthleteRenamePrompt) {
             TextField("Label", text: $athleteLabelDraft)
                 .autocorrectionDisabled()
@@ -1227,6 +1237,22 @@ struct FloorGridView: View {
 
             Button(action: { showingNotesSheet = true }) {
                 Label("Notes", systemImage: "note.text")
+            }
+
+            if !hasTransition {
+                Button(action: {
+                    if let formationID = formation?.id {
+                        if let url = RoutinePDFExporter.generatePDF(for: formationID, in: store) {
+                            documentSharePayload = DocumentSharePayload(url: url)
+                        }
+                    }
+                }) {
+                    Label("Export PDF", systemImage: "doc.text")
+                }
+                
+                Button(action: mirrorFormation) {
+                    Label("Mirror Formation", systemImage: "arrow.left.and.right.righttriangle.left.righttriangle.right.fill")
+                }
             }
 
             if hasTransition {
@@ -1975,6 +2001,20 @@ struct FloorGridView: View {
             if canShareTransition {
                 Button(action: shareTransitionPreview) {
                     Label("Share Preview", systemImage: "square.and.arrow.up")
+                }
+            } else {
+                Button(action: {
+                    if let formationID = formation?.id {
+                        if let url = RoutinePDFExporter.generatePDF(for: formationID, in: store) {
+                            documentSharePayload = DocumentSharePayload(url: url)
+                        }
+                    }
+                }) {
+                    Label("Export PDF", systemImage: "doc.text")
+                }
+                
+                Button(action: mirrorFormation) {
+                    Label("Mirror Formation", systemImage: "arrow.left.and.right.righttriangle.left.righttriangle.right.fill")
                 }
             }
 
@@ -3857,8 +3897,15 @@ struct FloorGridView: View {
             },
             skipLinearGuides: false
         )
-        activeAlignmentGuides = snapResult.alignmentGuides
-        activeMirrorGuides = snapResult.mirrorGuides
+        let newAlignmentGuides = snapResult.alignmentGuides
+        let newMirrorGuides = snapResult.mirrorGuides
+        if newAlignmentGuides != activeAlignmentGuides || newMirrorGuides != activeMirrorGuides {
+            if !newAlignmentGuides.isEmpty || !newMirrorGuides.isEmpty {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: 0.6)
+            }
+        }
+        activeAlignmentGuides = newAlignmentGuides
+        activeMirrorGuides = newMirrorGuides
 
         let nextPosition = CGPoint(
             x: clampedCoordinate(endpointDragStartPosition.x + snapResult.translation.x, upperBound: CourtConstants.width),
@@ -3884,8 +3931,15 @@ struct FloorGridView: View {
             y: value.translation.height / cellSize
         )
         let snapResult = snappingResult(for: rawTranslation)
-        activeAlignmentGuides = snapResult.alignmentGuides
-        activeMirrorGuides = snapResult.mirrorGuides
+        let newAlignmentGuides = snapResult.alignmentGuides
+        let newMirrorGuides = snapResult.mirrorGuides
+        if newAlignmentGuides != activeAlignmentGuides || newMirrorGuides != activeMirrorGuides {
+            if !newAlignmentGuides.isEmpty || !newMirrorGuides.isEmpty {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: 0.6)
+            }
+        }
+        activeAlignmentGuides = newAlignmentGuides
+        activeMirrorGuides = newMirrorGuides
 
         // Resolve which formation we're actually editing. In transition preview
         // the visible athletes come from player.startAthletes / player.endAthletes
@@ -4789,6 +4843,26 @@ struct FloorGridView: View {
         if let swapSourceAthleteID, !validAthleteIDs.contains(swapSourceAthleteID) {
             endSwapMode()
         }
+    }
+
+    private func mirrorFormation() {
+        guard let formation = formation else { return }
+        undoStack.append(
+            FormationMoveUndoSnapshot(
+                formationID: formationID,
+                positions: Dictionary(uniqueKeysWithValues: formation.placements.map { ($0.athleteID, $0.position) })
+            )
+        )
+        store.mutateFormation(id: formationID) { form in
+            for i in form.placements.indices {
+                let x = form.placements[i].position.x
+                form.placements[i].position.x = CourtConstants.width - x
+            }
+        }
+        if let endpoint = endpoint(for: formationID) {
+            focusedEndpoint = endpoint
+        }
+        refreshTransitionFromStore()
     }
 
     private func undoLastMove() {

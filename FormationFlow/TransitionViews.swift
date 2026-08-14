@@ -64,6 +64,7 @@ enum PlaybackHaptics {
 /// animating and the live on-floor positions. Both `TransitionPlayer` and
 /// `RoutinePlayer` already publish these, so they conform retroactively here
 /// with no edit to the frozen `Models.swift`.
+@MainActor
 protocol PlaybackHapticSource: ObservableObject {
     var isPlaying: Bool { get }
     var currentAthletes: [RenderedAthlete] { get }
@@ -868,6 +869,11 @@ struct TransitionSharePayload: Identifiable {
     let image: UIImage
     let message: String
     let completionMessage: String
+}
+
+struct DocumentSharePayload: Identifiable {
+    let id = UUID()
+    let url: URL
 }
 
 struct ShareSheetView: UIViewControllerRepresentable {
