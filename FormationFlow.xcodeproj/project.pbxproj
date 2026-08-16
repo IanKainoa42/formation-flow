@@ -10,6 +10,8 @@
 		334C42A5B839654CCBC14ACF /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F4F48ABA5AD5A9438964E6B /* Models.swift */; };
 		5A25437D9A0BBC0AC8856EE5 /* FormationFlowApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21E94990B494F1D3D617A4E7 /* FormationFlowApp.swift */; };
 		76954392907776D3D5EA6400 /* RoutinePDFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E0F49798D236EBFBB832F29 /* RoutinePDFExporter.swift */; };
+		CC220004CC220004CC220004 /* PDFExportConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB110005BB110005BB110005 /* PDFExportConfiguration.swift */; };
+		CC220005CC220005CC220005 /* PDFExportSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB110006BB110006BB110006 /* PDFExportSheetView.swift */; };
 		93064509B038206204B9459D /* FloorGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFC34761911C80E5631C8341 /* FloorGridView.swift */; };
 		A1B2C3D4E5F6A7B8C9D0E1F2 /* FormationHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F6A7B8C9D0E1F2A3 /* FormationHomeView.swift */; };
 		AA000001AA000001AA000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1F08C9AC2F57AAC400425930 /* Assets.xcassets */; };
@@ -35,6 +37,8 @@
 		4F4F48ABA5AD5A9438964E6B /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Models.swift; path = FormationFlow/Models.swift; sourceTree = SOURCE_ROOT; };
 		4FD34039AE5F73A96066C39B /* AthleteDetailPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AthleteDetailPanel.swift; path = FormationFlow/AthleteDetailPanel.swift; sourceTree = SOURCE_ROOT; };
 		9E0F49798D236EBFBB832F29 /* RoutinePDFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RoutinePDFExporter.swift; path = FormationFlow/RoutinePDFExporter.swift; sourceTree = SOURCE_ROOT; };
+		BB110005BB110005BB110005 /* PDFExportConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PDFExportConfiguration.swift; path = FormationFlow/PDFExportConfiguration.swift; sourceTree = SOURCE_ROOT; };
+		BB110006BB110006BB110006 /* PDFExportSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PDFExportSheetView.swift; path = FormationFlow/PDFExportSheetView.swift; sourceTree = SOURCE_ROOT; };
 		B2C3D4E5F6A7B8C9D0E1F2A3 /* FormationHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FormationHomeView.swift; path = FormationFlow/FormationHomeView.swift; sourceTree = SOURCE_ROOT; };
 		BB110001BB110001BB110001 /* EntitlementManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EntitlementManager.swift; path = FormationFlow/EntitlementManager.swift; sourceTree = SOURCE_ROOT; };
 		BB110002BB110002BB110002 /* FreeTierLimits.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FreeTierLimits.swift; path = FormationFlow/FreeTierLimits.swift; sourceTree = SOURCE_ROOT; };
@@ -54,7 +58,6 @@
 				1FEE78952F3E5EB100012373 /* FormationFlow */,
 				1FEE788D2F3E5E9900012373 /* Products */,
 				BB110004BB110004BB110004 /* FormationFlow.storekit */,
-				9E0F49798D236EBFBB832F29 /* RoutinePDFExporter.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -78,6 +81,9 @@
 				4FD34039AE5F73A96066C39B /* AthleteDetailPanel.swift */,
 				4F4F48ABA5AD5A9438964E6B /* Models.swift */,
 				21E94990B494F1D3D617A4E7 /* FormationFlowApp.swift */,
+				9E0F49798D236EBFBB832F29 /* RoutinePDFExporter.swift */,
+				BB110005BB110005BB110005 /* PDFExportConfiguration.swift */,
+				BB110006BB110006BB110006 /* PDFExportSheetView.swift */,
 				BB110001BB110001BB110001 /* EntitlementManager.swift */,
 				BB110002BB110002BB110002 /* FreeTierLimits.swift */,
 				BB110003BB110003BB110003 /* ProUpgradeSheet.swift */,
@@ -166,6 +172,8 @@
 				EE110002EE110002EE110002 /* FormationThumbnailStrip.swift in Sources */,
 				EE110003EE110003EE110003 /* PortraitActionBar.swift in Sources */,
 				76954392907776D3D5EA6400 /* RoutinePDFExporter.swift in Sources */,
+				CC220004CC220004CC220004 /* PDFExportConfiguration.swift in Sources */,
+				CC220005CC220005CC220005 /* PDFExportSheetView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

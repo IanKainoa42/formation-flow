@@ -238,6 +238,7 @@ struct FloorGridView: View {
     @State private var playerTick: UInt = 0
     @State private var sharePayload: TransitionSharePayload?
     @State private var documentSharePayload: DocumentSharePayload?
+    @State private var showingPDFExportSheet = false
     @State private var shareResultMessage = ""
     @State private var showingShareResult = false
     @State private var recentPathEditSnapshot: PathEditUndoSnapshot?
@@ -864,6 +865,10 @@ struct FloorGridView: View {
             ProUpgradeSheet()
                 .environmentObject(entitlementManager)
         }
+        .sheet(isPresented: $showingPDFExportSheet) {
+            PDFExportSheetView(store: store, currentFormationID: formationID)
+                .environmentObject(entitlementManager)
+        }
         .sheet(item: $sharePayload) { payload in
             ShareSheetView(items: [payload.message, payload.image]) { completed, activityType in
                 if completed {
@@ -1182,6 +1187,13 @@ struct FloorGridView: View {
                     .accessibilityLabel("Manage Roster")
                     .help("Add, remove, or rename athletes on the team roster")
 
+                    Button(action: { showingPDFExportSheet = true }) {
+                        Label("Export PDF", systemImage: "doc.text")
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("Export PDF Playbook")
+                    .help("Export formation playbook as a configurable PDF")
+
                     if hasTransition {
                         Button(action: resetSelectedPaths) {
                             Label("Reset", systemImage: "arrow.counterclockwise")
@@ -1239,17 +1251,13 @@ struct FloorGridView: View {
                 Label("Notes", systemImage: "note.text")
             }
 
+            Button(action: {
+                showingPDFExportSheet = true
+            }) {
+                Label("Export PDF", systemImage: "doc.text")
+            }
+
             if !hasTransition {
-                Button(action: {
-                    if let formationID = formation?.id {
-                        if let url = RoutinePDFExporter.generatePDF(for: formationID, in: store) {
-                            documentSharePayload = DocumentSharePayload(url: url)
-                        }
-                    }
-                }) {
-                    Label("Export PDF", systemImage: "doc.text")
-                }
-                
                 Button(action: mirrorFormation) {
                     Label("Mirror Formation", systemImage: "arrow.left.and.right.righttriangle.left.righttriangle.right.fill")
                 }
@@ -1872,6 +1880,10 @@ struct FloorGridView: View {
             }
         }
 
+        Button(action: { showingPDFExportSheet = true }) {
+            Label("Export PDF", systemImage: "doc.text")
+        }
+
         Button(action: { showingRosterSheet = true }) {
             Label("Roster", systemImage: "list.bullet.rectangle")
         }
@@ -2003,19 +2015,15 @@ struct FloorGridView: View {
                     Label("Share Preview", systemImage: "square.and.arrow.up")
                 }
             } else {
-                Button(action: {
-                    if let formationID = formation?.id {
-                        if let url = RoutinePDFExporter.generatePDF(for: formationID, in: store) {
-                            documentSharePayload = DocumentSharePayload(url: url)
-                        }
-                    }
-                }) {
-                    Label("Export PDF", systemImage: "doc.text")
-                }
-                
                 Button(action: mirrorFormation) {
                     Label("Mirror Formation", systemImage: "arrow.left.and.right.righttriangle.left.righttriangle.right.fill")
                 }
+            }
+
+            Button(action: {
+                showingPDFExportSheet = true
+            }) {
+                Label("Export PDF", systemImage: "doc.text")
             }
 
             Button(action: { showingRosterSheet = true }) {
