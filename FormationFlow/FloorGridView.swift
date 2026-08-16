@@ -328,14 +328,16 @@ struct FloorGridView: View {
     }
 
     /// The transport is "engaged" while playing OR while scrubbed/paused away
-    /// from the resting start (progress > 0). When engaged we follow
+    /// from the resting start. The player retains a tiny resting epsilon after
+    /// auto-rewind to preserve endpoint ownership, so it is still idle here.
+    /// When engaged we follow
     /// `player.currentAthletes` so the scrubber animates the floor and pause
     /// freezes athletes in place. When at rest we lock to the formation's
     /// endpoint so the editor shows a crisp static formation (and progress
     /// stays 0, so the idle-reset never fires under the editor).
     private var isTransportEngaged: Bool {
         guard let player else { return false }
-        return player.isPlaying || player.progress > 0
+        return player.isPlaying || player.progress > 0.001
     }
 
     private var renderedAthletes: [RenderedAthlete] {
