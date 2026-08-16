@@ -146,6 +146,7 @@ struct FloorGridView: View {
     @State private var showingNotesSheet = false
     @State private var showingInspectorSheet = false
     @State private var showingTransportSheet = false
+    @State private var showingPathSettingsSheet = false
     @State private var showingAthleteRenamePrompt = false
     @State private var athleteLabelDraft = ""
     @State private var showingAthleteDeleteConfirmation = false
@@ -860,6 +861,9 @@ struct FloorGridView: View {
         .sheet(isPresented: $showingTransportSheet) {
             compactTransportSheet
         }
+        .sheet(isPresented: $showingPathSettingsSheet) {
+            pathSettingsSheet
+        }
         .sheet(isPresented: $showingUpgradeSheet) {
             // Sheets present in a detached environment — ProUpgradeSheet reads
             // @EnvironmentObject entitlementManager, so it must be re-injected or
@@ -1101,32 +1105,16 @@ struct FloorGridView: View {
                 .help("Add a new athlete to this formation")
 
                 if hasTransition {
-                    Menu {
-                        Picker("Paths", selection: Binding(
-                            get: { pathDisplayScope },
-                            set: { pathDisplayScopeRaw = $0.rawValue }
-                        )) {
-                            ForEach(PathDisplayScope.allCases) { scope in
-                                Label(scope.label, systemImage: scope.systemImage).tag(scope)
-                            }
-                        }
-                        Divider()
-                        Picker("Preview", selection: Binding(
-                            get: { transitionPreviewMode },
-                            set: { transitionPreviewModeRaw = $0.rawValue }
-                        )) {
-                            ForEach(TransitionPreviewMode.allCases) { mode in
-                                Label(mode.label, systemImage: mode.systemImage).tag(mode)
-                            }
-                        }
+                    Button {
+                        showingPathSettingsSheet = true
                     } label: {
                         Label("Paths", systemImage: pathDisplayScope.systemImage)
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.borderedProminent)
                     .frame(minHeight: 44)
                     .contentShape(Rectangle())
                     .accessibilityLabel("Path display: \(pathDisplayScope.label), preview \(transitionPreviewMode.label)")
-                    .help("Choose how many transition paths to show, and Flow vs Step preview")
+                    .help("Open path display and preview settings")
                 }
 
                 if isCompactLayout {
@@ -1821,6 +1809,46 @@ struct FloorGridView: View {
             }
         }
         .presentationDetents(isPhoneLayout ? [.large] : [.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private var pathSettingsSheet: some View {
+        NavigationStack {
+            Form {
+                Section("Visible Paths") {
+                    Picker("Show", selection: Binding(
+                        get: { pathDisplayScope },
+                        set: { pathDisplayScopeRaw = $0.rawValue }
+                    )) {
+                        ForEach(PathDisplayScope.allCases) { scope in
+                            Label(scope.label, systemImage: scope.systemImage).tag(scope)
+                        }
+                    }
+                }
+
+                Section("Visualizer") {
+                    Picker("Mode", selection: Binding(
+                        get: { transitionPreviewMode },
+                        set: { transitionPreviewModeRaw = $0.rawValue }
+                    )) {
+                        ForEach(TransitionPreviewMode.allCases) { mode in
+                            Label(mode.label, systemImage: mode.systemImage).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+            }
+            .navigationTitle("Paths")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        showingPathSettingsSheet = false
+                    }
+                }
+            }
+        }
+        .presentationDetents(isPhoneLayout ? [.medium] : [.fraction(0.35)])
         .presentationDragIndicator(.visible)
     }
 
