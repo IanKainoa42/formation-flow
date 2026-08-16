@@ -1100,6 +1100,35 @@ struct FloorGridView: View {
                 .accessibilityLabel("Add Athlete")
                 .help("Add a new athlete to this formation")
 
+                if hasTransition {
+                    Menu {
+                        Picker("Paths", selection: Binding(
+                            get: { pathDisplayScope },
+                            set: { pathDisplayScopeRaw = $0.rawValue }
+                        )) {
+                            ForEach(PathDisplayScope.allCases) { scope in
+                                Label(scope.label, systemImage: scope.systemImage).tag(scope)
+                            }
+                        }
+                        Divider()
+                        Picker("Preview", selection: Binding(
+                            get: { transitionPreviewMode },
+                            set: { transitionPreviewModeRaw = $0.rawValue }
+                        )) {
+                            ForEach(TransitionPreviewMode.allCases) { mode in
+                                Label(mode.label, systemImage: mode.systemImage).tag(mode)
+                            }
+                        }
+                    } label: {
+                        Label("Paths", systemImage: pathDisplayScope.systemImage)
+                    }
+                    .buttonStyle(.bordered)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                    .accessibilityLabel("Path display: \(pathDisplayScope.label), preview \(transitionPreviewMode.label)")
+                    .help("Choose how many transition paths to show, and Flow vs Step preview")
+                }
+
                 if isCompactLayout {
                     Group {
                         if selectedAthleteIDs.isEmpty {
@@ -1133,31 +1162,6 @@ struct FloorGridView: View {
                 }
 
                 if hasTransition {
-                    Menu {
-                        Picker("Paths", selection: Binding(
-                            get: { pathDisplayScope },
-                            set: { pathDisplayScopeRaw = $0.rawValue }
-                        )) {
-                            ForEach(PathDisplayScope.allCases) { scope in
-                                Label(scope.label, systemImage: scope.systemImage).tag(scope)
-                            }
-                        }
-                        Divider()
-                        Picker("Preview", selection: Binding(
-                            get: { transitionPreviewMode },
-                            set: { transitionPreviewModeRaw = $0.rawValue }
-                        )) {
-                            ForEach(TransitionPreviewMode.allCases) { mode in
-                                Label(mode.label, systemImage: mode.systemImage).tag(mode)
-                            }
-                        }
-                    } label: {
-                        Label("Paths", systemImage: pathDisplayScope.systemImage)
-                    }
-                    .buttonStyle(.bordered)
-                    .accessibilityLabel("Path display: \(pathDisplayScope.label), preview \(transitionPreviewMode.label)")
-                    .help("Choose how many transition paths to show, and Flow vs Step preview")
-
                     if !selectedAthleteIDs.isEmpty {
                         Button(action: toggleExplicitPathDrawMode) {
                             Label(
