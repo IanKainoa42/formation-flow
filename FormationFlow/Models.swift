@@ -913,7 +913,7 @@ enum AlignmentSnapEngine {
         length: CGFloat,
         orientation: AlignmentGuideOrientation
     ) -> [SnapGuideCandidate] {
-        var candidates: [SnapGuideCandidate] = stride(from: CGFloat.zero, through: length, by: 8).map {
+        var candidates: [SnapGuideCandidate] = stride(from: CGFloat.zero, through: length, by: 6).map {
             SnapGuideCandidate(
                 orientation: orientation,
                 value: $0,
@@ -933,11 +933,11 @@ enum AlignmentSnapEngine {
             )
         )
 
-        // Panel center guides at the midpoint of each 8ft panel (4, 12, 20, ...)
+        // Panel center guides at the midpoint of each 6ft panel (3, 9, 15, ...)
         // ⚡ Bolt Performance Optimization:
         // Combined `.filter` and `.map` into a single `.compactMap` call.
         // Expected impact: Eliminates one O(N) array allocation.
-        let panelCenterCandidates = stride(from: CGFloat(4), to: length, by: 8).compactMap { panelCenter -> SnapGuideCandidate? in
+        let panelCenterCandidates = stride(from: CGFloat(3), to: length, by: 6).compactMap { panelCenter -> SnapGuideCandidate? in
             guard abs(panelCenter - center) > 0.5 else { return nil }
             return SnapGuideCandidate(
                 orientation: orientation,
