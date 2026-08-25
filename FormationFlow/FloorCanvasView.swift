@@ -1857,25 +1857,32 @@ struct FloorCanvasView: View {
 
         drawFloorTexture(in: &context, width: width, height: height, panelWidth: panelWidth)
 
-        // Fine 0.75ft grid (subdivides 6ft panels into eighths)
-        var fine = Path()
-        let numXLines = Int(round(CourtConstants.width / 0.75))
-        let numYLines = Int(round(CourtConstants.height / 0.75))
+        // Fine grids (eighths = 0.75ft, quarters = 1.5ft, center seams = 3ft)
+        var eighths = Path()
+        var quarters = Path()
+        var centers = Path()
         
-        for xIdx in 0...numXLines {
-            let x = CGFloat(xIdx) * 0.75 * cellSize
-            fine.move(to: CGPoint(x: x, y: 0))
-            fine.addLine(to: CGPoint(x: x, y: height))
+        let eighthStep = 0.75 * cellSize
+        for xIdx in 0...Int(round(CourtConstants.width / 0.75)) {
+            let x = CGFloat(xIdx) * eighthStep
+            if xIdx % 4 == 0 { centers.move(to: CGPoint(x: x, y: 0)); centers.addLine(to: CGPoint(x: x, y: height)) }
+            else if xIdx % 2 == 0 { quarters.move(to: CGPoint(x: x, y: 0)); quarters.addLine(to: CGPoint(x: x, y: height)) }
+            else { eighths.move(to: CGPoint(x: x, y: 0)); eighths.addLine(to: CGPoint(x: x, y: height)) }
         }
-        for yIdx in 0...numYLines {
-            let y = CGFloat(yIdx) * 0.75 * cellSize
-            fine.move(to: CGPoint(x: 0, y: y))
-            fine.addLine(to: CGPoint(x: width, y: y))
+        for yIdx in 0...Int(round(CourtConstants.height / 0.75)) {
+            let y = CGFloat(yIdx) * eighthStep
+            if yIdx % 4 == 0 { centers.move(to: CGPoint(x: 0, y: y)); centers.addLine(to: CGPoint(x: width, y: y)) }
+            else if yIdx % 2 == 0 { quarters.move(to: CGPoint(x: 0, y: y)); quarters.addLine(to: CGPoint(x: width, y: y)) }
+            else { eighths.move(to: CGPoint(x: 0, y: y)); eighths.addLine(to: CGPoint(x: width, y: y)) }
         }
         
-        context.stroke(fine, with: .color(.black.opacity(0.07)), lineWidth: 0.8)
-        context.stroke(fine, with: .color(FormationEditorTheme.floorFineGrid), lineWidth: 0.35)
-        context.stroke(fine, with: .color(floorLiftColor.opacity(0.08)), lineWidth: 0.45)
+        // Eighths (very faint)
+        context.stroke(eighths, with: .color(FormationEditorTheme.floorFineGrid.opacity(0.4)), lineWidth: 0.25)
+        // Quarters (medium)
+        context.stroke(quarters, with: .color(FormationEditorTheme.floorFineGrid.opacity(0.8)), lineWidth: 0.45)
+        // Center seams (stronger, like a groove)
+        context.stroke(centers, with: .color(FormationEditorTheme.floorFineGrid), lineWidth: 0.8)
+        context.stroke(centers, with: .color(floorLiftColor.opacity(0.12)), lineWidth: 1.0)
 
         // Vertical panel dividers
         var verticalPanels = Path()
@@ -1924,21 +1931,6 @@ struct FloorCanvasView: View {
         height: CGFloat,
         panelWidth: CGFloat
     ) {
-        let grainSpacing = max(cellSize * 2.15, 12)
-        var horizontalGrain = Path()
-        var grainIndex = 0
-        for y in stride(from: grainSpacing * 0.55, through: height, by: grainSpacing) {
-            let wobble = CGFloat((grainIndex % 3) - 1) * 0.28 * markerScale
-            horizontalGrain.move(to: CGPoint(x: cellSize * 0.35, y: y))
-            horizontalGrain.addLine(to: CGPoint(x: width - cellSize * 0.35, y: y + wobble))
-            grainIndex += 1
-        }
-        context.stroke(
-            horizontalGrain,
-            with: .color(FormationEditorTheme.floorGrain),
-            lineWidth: max(0.35, 0.48 * markerScale)
-        )
-
         var edgeLift = Path()
         edgeLift.addRect(CGRect(x: 0, y: 0, width: width, height: height))
         context.stroke(
