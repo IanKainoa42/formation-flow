@@ -1971,15 +1971,18 @@ struct FloorCanvasView: View {
             (5, 4),
         ]
 
-        // Fit the whole "FF" inside the front-centre 6ft panel, a little smaller than
-        // the panel so it sits balanced with margin. Mark spans 8 col-gaps wide.
-        let pitch: CGFloat = 0.5 * cellSize          // 8 * 0.5 = 4ft wide (panel is 6ft)
+        // Fit the "FF" mark precisely onto the 0.75ft fine grid.
+        // Pitch = 0.75 means dots are exactly on grid intersections. Mark spans 6ft total.
+        let pitch: CGFloat = 0.75 * cellSize         // 8 * 0.75 = 6ft wide (fills the 6ft panel)
         let coralR = 0.233 * pitch                   // radii from the logo's px ratios
         let creamR = 0.275 * pitch
-        // Centre the logo bounding box (cols 0...8, rows 0...4) on the front-row centre
-        // panel (panel 5: x≈27ft, y≈38ft; front = bottom edge).
-        let originX = (CourtConstants.width / 2) * cellSize - 4 * pitch
-        let originY = (CourtConstants.height - 4) * cellSize - 2 * pitch
+        // Centre the logo bounding box (cols 0...8, rows 0...4) on the front-row centre panel
+        let rawOriginX = (CourtConstants.width / 2) * cellSize - 4 * pitch
+        let rawOriginY = (CourtConstants.height - 4) * cellSize - 2 * pitch
+        
+        // Snap origin to the nearest 0.75ft grid intersection
+        let originX = round(rawOriginX / (0.75 * cellSize)) * (0.75 * cellSize)
+        let originY = round(rawOriginY / (0.75 * cellSize)) * (0.75 * cellSize)
 
         func dotRect(_ col: CGFloat, _ row: CGFloat, _ r: CGFloat) -> CGRect {
             let c = CGPoint(x: originX + col * pitch, y: originY + row * pitch)
