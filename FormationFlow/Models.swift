@@ -6,8 +6,8 @@ import SwiftUI
 // MARK: - Constants
 
 enum CourtConstants {
-    static let width: CGFloat = 72
-    static let height: CGFloat = 56
+    static let width: CGFloat = 54
+    static let height: CGFloat = 42
     static let collisionDistance: CGFloat = 1.5
     static let hitRadiusSquared: CGFloat = 9.0
 }
@@ -880,9 +880,9 @@ enum AlignmentSnapEngine {
         // By replacing `Array(Set(otherAthletePositions.map { ... }))` with a single loop
         // and using `Set.insert(_:).inserted`, we eliminate multiple O(N) intermediate
         // heap allocations (map -> Set -> Array) during high-frequency drag alignment evaluations.
-        // Expected impact: Removes memory overhead per evaluation tick on large arrays.
+        // Expected impact: Removes memory overhead per evaluation tick on large arrays
         for position in otherAthletePositions {
-            let x = round(position.x)
+            let x = round(position.x / 0.75) * 0.75
             if seenX.insert(x).inserted {
                 candidates.append(
                     SnapGuideCandidate(
@@ -893,7 +893,7 @@ enum AlignmentSnapEngine {
                     )
                 )
             }
-            let y = round(position.y)
+            let y = round(position.y / 0.75) * 0.75
             if seenY.insert(y).inserted {
                 candidates.append(
                     SnapGuideCandidate(

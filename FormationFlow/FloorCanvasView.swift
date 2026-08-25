@@ -1721,7 +1721,7 @@ struct FloorCanvasView: View {
     private func drawPulseSeamGlint(in context: inout GraphicsContext, center: CGPoint, intensity: CGFloat, color: Color) {
         let width = CourtConstants.width * cellSize
         let height = CourtConstants.height * cellSize
-        let seamSpacing = 8 * cellSize
+        let seamSpacing = 6 * cellSize
         guard seamSpacing > 1 else { return }
 
         let reach = max(22, 26 * markerScale)
@@ -1841,8 +1841,8 @@ struct FloorCanvasView: View {
     private func drawGrid(in context: inout GraphicsContext) {
         let width = CourtConstants.width * cellSize
         let height = CourtConstants.height * cellSize
-        let panelWidth = 8 * cellSize
-        let numCols = Int(CourtConstants.width / 8)
+        let panelWidth = 6 * cellSize
+        let numCols = Int(CourtConstants.width / 6)
 
         // Alternating vertical panel fills
         let panelLight = FormationEditorTheme.floorPanelLight
@@ -1857,23 +1857,29 @@ struct FloorCanvasView: View {
 
         drawFloorTexture(in: &context, width: width, height: height, panelWidth: panelWidth)
 
-        // Fine 1ft grid (very subtle)
+        // Fine 0.75ft grid (subdivides 6ft panels into eighths)
         var fine = Path()
-        for x in stride(from: 0, through: width, by: cellSize) {
+        let numXLines = Int(round(CourtConstants.width / 0.75))
+        let numYLines = Int(round(CourtConstants.height / 0.75))
+        
+        for xIdx in 0...numXLines {
+            let x = CGFloat(xIdx) * 0.75 * cellSize
             fine.move(to: CGPoint(x: x, y: 0))
             fine.addLine(to: CGPoint(x: x, y: height))
         }
-        for y in stride(from: 0, through: height, by: cellSize) {
+        for yIdx in 0...numYLines {
+            let y = CGFloat(yIdx) * 0.75 * cellSize
             fine.move(to: CGPoint(x: 0, y: y))
             fine.addLine(to: CGPoint(x: width, y: y))
         }
+        
         context.stroke(fine, with: .color(.black.opacity(0.07)), lineWidth: 0.8)
         context.stroke(fine, with: .color(FormationEditorTheme.floorFineGrid), lineWidth: 0.35)
         context.stroke(fine, with: .color(floorLiftColor.opacity(0.08)), lineWidth: 0.45)
 
         // Vertical panel dividers
         var verticalPanels = Path()
-        for col in stride(from: 8, through: Int(CourtConstants.width) - 1, by: 8) {
+        for col in stride(from: 6, through: Int(CourtConstants.width) - 1, by: 6) {
             let x = CGFloat(col) * cellSize
             verticalPanels.move(to: CGPoint(x: x, y: 0))
             verticalPanels.addLine(to: CGPoint(x: x, y: height))
@@ -1888,7 +1894,7 @@ struct FloorCanvasView: View {
 
         // Horizontal panel lines (low opacity — like floor seams)
         var horizontalPanels = Path()
-        for row in stride(from: 8, through: Int(CourtConstants.height) - 1, by: 8) {
+        for row in stride(from: 6, through: Int(CourtConstants.height) - 1, by: 6) {
             let y = CGFloat(row) * cellSize
             horizontalPanels.move(to: CGPoint(x: 0, y: y))
             horizontalPanels.addLine(to: CGPoint(x: width, y: y))
@@ -1933,17 +1939,6 @@ struct FloorCanvasView: View {
             lineWidth: max(0.35, 0.48 * markerScale)
         )
 
-        var shallowGrooves = Path()
-        for x in stride(from: panelWidth * 0.5, through: width, by: panelWidth) {
-            shallowGrooves.move(to: CGPoint(x: x - 0.35 * markerScale, y: 0))
-            shallowGrooves.addLine(to: CGPoint(x: x - 0.35 * markerScale, y: height))
-        }
-        context.stroke(
-            shallowGrooves,
-            with: .color(FormationEditorTheme.floorGroove),
-            lineWidth: max(0.45, 0.6 * markerScale)
-        )
-
         var edgeLift = Path()
         edgeLift.addRect(CGRect(x: 0, y: 0, width: width, height: height))
         context.stroke(
@@ -1976,13 +1971,13 @@ struct FloorCanvasView: View {
             (5, 4),
         ]
 
-        // Fit the whole "FF" inside the front-centre 8ft panel, a little smaller than
+        // Fit the whole "FF" inside the front-centre 6ft panel, a little smaller than
         // the panel so it sits balanced with margin. Mark spans 8 col-gaps wide.
-        let pitch: CGFloat = 0.625 * cellSize        // 8 * 0.625 = 5ft wide (panel is 8ft)
+        let pitch: CGFloat = 0.5 * cellSize          // 8 * 0.5 = 4ft wide (panel is 6ft)
         let coralR = 0.233 * pitch                   // radii from the logo's px ratios
         let creamR = 0.275 * pitch
         // Centre the logo bounding box (cols 0...8, rows 0...4) on the front-row centre
-        // panel (panel 5: x≈36ft, y≈52ft; front = bottom edge).
+        // panel (panel 5: x≈27ft, y≈38ft; front = bottom edge).
         let originX = (CourtConstants.width / 2) * cellSize - 4 * pitch
         let originY = (CourtConstants.height - 4) * cellSize - 2 * pitch
 

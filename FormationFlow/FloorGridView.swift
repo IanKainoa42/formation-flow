@@ -4805,7 +4805,8 @@ struct FloorGridView: View {
     }
 
     private func clampedCoordinate(_ value: CGFloat, upperBound: CGFloat) -> CGFloat {
-        max(0, min(upperBound, round(value)))
+        let snapped = round(value / 0.75) * 0.75
+        return max(0, min(upperBound, snapped))
     }
 
     private func addAthlete() {

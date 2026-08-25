@@ -236,8 +236,8 @@ struct PDFFormationPageView: View {
             .padding(.top, 24)
 
             // Court Diagram
-            // Court is 72x56. At cellSize = 8.5: width = 612, height = 476.
-            let cellSize: CGFloat = 8.5
+            // Court is 54x42. At cellSize = 11.0: width = 594, height = 462.
+            let cellSize: CGFloat = 11.0
             let courtWidth = CourtConstants.width * cellSize
             let courtHeight = CourtConstants.height * cellSize
 
