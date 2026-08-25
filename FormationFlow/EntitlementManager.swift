@@ -14,10 +14,14 @@ final class EntitlementManager: ObservableObject {
 
     init() {
         Self.logger.info("EntitlementManager initializing...")
+        
+        // Restore last known state instantly to avoid UI flicker while StoreKit checks
+        self.isPro = UserDefaults.standard.bool(forKey: Self.cacheKey)
 
         #if DEBUG
         if CommandLine.arguments.contains("-NonPro") {
             Self.logger.info("DEBUG: -NonPro flag set, forcing isPro = false")
+            self.isPro = false
             return
         }
         #endif
@@ -153,8 +157,11 @@ final class EntitlementManager: ObservableObject {
     }
 
     private func setIsPro(_ value: Bool) {
-        self.isPro = value
-        Self.logger.info("isPro set to: \(value)")
+        if self.isPro != value {
+            self.isPro = value
+            UserDefaults.standard.set(value, forKey: Self.cacheKey)
+            Self.logger.info("isPro set to: \(value)")
+        }
     }
     
     private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {

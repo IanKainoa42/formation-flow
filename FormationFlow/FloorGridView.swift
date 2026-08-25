@@ -1181,11 +1181,18 @@ struct FloorGridView: View {
                     .accessibilityLabel("Manage Roster")
                     .help("Add, remove, or rename athletes on the team roster")
 
-                    Button(action: { showingPDFExportSheet = true }) {
-                        Label("Export PDF", systemImage: "doc.text")
+                    Button(action: {
+                        if entitlementManager.isPro {
+                            showingPDFExportSheet = true
+                        } else {
+                            showingUpgradeSheet = true
+                        }
+                    }) {
+                        Label(entitlementManager.isPro ? "Export PDF" : "Export PDF (Pro)",
+                              systemImage: entitlementManager.isPro ? "doc.text" : "lock.fill")
                     }
                     .buttonStyle(.bordered)
-                    .accessibilityLabel("Export PDF Playbook")
+                    .accessibilityLabel(entitlementManager.isPro ? "Export PDF Playbook" : "Upgrade to Pro to export PDF Playbook")
                     .help("Export formation playbook as a configurable PDF")
 
                     if hasTransition {
@@ -1246,9 +1253,14 @@ struct FloorGridView: View {
             }
 
             Button(action: {
-                showingPDFExportSheet = true
+                if entitlementManager.isPro {
+                    showingPDFExportSheet = true
+                } else {
+                    showingUpgradeSheet = true
+                }
             }) {
-                Label("Export PDF", systemImage: "doc.text")
+                Label(entitlementManager.isPro ? "Export PDF" : "Export PDF (Pro)",
+                      systemImage: entitlementManager.isPro ? "doc.text" : "lock.fill")
             }
 
             if !hasTransition {
@@ -1914,8 +1926,15 @@ struct FloorGridView: View {
             }
         }
 
-        Button(action: { showingPDFExportSheet = true }) {
-            Label("Export PDF", systemImage: "doc.text")
+        Button(action: {
+            if entitlementManager.isPro {
+                showingPDFExportSheet = true
+            } else {
+                showingUpgradeSheet = true
+            }
+        }) {
+            Label(entitlementManager.isPro ? "Export PDF" : "Export PDF (Pro)",
+                  systemImage: entitlementManager.isPro ? "doc.text" : "lock.fill")
         }
 
         Button(action: { showingRosterSheet = true }) {
@@ -2055,9 +2074,14 @@ struct FloorGridView: View {
             }
 
             Button(action: {
-                showingPDFExportSheet = true
+                if entitlementManager.isPro {
+                    showingPDFExportSheet = true
+                } else {
+                    showingUpgradeSheet = true
+                }
             }) {
-                Label("Export PDF", systemImage: "doc.text")
+                Label(entitlementManager.isPro ? "Export PDF" : "Export PDF (Pro)",
+                      systemImage: entitlementManager.isPro ? "doc.text" : "lock.fill")
             }
 
             Button(action: { showingRosterSheet = true }) {

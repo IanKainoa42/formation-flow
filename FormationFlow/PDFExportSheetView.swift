@@ -348,8 +348,8 @@ struct PDFExportSheetView: View {
     private func exportPDF() {
         guard !targetFormations.isEmpty else { return }
 
-        // Pro feature gating check: Multi-page exports with path overlays
-        if !entitlementManager.isPro && targetFormations.count > FreeTierLimits.maxFormations {
+        // Pro feature gating check: PDF export is a Pro-only feature
+        guard entitlementManager.isPro else {
             showingUpgradeSheet = true
             return
         }
