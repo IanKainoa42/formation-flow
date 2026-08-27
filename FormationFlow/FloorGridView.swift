@@ -112,6 +112,43 @@ private struct PathHandleHit {
     let position: CGPoint
 }
 
+private let editorToolbarButtonHeight: CGFloat = 44
+
+private struct EditorToolbarButtonLabel: View {
+    let title: String
+    let systemImage: String
+    var isProminent = false
+    var indicatorColor: Color?
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: systemImage)
+            Text(title)
+
+            if let indicatorColor {
+                Circle()
+                    .fill(indicatorColor)
+                    .frame(width: 7, height: 7)
+                    .accessibilityHidden(true)
+            }
+        }
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(isProminent ? Color.white : Color.primary)
+        .padding(.horizontal, 12)
+        .frame(height: editorToolbarButtonHeight)
+        .background {
+            Capsule(style: .continuous)
+                .fill(isProminent ? Color.accentColor : Color.secondary.opacity(0.14))
+        }
+        .overlay {
+            Capsule(style: .continuous)
+                .strokeBorder(Color.primary.opacity(isProminent ? 0 : 0.12), lineWidth: 0.5)
+        }
+        .contentShape(Capsule(style: .continuous))
+        .fixedSize()
+    }
+}
+
 // MARK: - Floor Grid View
 
 struct FloorGridView: View {
@@ -131,6 +168,8 @@ struct FloorGridView: View {
     var onRenameFormation: (() -> Void)?
     var onDeleteFormation: (() -> Void)?
     var onResetRoutine: (() -> Void)?
+    var onPlayRoutine: (() -> Void)?
+    var onEnterFullScreen: (() -> Void)?
     var onBack: (() -> Void)?
 
     // Transition parameters (nil when no adjacent formation)
@@ -1013,6 +1052,10 @@ struct FloorGridView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     phoneToolbarMenu
                 }
+            } else if !isPhoneLayout {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    editorToolbar
+                }
             }
         }
         .overlay {
@@ -1033,29 +1076,238 @@ struct FloorGridView: View {
 
     private var editorBody: some View {
         Group {
-            if isPhoneLayout {
-                if renderedAthletes.isEmpty {
-                    emptyState
-                } else {
-                    canvasArea
-                }
+            if renderedAthletes.isEmpty {
+                emptyState
             } else {
-                VStack(spacing: 0) {
-                    controlStrip
-                    Divider()
-
-                    if renderedAthletes.isEmpty {
-                        emptyState
-                    } else {
-                        canvasArea
-                    }
-                }
+                canvasArea
             }
         }
     }
 
+    private var editorToolbar: some View {
+        HStack(spacing: 8) {
+            Button(action: addAthlete) {
+                EditorToolbarButtonLabel(
+                    title: "Add",
+                    systemImage: "plus.circle.fill",
+                    isProminent: true
+                )
+            }
+            .buttonStyle(.plain)
+            .contentShape(Capsule(style: .continuous))
+            .accessibilityLabel("Add Athlete")
+            .help("Add a new athlete to this formation")
+
+            if hasTransition {
+                Button {
+                    showingPathSettingsSheet = true
+                } label: {
+                    EditorToolbarButtonLabel(
+                        title: "Paths",
+                        systemImage: pathDisplayScope.systemImage,
+                        isProminent: true
+                    )
+                }
+                .buttonStyle(.plain)
+                .contentShape(Capsule(style: .continuous))
+                .accessibilityLabel("Path display: \(pathDisplayScope.label), preview \(transitionPreviewMode.label)")
+                .help("Open path display and preview settings")
+            }
+
+            Button(action: undoLastMove) {
+                EditorToolbarButtonLabel(
+                    title: "Undo",
+                    systemImage: "arrow.uturn.backward"
+                )
+            }
+            .buttonStyle(.plain)
+            .contentShape(Capsule(style: .continuous))
+            .disabled(undoStack.isEmpty)
+            .accessibilityLabel("Undo Move")
+            .help(undoStack.isEmpty ? "Nothing to undo" : "Undo the last move")
+
+            Menu {
+                editorMoreMenuContent
+            } label: {
+                EditorToolbarButtonLabel(
+                    title: "More",
+                    systemImage: "ellipsis.circle",
+                    indicatorColor: editorMoreIndicatorColor
+                )
+            }
+            .buttonStyle(.plain)
+            .contentShape(Capsule(style: .continuous))
+            .accessibilityLabel("More actions")
+            .accessibilityValue(formation?.notes.isEmpty == false ? "Has notes" : "")
+            .help("More actions")
+        }
+    }
+
+    private var editorMoreIndicatorColor: Color? {
+        if !collidingAthletes.isEmpty {
+            return .red
+        }
+        if showTransitionPaths, !pathCollidingAthletes.isEmpty {
+            return .orange
+        }
+        if formation?.notes.isEmpty == false {
+            return .orange
+        }
+        return nil
+    }
+
+    @ViewBuilder
+    private var editorMoreMenuContent: some View {
+        if !collidingAthletes.isEmpty {
+            Button {
+                collisionCycleIndex = (collisionCycleIndex + 1) % collidingAthletes.count
+                selectCollision(at: collisionCycleIndex)
+            } label: {
+                Label("\(collidingAthletes.count) Spacing Alerts", systemImage: "exclamationmark.triangle.fill")
+            }
+        }
+
+        if showTransitionPaths, !pathCollidingAthletes.isEmpty {
+            Button {
+                pathCollisionCycleIndex = (pathCollisionCycleIndex + 1) % pathCollidingAthletes.count
+                selectPathCollision(at: pathCollisionCycleIndex)
+            } label: {
+                Label("\(pathCollidingAthletes.count) Path Conflicts", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
+            }
+        }
+
+        if !collidingAthletes.isEmpty || (showTransitionPaths && !pathCollidingAthletes.isEmpty) {
+            Divider()
+        }
+
+        if isCompactLayout, !isPhoneLayout {
+            Button {
+                showingInspectorSheet = true
+            } label: {
+                Label(compactInspectButtonTitle, systemImage: "slider.horizontal.3")
+            }
+
+            if hasTransition, startFormationName != nil, endFormationName != nil {
+                Button {
+                    showingTransportSheet = true
+                } label: {
+                    Label("Preview", systemImage: "play.circle")
+                }
+            }
+
+            Divider()
+        }
+
+        if hasTransition, !selectedAthleteIDs.isEmpty {
+            Button(action: toggleExplicitPathDrawMode) {
+                Label(explicitPathDrawButtonTitle, systemImage: explicitPathDrawButtonSystemImage)
+            }
+            .disabled(!isExplicitPathDrawMode && !canBeginExplicitPathDraw)
+        }
+
+        if store.routine.formations.count >= 2, let onPlayRoutine {
+            Button(action: onPlayRoutine) {
+                Label(
+                    entitlementManager.isPro ? "Play Routine" : "Play Routine (Pro)",
+                    systemImage: entitlementManager.isPro ? "play.fill" : "lock.fill"
+                )
+            }
+        }
+
+        if let onEnterFullScreen {
+            Button(action: onEnterFullScreen) {
+                Label("Enter Full Screen", systemImage: "arrow.up.left.and.arrow.down.right")
+            }
+        }
+
+        if hasTransition || onPlayRoutine != nil || onEnterFullScreen != nil {
+            Divider()
+        }
+
+        secondaryEditorMenuContent
+    }
+
+    @ViewBuilder
+    private var secondaryEditorMenuContent: some View {
+        if canShareTransition {
+            Button(action: shareTransitionPreview) {
+                Label("Share Preview", systemImage: "square.and.arrow.up")
+            }
+        }
+
+        Button(action: {
+            if entitlementManager.isPro {
+                showingPDFExportSheet = true
+            } else {
+                showingUpgradeSheet = true
+            }
+        }) {
+            Label(
+                entitlementManager.isPro ? "Export PDF" : "Export PDF (Pro)",
+                systemImage: entitlementManager.isPro ? "doc.text" : "lock.fill"
+            )
+        }
+
+        Button(action: { showingRosterSheet = true }) {
+            Label("Roster", systemImage: "list.bullet.rectangle")
+        }
+
+        Button(action: { showingNotesSheet = true }) {
+            Label("Notes", systemImage: "note.text")
+        }
+
+        Divider()
+
+        Button(action: onDuplicateAsNext) {
+            Label(
+                canAddFormation ? "Duplicate as Next" : "Duplicate as Next (Pro)",
+                systemImage: canAddFormation ? "plus.square.on.square" : "lock.fill"
+            )
+        }
+
+        Button(action: { onRenameFormation?() }) {
+            Label("Rename Formation", systemImage: "pencil")
+        }
+
+        let index = formationIndex ?? 0
+        Button(action: { store.moveFormationEarlier(id: formationID) }) {
+            Label("Move Earlier", systemImage: "arrow.up")
+        }
+        .disabled(index == 0)
+        .help(index == 0 ? "Already at the first formation" : "Move formation earlier")
+
+        Button(action: { store.moveFormationLater(id: formationID) }) {
+            Label("Move Later", systemImage: "arrow.down")
+        }
+        .disabled(index >= store.routine.formations.count - 1)
+        .help(index >= store.routine.formations.count - 1 ? "Already at the last formation" : "Move formation later")
+
+        Divider()
+
+        if hasTransition {
+            Button(action: resetSelectedPaths) {
+                Label(selectedAthleteIDs.count == 1 ? "Reset Path" : "Reset Paths", systemImage: "arrow.counterclockwise")
+            }
+        } else {
+            Button(action: resetView) {
+                Label("Reset View", systemImage: "arrow.counterclockwise")
+            }
+            .accessibilityLabel("Reset View")
+        }
+
+        Divider()
+
+        Button(role: .destructive, action: { onDeleteFormation?() }) {
+            Label("Delete Formation", systemImage: "trash")
+        }
+
+        Button(role: .destructive, action: { onResetRoutine?() }) {
+            Label("Reset Routine", systemImage: "arrow.counterclockwise")
+        }
+    }
+
     private var controlStrip: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        Group {
             HStack(spacing: isCompactLayout ? 8 : 12) {
                 if !collidingAthletes.isEmpty {
                     Button {

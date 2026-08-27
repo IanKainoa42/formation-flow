@@ -663,6 +663,12 @@ struct RoutineWorkspaceView: View {
             onRenameFormation: { beginRenaming(formation) },
             onDeleteFormation: { requestFormationDeletion([formationID]) },
             onResetRoutine: { resetRoutine() },
+            onPlayRoutine: attemptRoutinePlayback,
+            onEnterFullScreen: compact ? nil : {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    isFullScreen = true
+                }
+            },
             onBack: compact ? { compactNavigationPath.removeAll() } : nil,
             player: previewSession.player,
             startFormationID: previewTransitionPair?.start.id,
@@ -706,40 +712,6 @@ struct RoutineWorkspaceView: View {
             editor
                 .navigationTitle(formation.name)
                 .navigationBarTitleDisplayMode(.inline)
-                .overlay(alignment: .topTrailing) {
-                    HStack(spacing: 8) {
-                        if store.routine.formations.count >= 2 {
-                            Button {
-                                attemptRoutinePlayback()
-                            } label: {
-                                Image(systemName: entitlementManager.isPro ? "play.fill" : "lock.fill")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundColor(.white)
-                                    .padding(8)
-                                    .background(.ultraThinMaterial, in: Circle())
-                            }
-                            .accessibilityLabel(entitlementManager.isPro ? "Play routine" : "Upgrade to Pro to play routine")
-                            .accessibilityHint(entitlementManager.isPro ? "Play the full routine" : "Upgrade to Pro to play the full routine")
-                            .help(entitlementManager.isPro ? "Play the full routine" : "Upgrade to Pro to play the full routine")
-                        }
-
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.25)) {
-                                isFullScreen = true
-                            }
-                        } label: {
-                            Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                .font(.caption.weight(.semibold))
-                                .foregroundColor(.white)
-                                .padding(8)
-                                .background(.ultraThinMaterial, in: Circle())
-                        }
-                        .accessibilityLabel("Enter full screen")
-                        .accessibilityHint("Expands the canvas to fill the screen")
-                        .help("Enter full screen")
-                    }
-                    .padding(12)
-                }
                 .safeAreaInset(edge: .bottom) {
                     if isIPadPortrait, let previewTransitionPair, let player = previewSession.player {
                         VStack(spacing: 10) {
@@ -769,22 +741,6 @@ struct RoutineWorkspaceView: View {
                         .padding(.bottom, 16)
                     }
                 }
-                .toolbar {
-                    ToolbarItemGroup(placement: .navigationBarTrailing) {
-                        Button(action: duplicateSelectedFormation) {
-                            Label(
-                                canAddFormation ? "Duplicate" : "Duplicate (Pro)",
-                                systemImage: canAddFormation ? "plus.square.on.square" : "lock.fill"
-                            )
-                        }
-
-                        Menu {
-                            formationOverflowMenu(for: formation)
-                        } label: {
-                            Label("More", systemImage: "ellipsis.circle")
-                        }
-                    }
-                }
         }
     }
 
@@ -797,27 +753,6 @@ struct RoutineWorkspaceView: View {
                 Image(systemName: "sidebar.leading")
             }
             .accessibilityLabel("Show formations")
-        }
-
-        // On phone, FloorGridView contributes the merged trailing menu — skip here.
-        if !isPhoneLayout {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Menu {
-                    Button(action: duplicateSelectedFormation) {
-                        Label(
-                            canAddFormation ? "Duplicate as Next" : "Duplicate as Next (Pro)",
-                            systemImage: canAddFormation ? "plus.square.on.square" : "lock.fill"
-                        )
-                    }
-
-                    Divider()
-
-                    formationOverflowMenu(for: formation)
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                }
-                .accessibilityLabel("More actions")
-            }
         }
     }
 
