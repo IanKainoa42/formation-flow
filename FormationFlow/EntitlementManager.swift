@@ -228,11 +228,21 @@ final class EntitlementManager: ObservableObject {
     }
 
     private func setIsPro(_ value: Bool) {
-        if self.isPro != value {
+        let changed = self.isPro != value
+
+        // Only assign when it actually changed — isPro is @Published and a redundant
+        // write would churn every observing view.
+        if changed {
             self.isPro = value
-            UserDefaults.standard.set(value, forKey: Self.cacheKey)
             Self.logger.info("isPro set to: \(value)")
         }
+
+        // Persist UNCONDITIONALLY. The cache can drift from the in-memory value —
+        // the DEBUG -NonPro path assigns isPro directly, and init() seeds isPro from
+        // the cache before StoreKit answers — so gating the write on an in-memory
+        // change can leave a stale entitlement on disk that outlives the session that
+        // set it. Writing every time keeps disk and memory in agreement.
+        UserDefaults.standard.set(value, forKey: Self.cacheKey)
     }
     
     private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
