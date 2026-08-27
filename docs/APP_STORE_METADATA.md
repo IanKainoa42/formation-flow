@@ -11,7 +11,7 @@ FormationFlow
 
 ## Subtitle (30 chars max)
 ```
-Choreography transition planner
+Formation transition planner
 ```
 
 ## Promotional Text (170 chars, can update without new build)
@@ -106,8 +106,12 @@ When prompted: "Do you or your third-party partners collect data from this app?"
 ## Pricing
 - **Free** with in-app purchase
 - **FormationFlow Pro** — $4.99 (one-time, non-consumable)
+  - Product ID: `com.formationflow.prounlock` (matches `EntitlementManager.productID` and `FormationFlow.storekit`)
+  - Reference name: `FormationFlow Pro`
+  - Display name: `FormationFlow Pro`
+  - Description: `Unlimited formations, roles, timing controls, and waypoints`
   - Unlocks unlimited formations, all athlete roles, and full routine playback
-  - Configured via StoreKit 2 (`EntitlementManager.swift`)
+  - Family shareable: Yes
   - Restore Purchases button in `ProUpgradeSheet`
 
 ## Availability
