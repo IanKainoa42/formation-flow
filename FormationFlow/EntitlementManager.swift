@@ -119,23 +119,69 @@ final class EntitlementManager: ObservableObject {
     }
     #endif
 
+    /// Outcome of an entitlement query.
+    ///
+    /// `Transaction.currentEntitlements` yields an empty sequence BOTH when the user
+    /// genuinely owns nothing AND when the store could not be reached (offline, signed out
+    /// of the App Store, sandbox hiccup). Those two cases must be told apart before
+    /// anything is revoked — collapsing them is what took Pro away from paying users.
+    enum QueryOutcome {
+        /// A verified, unrevoked transaction for our product was found.
+        case entitled
+        /// The store answered and our product is genuinely not owned — refund,
+        /// family-sharing removal, or a forged local cache. Authoritative: safe to revoke.
+        case notEntitled
+        /// The store could not be reached, or did not return the product. Carries no
+        /// information at all, so the previous value must be held.
+        case unknown
+    }
+
+    /// Pure decision: given what we currently believe and what the store said, what is `isPro`?
+    ///
+    /// Deliberately free of StoreKit state so the revoke rule can be reasoned about and
+    /// tested directly. The whole defect this fixes lives in the `.unknown` case.
+    static func resolveIsPro(current: Bool, outcome: QueryOutcome) -> Bool {
+        switch outcome {
+        case .entitled:    return true
+        case .notEntitled: return false
+        case .unknown:     return current
+        }
+    }
+
     private func checkEntitlement() async {
-        var hasPurchased = false
-        
+        let outcome = await queryEntitlement()
+
+        if case .unknown = outcome {
+            Self.logger.info("Entitlement query inconclusive (store unreachable) — holding isPro = \(self.isPro)")
+        }
+
+        setIsPro(Self.resolveIsPro(current: isPro, outcome: outcome))
+    }
+
+    private func queryEntitlement() async -> QueryOutcome {
         // Check all transactions for this user
         for await result in Transaction.currentEntitlements {
             guard case .verified(let transaction) = result else {
                 continue
             }
-            
+
             if transaction.productID == Self.productID {
-                hasPurchased = true
                 Self.logger.info("Found verified entitlement for product: \(Self.productID)")
-                break
+                return transaction.revocationDate == nil ? .entitled : .notEntitled
             }
         }
-        
-        setIsPro(hasPurchased)
+
+        // Nothing found — but that only means something if the store actually answered.
+        // Loading the product is the reachability probe: if the product comes back, the
+        // store is live and an empty entitlement set is the truth. If it throws or comes
+        // back empty, we learned nothing and must not revoke.
+        do {
+            let products = try await Product.products(for: [Self.productID])
+            return products.isEmpty ? .unknown : .notEntitled
+        } catch {
+            Self.logger.error("Entitlement reachability probe failed: \(error.localizedDescription, privacy: .private)")
+            return .unknown
+        }
     }
 
     private func listenForTransactions() async {
@@ -147,10 +193,19 @@ final class EntitlementManager: ObservableObject {
             }
             
             Self.logger.info("Transaction update received for product: \(transaction.productID)")
-            
-            // Update entitlement
-            await checkEntitlement()
-            
+
+            if transaction.productID == Self.productID {
+                // Apply the transaction we were just handed instead of re-querying
+                // currentEntitlements — exactly the reason given in purchase() above. The
+                // re-query can lag behind this callback and read as "not owned" moments
+                // after a successful buy, re-locking Pro. `revocationDate` is the
+                // authoritative signal here. (purchase() was fixed in 4fffcce; this second
+                // call site was missed and could still undo it.)
+                setIsPro(transaction.revocationDate == nil)
+            } else {
+                await checkEntitlement()
+            }
+
             // Finish the transaction
             await transaction.finish()
         }
