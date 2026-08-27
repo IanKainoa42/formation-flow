@@ -289,8 +289,16 @@ final class EntitlementManager: ObservableObject {
 /// revoking on unverifiable launches, because a forged value now survives indefinitely
 /// offline (see EntitlementManager.queryEntitlement).
 enum EntitlementStore {
-    private static let account = "entitlement.isPro"
+    /// Versioned. Builds from Mar-May 2026 wrote a Keychain item at the UNVERSIONED
+    /// account below, using this same service. Keychain items survive app upgrades, so
+    /// reusing that account silently adopts whatever those builds left behind — including
+    /// DEBUG force-unlock grants — with no way to tell a real purchase from a stale one.
+    /// Bump this suffix if the meaning of the stored value ever changes again.
+    private static let account = "entitlement.isPro.v2"
     private static let service = "com.cheerforcesandiego.formationflow"
+
+    /// Pre-versioning storage. Both are deleted, never read.
+    private static let legacyKeychainAccount = "entitlement.isPro"
     private static let legacyDefaultsKey = "entitlement.isPro"
     private static let logger = Logger(subsystem: "FormationFlow", category: "EntitlementStore")
 
@@ -355,10 +363,21 @@ enum EntitlementStore {
         logger.error("Keychain update failed: \(updateStatus)")
     }
 
-    /// Remove the pre-Keychain UserDefaults value. Called on every init so a downgrade /
-    /// re-upgrade cycle cannot leave a forgeable value sitting around.
+    /// Delete every pre-versioning store. Called on every init so a downgrade/re-upgrade
+    /// cycle cannot leave an adoptable value behind.
+    ///
+    /// Neither is migrated. UserDefaults is user-writable, and the unversioned Keychain
+    /// item has no provenance — on a device that ran the Mar-May builds it may hold a
+    /// DEBUG force-unlock grant that was never a purchase. StoreKit re-verifies a real
+    /// purchase on the first online launch, which is the only trustworthy source.
     static func purgeLegacyDefaults() {
         UserDefaults.standard.removeObject(forKey: legacyDefaultsKey)
+
+        SecItemDelete([
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: legacyKeychainAccount,
+            kSecAttrService as String: service
+        ] as CFDictionary)
     }
 
     #if DEBUG
