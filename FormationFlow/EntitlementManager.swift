@@ -105,12 +105,15 @@ final class EntitlementManager: ObservableObject {
         // already owns Pro (prior purchase) sees the paywall, and tapping Upgrade hits
         // "You've already downloaded this" because re-buying an owned non-consumable is
         // refused. AppStore.sync() is the canonical restore path. May prompt for sign-in.
+        var syncSucceeded = false
         do {
             try await AppStore.sync()
+            syncSucceeded = true
         } catch {
             Self.logger.error("AppStore.sync failed during restore: \(error.localizedDescription, privacy: .private)")
         }
-        return await checkEntitlement()
+        // Only a sync that actually completed makes a subsequent empty result meaningful.
+        return await checkEntitlement(authoritative: syncSucceeded)
     }
 
     #if DEBUG
@@ -132,11 +135,11 @@ final class EntitlementManager: ObservableObject {
     enum QueryOutcome {
         /// A verified, unrevoked transaction for our product was found.
         case entitled
-        /// The store answered and our product is genuinely not owned — refund,
-        /// family-sharing removal, or a forged local cache. Authoritative: safe to revoke.
+        /// Authoritative absence — either an explicit revocation, or nothing found
+        /// immediately after a successful `AppStore.sync()`. Safe to revoke on.
         case notEntitled
-        /// The store could not be reached, or did not return the product. Carries no
-        /// information at all, so the previous value must be held.
+        /// Absence that proves nothing: we could not establish that we actually asked
+        /// the store. The previous value must be held.
         case unknown
     }
 
@@ -152,9 +155,12 @@ final class EntitlementManager: ObservableObject {
         }
     }
 
+    /// - Parameter authoritative: pass `true` ONLY when a real server round-trip just
+    ///   succeeded (i.e. right after `AppStore.sync()`). At launch this is always `false`:
+    ///   absence there is not evidence of anything.
     @discardableResult
-    private func checkEntitlement() async -> QueryOutcome {
-        let outcome = await queryEntitlement()
+    private func checkEntitlement(authoritative: Bool = false) async -> QueryOutcome {
+        let outcome = await queryEntitlement(authoritative: authoritative)
 
         if case .unknown = outcome {
             Self.logger.info("Entitlement query inconclusive (store unreachable) — holding isPro = \(self.isPro)")
@@ -164,7 +170,7 @@ final class EntitlementManager: ObservableObject {
         return outcome
     }
 
-    private func queryEntitlement() async -> QueryOutcome {
+    private func queryEntitlement(authoritative: Bool) async -> QueryOutcome {
         // Check all transactions for this user
         for await result in Transaction.currentEntitlements {
             guard case .verified(let transaction) = result else {
@@ -177,17 +183,21 @@ final class EntitlementManager: ObservableObject {
             }
         }
 
-        // Nothing found — but that only means something if the store actually answered.
-        // Loading the product is the reachability probe: if the product comes back, the
-        // store is live and an empty entitlement set is the truth. If it throws or comes
-        // back empty, we learned nothing and must not revoke.
-        do {
-            let products = try await Product.products(for: [Self.productID])
-            return products.isEmpty ? .unknown : .notEntitled
-        } catch {
-            Self.logger.error("Entitlement reachability probe failed: \(error.localizedDescription, privacy: .private)")
-            return .unknown
+        // Nothing found. There is NO reliable way to ask StoreKit "was that a real
+        // answer?" — `Transaction.currentEntitlements` has no failure channel, and
+        // `Product.products(for:)` is NOT a usable reachability probe because StoreKit
+        // serves cached product metadata offline. Verified on device 2026-08-27: in
+        // airplane mode the product still loads, so a probe-based check reported
+        // "store reachable" and revoked a live entitlement anyway.
+        //
+        // So absence is only trusted when the caller just completed a real server
+        // round-trip (`AppStore.sync()` in restore()). At launch, absence is held.
+        // Revocations still arrive through Transaction.updates, so refunds and
+        // family-sharing removal are not missed.
+        if !authoritative {
+            Self.logger.info("No entitlement found, but the query was not authoritative — holding")
         }
+        return authoritative ? .notEntitled : .unknown
     }
 
     private func listenForTransactions() async {
