@@ -242,11 +242,14 @@ struct FloorCanvasView: View {
                 var context = context
                 context.translateBy(x: offset.x, y: offset.y)
 
-                // Collision paths pulse red↔orange as a warning; static red when
-                // blinking is off (no collisions or Reduce Motion).
-                let collisionColor: Color = blinkActive
-                    ? (Int(timeline.date.timeIntervalSinceReferenceDate / blinkInterval) % 2 == 0 ? .red : .orange)
-                    : .red
+                // Collision is a CONSTANT red and out-of-time a CONSTANT purple, so each
+                // problem is identifiable at a glance instead of by catching a blink.
+                // Blinking is reserved for the one ambiguous case: an athlete who is both
+                // colliding AND out of counts alternates red↔purple, which is the only
+                // thing motion now means here.
+                let collisionColor: Color = Self.collisionRed
+                let alertAlternate: Bool = blinkActive
+                    && Int(timeline.date.timeIntervalSinceReferenceDate / blinkInterval) % 2 != 0
 
                 drawGrid(in: &context)
                 let pulseState = pulseActive
@@ -271,11 +274,26 @@ struct FloorCanvasView: View {
                 let stepCycle: StepCycle? = stepActive
                     ? computeStepCycle(time: timeline.date.timeIntervalSinceReferenceDate)
                     : nil
+                // The "out of time" warning used to wait for `countsDone`, so it only
+                // appeared during the rest phase at the end of the cycle — pausing
+                // mid-transition showed nothing. Whether a lane is short is known the
+                // moment the cycle is computed, so flag it immediately.
                 let pathStepWarn: (ids: Set<UUID>, startProgresses: [UUID: CGFloat], color: Color)? = {
-                    guard let c = stepCycle, c.countsDone, !c.shortIDs.isEmpty else { return nil }
+                    guard let c = stepCycle, !c.shortIDs.isEmpty else { return nil }
                     return (c.shortIDs, c.shortStartProgresses, c.warnColor)
                 }()
-                drawTransitionPaths(in: &context, collisionColor: collisionColor, stepWarn: pathStepWarn)
+                drawTransitionPaths(
+                    in: &context,
+                    collisionColor: collisionColor,
+                    stepWarn: pathStepWarn,
+                    alertAlternate: alertAlternate
+                )
+                drawPathSketchPreview(in: &context)
+                drawPathSketch(in: &context)
+                // Collision markers go BEFORE the step blinks: they used to paint over
+                // the out-of-time badge, and a collision on the same spot hid the timer
+                // entirely. Two different problems, so the rarer one stays readable.
+                drawPathCollisionMarkers(in: &context)
                 if showCountSteps {
                     if let cycle = stepCycle {
                         drawStepBlinks(in: &context, cycle: cycle)
@@ -284,9 +302,6 @@ struct FloorCanvasView: View {
                         drawStepDotsStatic(in: &context)
                     }
                 }
-                drawPathSketchPreview(in: &context)
-                drawPathSketch(in: &context)
-                drawPathCollisionMarkers(in: &context)
                 drawEndpointMarkers(in: &context)
                 drawSelectedDestination(in: &context)
                 drawAthletes(in: &context, pulseLights: pulseLights)
@@ -829,7 +844,8 @@ struct FloorCanvasView: View {
     private func drawTransitionPaths(
         in context: inout GraphicsContext,
         collisionColor: Color,
-        stepWarn: (ids: Set<UUID>, startProgresses: [UUID: CGFloat], color: Color)? = nil
+        stepWarn: (ids: Set<UUID>, startProgresses: [UUID: CGFloat], color: Color)? = nil,
+        alertAlternate: Bool = false
     ) {
         let pathOpacityMultiplier: CGFloat = focusedEndpoint != nil ? 0.5 : 1.0
         for item in transitionPaths {
@@ -837,9 +853,11 @@ struct FloorCanvasView: View {
             let end = CGPoint(x: item.endPosition.x * cellSize, y: item.endPosition.y * cellSize)
             let isSelected = selectedAthleteIDs.contains(item.athleteID)
             let isColliding = pathCollisionIDs.contains(item.athleteID)
-            // Collision wins when both warnings apply, matching the existing
-            // hierarchy while letting both use a precise suffix cutoff.
-            let isOutOfTime = !isColliding && (stepWarn?.ids.contains(item.athleteID) ?? false)
+            let isShort = stepWarn?.ids.contains(item.athleteID) ?? false
+            // For the SUFFIX cutoff, collision still wins — it starts earlier on the path.
+            // The COLOUR below considers both states, so "colliding and out of counts"
+            // is distinguishable from either alone.
+            let isOutOfTime = !isColliding && isShort
             let alertStartProgress: CGFloat? = isColliding
                 ? (pathCollisionStartProgresses[item.athleteID] ?? 0)
                 : (isOutOfTime ? stepWarn?.startProgresses[item.athleteID] : nil)
@@ -849,7 +867,11 @@ struct FloorCanvasView: View {
                     startingAt: $0
                 )
             }
-            let alertColor = isColliding ? collisionColor : (stepWarn?.color ?? .blue)
+            let alertColor = Self.alertColor(
+                colliding: isColliding,
+                outOfTime: isShort,
+                alternate: alertAlternate
+            ) ?? collisionColor
             // Keep the reachable route readable in its normal color. The active
             // warning is overlaid only from the first conflict or missed step onward.
             let pathColor: Color = isSelected ? .white : Color(white: 0.72)
@@ -1235,8 +1257,19 @@ struct FloorCanvasView: View {
     // "Out of time" alert blinks between the app's base-blue and backspot-purple
     // (brightened for the dark stage) — a distinct two-tone pulse that reads
     // nothing like the red↔orange collision blink.
-    private static let warningBlue = Color(red: 0.24, green: 0.55, blue: 1.0)
     private static let warningPurple = Color(red: 0.72, green: 0.36, blue: 1.0)
+    private static let collisionRed = Color.red
+
+    /// One athlete can be in both states at once. Constant colors cannot express that,
+    /// so this is the single place motion is used: alternate the two on the beat.
+    private static func alertColor(colliding: Bool, outOfTime: Bool, alternate: Bool) -> Color? {
+        switch (colliding, outOfTime) {
+        case (true, true):   return alternate ? warningPurple : collisionRed
+        case (true, false):  return collisionRed
+        case (false, true):  return warningPurple
+        case (false, false): return nil
+        }
+    }
 
     /// The state of the shared step cycle for one frame — lanes, timing, and who
     /// ran out of counts. Computed before paths are drawn so the unreachable
@@ -1248,7 +1281,8 @@ struct FloorCanvasView: View {
         let shortIDs: Set<UUID>
         let shortStartProgresses: [UUID: CGFloat]
         let countsDone: Bool   // the counts are spent — everyone has stopped
-        let warnColor: Color   // blinks blue↔purple on the beat
+        let warnColor: Color   // constant purple; alternation handled at draw time
+        let alternate: Bool    // beat phase, used only when an athlete is in BOTH states
     }
 
     private func computeStepCycle(time: TimeInterval) -> StepCycle? {
@@ -1290,12 +1324,13 @@ struct FloorCanvasView: View {
         let elapsedBeats = time.truncatingRemainder(dividingBy: cycleSeconds) / spc
         // The counts are "done" once the last athlete has taken their final stride.
         let countsDone = elapsedBeats >= maxBeats
-        let warnColor = (Int(time / spc) % 2 == 0) ? Self.warningBlue : Self.warningPurple
+        let warnColor = Self.warningPurple
 
         return StepCycle(
             lanes: lanes, cap: cap, elapsedBeats: elapsedBeats,
             shortIDs: shortIDs, shortStartProgresses: shortStartProgresses,
-            countsDone: countsDone, warnColor: warnColor
+            countsDone: countsDone, warnColor: warnColor,
+            alternate: Int(time / spc) % 2 != 0
         )
     }
 
@@ -1312,13 +1347,18 @@ struct FloorCanvasView: View {
             let cameUpShort = lane.strides > cap
             let stopFrac = CGFloat(movingStrides) / CGFloat(lane.strides)
             let isSelected = selectedAthleteIDs.contains(lane.item.athleteID)
-            // The "out of time" flag only fires once the counts are spent.
-            let flagOutOfTime = cameUpShort && cycle.countsDone
+            // Flagged as soon as the lane is known to be short — not only once the
+            // counts are spent, or a paused mid-transition frame shows no warning.
+            let flagOutOfTime = cameUpShort
 
             // A blinking TIMER badge marks the spot they couldn't reach in time.
+            let alsoColliding = collisionIDs.contains(lane.item.athleteID)
             if flagOutOfTime {
                 let dest = CGPoint(x: lane.item.endPosition.x * cellSize, y: lane.item.endPosition.y * cellSize)
-                drawUnreachedBadge(in: &context, at: dest, color: warnColor, opacity: pathOpacityMultiplier)
+                let badgeColor = Self.alertColor(
+                    colliding: alsoColliding, outOfTime: true, alternate: cycle.alternate
+                ) ?? warnColor
+                drawUnreachedBadge(in: &context, at: dest, color: badgeColor, opacity: pathOpacityMultiplier)
             }
 
             let localBeats = cycle.elapsedBeats - lane.delayBeats
@@ -1339,7 +1379,9 @@ struct FloorCanvasView: View {
                 // Out of beats: hold at the stop point — the destination if reached,
                 // short of it (blinking blue/purple once counts are done) if not.
                 let center = pointAtArcLength(stopFrac * lane.total, pts: lane.poly, cum: lane.cum)
-                let color = flagOutOfTime ? warnColor : (isSelected ? Color.white : endFormationColor)
+                let color: Color = flagOutOfTime
+                    ? (Self.alertColor(colliding: alsoColliding, outOfTime: true, alternate: cycle.alternate) ?? warnColor)
+                    : (isSelected ? Color.white : endFormationColor)
                 drawStepBlip(in: &context, center: center, intensity: pathOpacityMultiplier, color: color)
             }
         }
