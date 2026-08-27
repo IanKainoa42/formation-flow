@@ -8,6 +8,16 @@ import SwiftUI
 enum CourtConstants {
     static let width: CGFloat = 54
     static let height: CGFloat = 42
+
+    /// The floor before the 2026-08 resize (7dcc25b). Saved routines store positions in
+    /// court feet, so anything written by 1.0.8 or earlier is on this larger floor and
+    /// must be rescaled on load — otherwise ~20% of placements render off the mat.
+    static let legacyWidth: CGFloat = 72
+    static let legacyHeight: CGFloat = 56
+
+    /// 54/72 == 42/56 == 0.75. The resize was a uniform scale, not a reshape, so a single
+    /// factor rescales both axes and preserves every formation's geometry exactly.
+    static let legacyScale: CGFloat = width / legacyWidth
     static let collisionDistance: CGFloat = 1.5
     static let hitRadiusSquared: CGFloat = 9.0
 }
@@ -1322,6 +1332,54 @@ enum RoutineMetrics {
 
 // MARK: - Persistence
 
+// MARK: - Legacy court migration
+
+extension Routine {
+    /// Rescale every stored coordinate from the pre-2026-08 floor onto the current one.
+    ///
+    /// Two coordinate sites exist: `Formation.placements[].position` and
+    /// `TransitionSpec.athleteTransitions[].pathWaypoints[].position`. Missing either
+    /// leaves paths pointing off the mat while the athletes sit correctly.
+    func scaledFromLegacyCourt() -> Routine {
+        let k = CourtConstants.legacyScale
+        guard k != 1 else { return self }
+
+        var copy = self
+        copy.formations = formations.map { formation in
+            var f = formation
+            f.placements = formation.placements.map { placement in
+                var p = placement
+                p.position = CGPoint(x: placement.position.x * k, y: placement.position.y * k)
+                return p
+            }
+            return f
+        }
+        copy.transitionSpecs = transitionSpecs.map { spec in
+            var s = spec
+            s.athleteTransitions = spec.athleteTransitions.map { transition in
+                var t = transition
+                t.pathWaypoints = transition.pathWaypoints.map { waypoint in
+                    var w = waypoint
+                    w.position = CGPoint(x: waypoint.position.x * k, y: waypoint.position.y * k)
+                    return w
+                }
+                return t
+            }
+            return s
+        }
+        return copy
+    }
+}
+
+extension RoutineWorkspace {
+    func scaledFromLegacyCourt() -> RoutineWorkspace {
+        RoutineWorkspace(
+            routines: routines.map { $0.scaledFromLegacyCourt() },
+            activeRoutineID: activeRoutineID
+        )
+    }
+}
+
 struct RoutineWorkspace: Codable, Equatable, Hashable {
     var routines: [Routine]
     var activeRoutineID: UUID
@@ -1370,7 +1428,10 @@ final class RoutineStore: ObservableObject {
     }
 
     private let storageKey = "routine.v1"
-    private let workspaceStorageKey = "workspace.v1"
+    private let workspaceStorageKey = "workspace.v2"
+    /// Pre-court-resize workspace. Read once, rescaled, then left on disk untouched so the
+    /// migration is reversible — v2 is written alongside it, never over it.
+    private let legacyWorkspaceStorageKey = "workspace.v1"
     private var isLoading = false
     private var pendingSave: DispatchWorkItem?
     private var rosterLookup: [UUID: RosterAthlete] = [:]
@@ -1393,11 +1454,16 @@ final class RoutineStore: ObservableObject {
         return paths[0].appendingPathComponent("\(workspaceStorageKey).json")
     }
 
+    private var legacyWorkspaceFileURL: URL {
+        let paths = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+        return paths[0].appendingPathComponent("\(legacyWorkspaceStorageKey).json")
+    }
+
     func load() {
         isLoading = true
         defer { isLoading = false }
 
-        // Try loading new workspace format
+        // Current workspace — already on the current court, load as-is.
         if let data = try? Data(contentsOf: workspaceFileURL),
            let decoded = try? JSONDecoder().decode(RoutineWorkspace.self, from: data) {
             workspace = decoded
@@ -1406,10 +1472,23 @@ final class RoutineStore: ObservableObject {
             return
         }
 
-        // Migration from old routine file
+        // Pre-resize workspace (1.0.8 and earlier). Positions are in 72x56 court feet and
+        // must be scaled onto the 54x42 floor before anything reads them. v1 is deliberately
+        // left in place: save() writes v2, so a bad migration can be backed out.
+        if let data = try? Data(contentsOf: legacyWorkspaceFileURL),
+           let decoded = try? JSONDecoder().decode(RoutineWorkspace.self, from: data) {
+            workspace = decoded.scaledFromLegacyCourt()
+            reconcileRoutineShape()
+            rebuildTransitionSpecLookup()
+            save()
+            return
+        }
+
+        // Migration from old routine file — also predates the resize.
         if let data = try? Data(contentsOf: fileURL),
            let decoded = try? JSONDecoder().decode(Routine.self, from: data) {
-            workspace = RoutineWorkspace(routines: [decoded], activeRoutineID: decoded.id)
+            let scaled = decoded.scaledFromLegacyCourt()
+            workspace = RoutineWorkspace(routines: [scaled], activeRoutineID: scaled.id)
             reconcileRoutineShape()
             rebuildTransitionSpecLookup()
             if save() {
@@ -1421,7 +1500,8 @@ final class RoutineStore: ObservableObject {
         // Migration from UserDefaults
         if let data = UserDefaults.standard.data(forKey: storageKey),
            let decoded = try? JSONDecoder().decode(Routine.self, from: data) {
-            workspace = RoutineWorkspace(routines: [decoded], activeRoutineID: decoded.id)
+            let scaled = decoded.scaledFromLegacyCourt()
+            workspace = RoutineWorkspace(routines: [scaled], activeRoutineID: scaled.id)
             reconcileRoutineShape()
             rebuildTransitionSpecLookup()
             if save() { // Save to new workspaceFileURL
