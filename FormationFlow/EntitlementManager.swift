@@ -1,11 +1,12 @@
 import Foundation
 import StoreKit
 import OSLog
+import Security
 
 @MainActor
 final class EntitlementManager: ObservableObject {
     static let productID = "com.formationflow.prounlock"
-    private static let cacheKey = "entitlement.isPro"
+    private static let store = EntitlementStore.self
     private static let logger = Logger(subsystem: "FormationFlow", category: "Entitlement")
 
     @Published private(set) var isPro: Bool = false
@@ -15,8 +16,14 @@ final class EntitlementManager: ObservableObject {
     init() {
         Self.logger.info("EntitlementManager initializing...")
         
-        // Restore last known state instantly to avoid UI flicker while StoreKit checks
-        self.isPro = UserDefaults.standard.bool(forKey: Self.cacheKey)
+        // Drop any value left in UserDefaults by earlier builds. It is NOT migrated:
+        // UserDefaults is user-writable, so trusting it here would launder a forged
+        // entitlement into trusted storage. A real purchase is re-verified by StoreKit on
+        // the first online launch.
+        Self.store.purgeLegacyDefaults()
+
+        // Restore last known state instantly to avoid UI flicker while StoreKit checks.
+        self.isPro = Self.store.load()
 
         #if DEBUG
         if CommandLine.arguments.contains("-NonPro") {
@@ -240,9 +247,8 @@ final class EntitlementManager: ObservableObject {
         // Persist UNCONDITIONALLY. The cache can drift from the in-memory value —
         // the DEBUG -NonPro path assigns isPro directly, and init() seeds isPro from
         // the cache before StoreKit answers — so gating the write on an in-memory
-        // change can leave a stale entitlement on disk that outlives the session that
-        // set it. Writing every time keeps disk and memory in agreement.
-        UserDefaults.standard.set(value, forKey: Self.cacheKey)
+        // change can leave a stale entitlement outliving the session that set it.
+        Self.store.save(value)
     }
     
     private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
@@ -272,4 +278,93 @@ final class EntitlementManager: ObservableObject {
             }
         }
     }
+}
+
+/// Integrity-protected storage for the cached entitlement flag.
+///
+/// This is NOT about secrecy — `isPro` is not a secret. It is about the value being
+/// **unforgeable**. It previously lived in `UserDefaults`, which is user-writable:
+/// `defaults write com.ianrichardson.formationflow entitlement.isPro -bool YES` unlocked
+/// Pro on the Catalyst build. That matters more since the entitlement check stopped
+/// revoking on unverifiable launches, because a forged value now survives indefinitely
+/// offline (see EntitlementManager.queryEntitlement).
+enum EntitlementStore {
+    private static let account = "entitlement.isPro"
+    private static let service = "com.cheerforcesandiego.formationflow"
+    private static let legacyDefaultsKey = "entitlement.isPro"
+    private static let logger = Logger(subsystem: "FormationFlow", category: "EntitlementStore")
+
+    /// ⚠️ DO NOT "tighten" this to `WhenPasscodeSet…` or `WhenUnlocked…`.
+    ///
+    /// This exact line has been escalated twice by automated security passes —
+    /// `AfterFirstUnlockThisDeviceOnly` → `WhenUnlockedThisDeviceOnly` (e795eb7) →
+    /// `WhenPasscodeSetThisDeviceOnly` (8bc74b6) — and Keychain storage was then removed
+    /// outright. `WhenPasscodeSet…` cannot be written at all on a device with no passcode
+    /// and is destroyed if the user removes their passcode, which silently breaks the
+    /// entitlement cache for those users. `AfterFirstUnlock…` is correct here: the value
+    /// is an integrity-protected flag, not a secret, and it must be readable on every
+    /// launch. `ThisDeviceOnly` keeps it out of iCloud Keychain and device backups, so an
+    /// entitlement cannot ride a restore onto another device.
+    private static let accessibility = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+
+    private static var baseQuery: [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: account,
+            kSecAttrService as String: service
+        ]
+    }
+
+    static func load() -> Bool {
+        var query = baseQuery
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        guard status == errSecSuccess, let data = item as? Data, let first = data.first else {
+            // Absent (or unreadable) reads as "not entitled" — never as an error the caller
+            // has to handle. StoreKit is the source of truth; this is only a launch hint.
+            return false
+        }
+        return first == 1
+    }
+
+    static func save(_ value: Bool) {
+        let data = Data([value ? 1 : 0])
+
+        // Update in place if present, otherwise add. Accessibility is set on both paths so
+        // an item written by an older build is corrected rather than left as-is.
+        let updateStatus = SecItemUpdate(
+            baseQuery as CFDictionary,
+            [kSecValueData as String: data, kSecAttrAccessible as String: accessibility] as CFDictionary
+        )
+        if updateStatus == errSecSuccess { return }
+
+        if updateStatus == errSecItemNotFound {
+            var add = baseQuery
+            add[kSecValueData as String] = data
+            add[kSecAttrAccessible as String] = accessibility
+            let addStatus = SecItemAdd(add as CFDictionary, nil)
+            if addStatus != errSecSuccess {
+                logger.error("Keychain add failed: \(addStatus)")
+            }
+            return
+        }
+
+        logger.error("Keychain update failed: \(updateStatus)")
+    }
+
+    /// Remove the pre-Keychain UserDefaults value. Called on every init so a downgrade /
+    /// re-upgrade cycle cannot leave a forgeable value sitting around.
+    static func purgeLegacyDefaults() {
+        UserDefaults.standard.removeObject(forKey: legacyDefaultsKey)
+    }
+
+    #if DEBUG
+    static func reset() {
+        SecItemDelete(baseQuery as CFDictionary)
+        purgeLegacyDefaults()
+    }
+    #endif
 }
