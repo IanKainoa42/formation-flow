@@ -94,7 +94,11 @@ final class EntitlementManager: ObservableObject {
         }
     }
 
-    func restore() async {
+    /// Returns the outcome of the post-sync entitlement query so callers can tell
+    /// "you don't own this" apart from "we couldn't reach the store" — telling an offline
+    /// paying user that no purchase was found is a lie the UI used to tell.
+    @discardableResult
+    func restore() async -> QueryOutcome {
         Self.logger.info("Restoring purchases — syncing with App Store")
         // Force a refresh from the App Store so previously-owned non-consumables are
         // re-delivered into Transaction.currentEntitlements. Without this, a user who
@@ -106,7 +110,7 @@ final class EntitlementManager: ObservableObject {
         } catch {
             Self.logger.error("AppStore.sync failed during restore: \(error.localizedDescription, privacy: .private)")
         }
-        await checkEntitlement()
+        return await checkEntitlement()
     }
 
     #if DEBUG
@@ -148,7 +152,8 @@ final class EntitlementManager: ObservableObject {
         }
     }
 
-    private func checkEntitlement() async {
+    @discardableResult
+    private func checkEntitlement() async -> QueryOutcome {
         let outcome = await queryEntitlement()
 
         if case .unknown = outcome {
@@ -156,6 +161,7 @@ final class EntitlementManager: ObservableObject {
         }
 
         setIsPro(Self.resolveIsPro(current: isPro, outcome: outcome))
+        return outcome
     }
 
     private func queryEntitlement() async -> QueryOutcome {

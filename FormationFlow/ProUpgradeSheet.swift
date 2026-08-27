@@ -83,10 +83,13 @@ struct ProUpgradeSheet: View {
             Button {
                 Task {
                     isRestoring = true
-                    await entitlementManager.restore()
+                    let outcome = await entitlementManager.restore()
                     isRestoring = false
                     if entitlementManager.isPro {
                         dismiss()
+                    } else if case .unknown = outcome {
+                        // Don't claim they never bought it when we simply couldn't ask.
+                        restoreAlertMessage = "Couldn't reach the App Store. Check your connection and try again."
                     } else {
                         restoreAlertMessage = "No prior purchases were found on this Apple ID."
                     }
