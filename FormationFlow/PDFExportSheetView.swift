@@ -16,7 +16,7 @@ struct PDFExportSheetView: View {
     @State private var showingErrorAlert: Bool = false
     @State private var errorMessage: String = ""
 
-    init(store: RoutineStore, currentFormationID: UUID? = nil) {
+    init(store: RoutineStore, currentFormationID: UUID? = nil, initialPreviewIndex: Int = 0) {
         self.store = store
         self.currentFormationID = currentFormationID
         let initialIDs = Set(store.routine.formations.map(\.id))
@@ -24,6 +24,7 @@ struct PDFExportSheetView: View {
             scope: .all,
             selectedFormationIDs: initialIDs
         ))
+        _previewIndex = State(initialValue: initialPreviewIndex)
     }
 
     private var targetFormations: [Formation] {
@@ -129,6 +130,7 @@ struct PDFExportSheetView: View {
                 clampPreviewIndex()
             }
         }
+        .modifier(WidePresentationSizing())
     }
 
     // MARK: - Live Preview Pane
@@ -149,7 +151,6 @@ struct PDFExportSheetView: View {
                     let pageAspect: CGFloat = 792.0 / 612.0
 
                     let fitWidth = min(availableWidth, availableHeight * pageAspect)
-                    let fitHeight = fitWidth / pageAspect
                     let scale = fitWidth / 792.0
 
                     ZStack {
@@ -369,6 +370,21 @@ struct PDFExportSheetView: View {
                 errorMessage = "Unable to generate the PDF document. Please try again."
                 showingErrorAlert = true
             }
+        }
+    }
+}
+
+// MARK: - Presentation Sizing
+
+/// A default `.sheet` on iPad is form-width (~578pt), which is below the 700pt
+/// threshold the split preview/config layout needs — so the wide layout never
+/// appeared on iPad. Page sizing gives the sheet the width it was designed for.
+private struct WidePresentationSizing: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.presentationSizing(.page)
+        } else {
+            content
         }
     }
 }

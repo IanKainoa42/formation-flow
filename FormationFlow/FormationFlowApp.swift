@@ -9,17 +9,63 @@ struct FormationFlowApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RoutineWorkspaceView()
-                .environmentObject(entitlementManager)
-                .fullScreenCover(isPresented: Binding(
-                    get: { !hasSeenOnboarding },
-                    set: { hasSeenOnboarding = !$0 }
-                )) {
-                    OnboardingView()
-                }
+            #if DEBUG
+            if CommandLine.arguments.contains("-ShowPDFExport") {
+                PDFExportCaptureRoot()
+                    .environmentObject(entitlementManager)
+            } else {
+                mainRoot
+            }
+            #else
+            mainRoot
+            #endif
         }
     }
+
+    private var mainRoot: some View {
+        RoutineWorkspaceView()
+            .environmentObject(entitlementManager)
+            .fullScreenCover(isPresented: Binding(
+                get: { !hasSeenOnboarding },
+                set: { hasSeenOnboarding = !$0 }
+            )) {
+                OnboardingView()
+            }
+    }
 }
+
+#if DEBUG
+/// Marketing-capture scaffold. Launching with `-ShowPDFExport` presents the Export
+/// Playbook sheet over the workspace so App Store screenshots can be captured without
+/// driving the toolbar — synthetic simulator taps do not reach SwiftUI content
+/// (see `reference_ios_sim_synthetic_click_quirk`). DEBUG only; never ships.
+private struct PDFExportCaptureRoot: View {
+    @EnvironmentObject private var entitlementManager: EntitlementManager
+    @StateObject private var store = RoutineStore()
+    @State private var presented = false
+
+    /// `-PDFPage N` selects which playbook page the sheet opens on (1-based).
+    private var capturePreviewIndex: Int {
+        let args = CommandLine.arguments
+        guard let i = args.firstIndex(of: "-PDFPage"), i + 1 < args.count,
+              let page = Int(args[i + 1]) else { return 0 }
+        return max(0, page - 1)
+    }
+
+    var body: some View {
+        RoutineWorkspaceView()
+            .environmentObject(entitlementManager)
+            .sheet(isPresented: $presented) {
+                PDFExportSheetView(store: store, initialPreviewIndex: capturePreviewIndex)
+                    .environmentObject(entitlementManager)
+            }
+            .task {
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                presented = true
+            }
+    }
+}
+#endif
 
 /// Holds the current allowed-orientation mask. The floor editor on iPhone forces
 /// landscape (the wide court fills the screen); the rest of the phone app stays
