@@ -1,6 +1,1 @@
-• A cleaner editor toolbar keeps Add, Paths, Undo, and More easy to tap without horizontal scrolling
-• Faster, smoother path editing with less redraw work while you move athletes and handles
-• Collision points stay visible during edits without distracting beam or blinking effects
-• Collision warnings now color only the affected route from the conflict onward
-• Step-limit warnings now color only the portion an athlete cannot complete in time
-• Pinch a multi-athlete selection to adjust spacing while preserving the group layout
+• Export Playbook now opens as a full-width sheet on iPad, so the live page preview sits beside the export options instead of being squeezed into a strip above them — much easier to check a page before you print it
