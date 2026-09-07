@@ -574,10 +574,10 @@ struct CompactTransitionPlaybackOverlayView: View {
     var onLockedCounts: () -> Void = {}
 
     var body: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 8) {
+        VStack(spacing: 12) {
+            HStack(spacing: 10) {
                 Text("\(startFormationName) \u{2192} \(endFormationName)")
-                    .font(.subheadline.weight(.semibold))
+                    .font(.callout.weight(.semibold))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
                 Spacer()
@@ -585,21 +585,22 @@ struct CompactTransitionPlaybackOverlayView: View {
                     TransitionLengthControl(player: player, locked: countsLocked, onAdjust: onAdjustCounts, onLocked: onLockedCounts)
                         .fixedSize()
                 }
-                TransportControls.loopButton(player: player, size: 30)
-                TransportControls.swapButton(isActive: isSwapMode, size: 30, disabled: !canSwap, action: onSwap)
-                TransportControls.pathButton(size: 30, disabled: !canEditPath, action: onPath)
+                TransportControls.loopButton(player: player, size: 36)
+                TransportControls.swapButton(isActive: isSwapMode, size: 36, disabled: !canSwap, action: onSwap)
+                TransportControls.pathButton(size: 36, disabled: !canEditPath, action: onPath)
             }
 
             HStack(spacing: 10) {
-                TransportControls.previousFormationButton(size: 34, disabled: isFirstFormation, action: onPreviousFormation)
-                TransportControls.resetButton(player: player, size: 34)
-                TransportControls.playPauseButton(player: player, size: 40)
+                TransportControls.previousFormationButton(size: 38, disabled: isFirstFormation, action: onPreviousFormation)
+                TransportControls.resetButton(player: player, size: 38)
+                TransportControls.playPauseButton(player: player, size: 44)
                 TransportControls.progressSlider(player: player)
-                TransportControls.nextFormationButton(size: 34, disabled: isLastFormation, action: onNextFormation)
+                    .frame(minHeight: 44)
+                TransportControls.nextFormationButton(size: 38, disabled: isLastFormation, action: onNextFormation)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
         .formationGlassPanel(cornerRadius: 20, shadowRadius: 12)
         .playbackHaptics(player)
     }

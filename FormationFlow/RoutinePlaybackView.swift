@@ -6,7 +6,7 @@ struct RoutinePlaybackView: View {
     @StateObject private var player: RoutinePlayer
     @Environment(\.dismiss) private var dismiss
 
-    private static let bottomBarHeight: CGFloat = 56
+    private static let bottomBarHeight: CGFloat = 64
 
     init(store: RoutineStore) {
         _player = StateObject(wrappedValue: RoutinePlayer(store: store))
@@ -107,15 +107,15 @@ struct RoutinePlaybackView: View {
     // MARK: - Transport Bar (thin single row)
 
     private var routineTransportBar: some View {
-        HStack(spacing: 10) {
-            // Formation name + segment nav now live in the floating pip badge.
+        HStack(spacing: 12) {
             Button {
                 player.isPlaying ? player.pause() : player.play()
             } label: {
                 Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                    .frame(width: 28, height: 28)
+                    .frame(width: 36, height: 36)
             }
             .buttonStyle(.borderedProminent)
+            .frame(minWidth: 44, minHeight: 44)
             .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
             .accessibilityValue(player.isPlaying ? "Playing" : "Paused")
             .help(player.isPlaying ? "Pause the routine playback" : "Play the routine animation")
@@ -135,12 +135,13 @@ struct RoutinePlaybackView: View {
                         let marker = player.segmentMarkers[index]
                         Rectangle()
                             .fill(Color.white.opacity(0.5))
-                            .frame(width: 2, height: 8)
+                            .frame(width: 2, height: 10)
                             .position(x: marker * geo.size.width, y: geo.size.height / 2)
                             .allowsHitTesting(false)
                     }
                 }
             }
+            .frame(minHeight: 44)
             .layoutPriority(1)
 
             Picker("Speed", selection: Binding(
@@ -155,7 +156,6 @@ struct RoutinePlaybackView: View {
             }
             .pickerStyle(.segmented)
             .frame(width: 210)
-            .controlSize(.small)
             .accessibilityLabel("Playback Speed")
             .accessibilityHint("Adjust the playback speed of the routine animation")
 
@@ -179,8 +179,8 @@ struct RoutinePlaybackView: View {
             }
             .accessibilityLabel("More playback options")
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
         .background(.bar)
     }
 }
