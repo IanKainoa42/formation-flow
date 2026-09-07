@@ -284,7 +284,8 @@ struct FloorGridView: View {
     @State private var recentPathEditSnapshot: PathEditUndoSnapshot?
 
     private var pathCollisionIDs: Set<UUID> {
-        player?.cachedPathCollisionIDs ?? []
+        _ = playerTick
+        return player?.cachedPathCollisionIDs ?? []
     }
 
     private var activeTransitionGroups: [TransitionStuntGroup] {

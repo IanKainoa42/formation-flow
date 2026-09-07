@@ -237,6 +237,7 @@ struct FloorCanvasView: View {
             : stepActive ? (1.0 / 12.0)
             : blinkActive ? blinkInterval
             : 86_400
+        let timelineID = pulseActive ? 1 : stepActive ? 2 : blinkActive ? 3 : 0
         return TimelineView(.periodic(from: .now, by: tickInterval)) { timeline in
             Canvas { context, _ in
                 var context = context
@@ -321,6 +322,7 @@ struct FloorCanvasView: View {
                 }
             }
         }
+        .id(timelineID)
     }
 
     @Environment(\.accessibilityEnabled) private var accessibilityEnabled
