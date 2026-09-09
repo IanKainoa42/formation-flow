@@ -38,8 +38,8 @@ struct PDFExportConfiguration: Equatable {
     var includePageNumbers: Bool = true
 
     // Visual Overlays
-    var showTransitionPaths: Bool = true
-    var showCountTicks: Bool = true
+    var showTransitionPaths: Bool = false
+    var showCountTicks: Bool = false
     var showGhostFormations: Bool = false
     var showStuntGroupHarnesses: Bool = true
     var showFloorGrid: Bool = true
@@ -60,8 +60,8 @@ struct PDFExportConfiguration: Equatable {
         selectedFormationIDs: Set<UUID> = [],
         includeCoverPage: Bool = true,
         includePageNumbers: Bool = true,
-        showTransitionPaths: Bool = true,
-        showCountTicks: Bool = true,
+        showTransitionPaths: Bool = false,
+        showCountTicks: Bool = false,
         showGhostFormations: Bool = false,
         showStuntGroupHarnesses: Bool = true,
         showFloorGrid: Bool = true,

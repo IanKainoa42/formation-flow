@@ -10,13 +10,14 @@ struct PDFExportSheetView: View {
 
     @State private var config = PDFExportConfiguration()
     @State private var previewIndex: Int = 0
+    @State private var showingCustomization = false
     @State private var isGeneratingPDF: Bool = false
     @State private var sharePayload: DocumentSharePayload?
     @State private var showingUpgradeSheet: Bool = false
     @State private var showingErrorAlert: Bool = false
     @State private var errorMessage: String = ""
 
-    init(store: RoutineStore, currentFormationID: UUID? = nil, initialPreviewIndex: Int = 0) {
+    init(store: RoutineStore, currentFormationID: UUID? = nil, initialPreviewIndex: Int = 1) {
         self.store = store
         self.currentFormationID = currentFormationID
         let initialIDs = Set(store.routine.formations.map(\.id))
@@ -31,76 +32,53 @@ struct PDFExportSheetView: View {
         config.resolvedFormations(for: store.routine, currentFormationID: currentFormationID)
     }
 
-    private var isCoverPagePreview: Bool {
-        config.includeCoverPage && targetFormations.count > 1 && previewIndex == 0
-    }
-
-    private var currentPreviewFormation: Formation? {
-        let formationOffset = (config.includeCoverPage && targetFormations.count > 1) ? (previewIndex - 1) : previewIndex
-        guard formationOffset >= 0, formationOffset < targetFormations.count else { return nil }
-        return targetFormations[formationOffset]
-    }
-
     private var totalPreviewPages: Int {
         targetFormations.count + ((config.includeCoverPage && targetFormations.count > 1) ? 1 : 0)
     }
 
     var body: some View {
         NavigationStack {
-            GeometryReader { geometry in
-                let isWideLayout = geometry.size.width >= 700
-
-                if isWideLayout {
-                    HStack(spacing: 0) {
-                        // Left: Live Document Preview
-                        livePreviewPane
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .background(Color(uiColor: .systemGroupedBackground))
-
-                        Divider()
-
-                        // Right: Configuration Inspector Form
-                        configurationForm
-                            .frame(width: 360)
-                            .background(Color(uiColor: .secondarySystemGroupedBackground))
+            VStack(spacing: 0) {
+                livePreviewPane
+                HStack(spacing: 12) {
+                    Button { showingCustomization = true } label: {
+                        Label("Customize", systemImage: "slider.horizontal.3")
+                            .frame(maxWidth: .infinity, minHeight: 36)
                     }
-                } else {
-                    VStack(spacing: 0) {
-                        // Top: Live Document Preview
-                        livePreviewPane
-                            .frame(height: 280)
-                            .background(Color(uiColor: .systemGroupedBackground))
-
-                        Divider()
-
-                        // Bottom: Configuration Form
-                        configurationForm
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .buttonStyle(.bordered)
+                    Button { exportPDF() } label: {
+                        HStack {
+                            if isGeneratingPDF { ProgressView() }
+                            else { Image(systemName: "square.and.arrow.up") }
+                            Text(isGeneratingPDF ? "Exporting…" : "Export PDF")
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 36)
                     }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(targetFormations.isEmpty || isGeneratingPDF)
                 }
+                .font(.subheadline.weight(.semibold))
+                .padding(20)
+                .background(.bar)
             }
-            .navigationTitle("Export Playbook")
+            .background(Color(uiColor: .systemGroupedBackground))
+            .navigationTitle("Playbook")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
+                    Button("Done") { dismiss() }
                 }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button {
-                        exportPDF()
-                    } label: {
-                        if isGeneratingPDF {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Label("Export PDF", systemImage: "square.and.arrow.up")
-                                .font(.body.weight(.semibold))
+            }
+            .sheet(isPresented: $showingCustomization) {
+                NavigationStack {
+                    configurationForm
+                        .navigationTitle("Customize Playbook")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done") { showingCustomization = false }
+                            }
                         }
-                    }
-                    .disabled(targetFormations.isEmpty || isGeneratingPDF)
                 }
             }
             .sheet(item: $sharePayload) { payload in
@@ -138,80 +116,75 @@ struct PDFExportSheetView: View {
     private var livePreviewPane: some View {
         VStack(spacing: 12) {
             if targetFormations.isEmpty {
-                ContentUnavailableView(
-                    "No Formations Selected",
-                    systemImage: "square.dashed",
-                    description: Text("Select at least one formation in the configuration options.")
-                )
+                ContentUnavailableView("No formations selected", systemImage: "doc",
+                    description: Text("Choose formations in Customize to build your playbook."))
+                    .frame(maxHeight: .infinity)
             } else {
-                // Page Carousel View
-                GeometryReader { previewGeom in
-                    let availableWidth = previewGeom.size.width - 24
-                    let availableHeight = previewGeom.size.height - 16
-                    let pageAspect: CGFloat = 792.0 / 612.0
-
-                    let fitWidth = min(availableWidth, availableHeight * pageAspect)
-                    let scale = fitWidth / 792.0
-
-                    ZStack {
-                        Group {
-                            if isCoverPagePreview {
-                                PDFCoverPageView(
-                                    routine: store.routine,
-                                    targetFormations: targetFormations,
-                                    config: config,
-                                    pageNumber: 1,
-                                    totalPages: totalPreviewPages
-                                )
-                            } else if let formation = currentPreviewFormation {
-                                let formationIndex = store.formationIndex(id: formation.id) ?? 0
-                                PDFFormationPageView(
-                                    formation: formation,
-                                    formationIndex: formationIndex,
-                                    store: store,
-                                    config: config,
-                                    pageNumber: previewIndex + 1,
-                                    totalPages: totalPreviewPages
-                                )
-                            }
-                        }
-                        .frame(width: 792, height: 612)
-                        .scaleEffect(scale)
-                        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
-                    }
-                    .frame(width: previewGeom.size.width, height: previewGeom.size.height, alignment: .center)
+                VStack(spacing: 4) {
+                    Text(store.routine.name)
+                        .font(.title2.bold())
+                        .lineLimit(2)
+                    Text("\(targetFormations.count) formations · \(totalPreviewPages) pages")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
+                .padding(.horizontal, 24)
+                .padding(.top, 20)
 
-                // Page Navigation Bar
-                HStack(spacing: 16) {
-                    Button {
-                        if previewIndex > 0 {
-                            previewIndex -= 1
+                TabView(selection: $previewIndex) {
+                    ForEach(0..<totalPreviewPages, id: \.self) { index in
+                        GeometryReader { geometry in
+                            let scale = max(0.01, min((geometry.size.width - 32) / PDFPageLayout.width,
+                                                     (geometry.size.height - 24) / PDFPageLayout.height))
+                            previewPage(at: index)
+                                .frame(width: PDFPageLayout.width, height: PDFPageLayout.height)
+                                .environment(\.colorScheme, .light)
+                                .scaleEffect(scale)
+                                .frame(width: PDFPageLayout.width * scale, height: PDFPageLayout.height * scale)
+                                .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
-                    } label: {
-                        Image(systemName: "chevron.left.circle.fill")
-                            .font(.title3)
+                        .tag(index)
                     }
-                    .disabled(previewIndex <= 0)
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
 
+                HStack(spacing: 24) {
+                    Button { previewIndex -= 1 } label: {
+                        Image(systemName: "chevron.left").frame(width: 44, height: 44)
+                    }
+                    .accessibilityLabel("Previous page")
+                    .disabled(previewIndex == 0)
                     Text("Page \(previewIndex + 1) of \(totalPreviewPages)")
-                        .font(.caption.monospaced().weight(.semibold))
-                        .foregroundColor(.primary)
-
-                    Button {
-                        if previewIndex < totalPreviewPages - 1 {
-                            previewIndex += 1
-                        }
-                    } label: {
-                        Image(systemName: "chevron.right.circle.fill")
-                            .font(.title3)
+                        .font(.subheadline.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                    Button { previewIndex += 1 } label: {
+                        Image(systemName: "chevron.right").frame(width: 44, height: 44)
                     }
+                    .accessibilityLabel("Next page")
                     .disabled(previewIndex >= totalPreviewPages - 1)
                 }
                 .padding(.bottom, 8)
             }
         }
-        .padding(.top, 12)
+        .onAppear { clampPreviewIndex() }
+    }
+
+    @ViewBuilder
+    private func previewPage(at index: Int) -> some View {
+        let hasCover = config.includeCoverPage && targetFormations.count > 1
+        if hasCover && index == 0 {
+            PDFCoverPageView(routine: store.routine, targetFormations: targetFormations,
+                             config: config, pageNumber: 1, totalPages: totalPreviewPages)
+        } else {
+            let offset = index - (hasCover ? 1 : 0)
+            if targetFormations.indices.contains(offset) {
+                let formation = targetFormations[offset]
+                PDFFormationPageView(formation: formation,
+                    formationIndex: store.formationIndex(id: formation.id) ?? 0,
+                    store: store, config: config, pageNumber: index + 1, totalPages: totalPreviewPages)
+            }
+        }
     }
 
     // MARK: - Configuration Form
@@ -225,7 +198,7 @@ struct PDFExportSheetView: View {
                         Text(scope.rawValue).tag(scope)
                     }
                 }
-                .pickerStyle(.segmented)
+                .pickerStyle(.menu)
 
                 if config.scope == .custom {
                     VStack(alignment: .leading, spacing: 8) {

@@ -5,6 +5,11 @@ import SwiftUI
 import UIKit
 #endif
 
+enum PDFPageLayout {
+    static let width: CGFloat = 612
+    static let height: CGFloat = 792
+}
+
 @MainActor
 final class RoutinePDFExporter {
 
@@ -18,9 +23,9 @@ final class RoutinePDFExporter {
         let targetFormations = config.resolvedFormations(for: routine, currentFormationID: currentFormationID)
         guard !targetFormations.isEmpty else { return nil }
 
-        // Standard 8.5 x 11 inches at 72 DPI (Landscape: 792 x 612 pt)
-        let pageWidth: CGFloat = 11.0 * 72.0
-        let pageHeight: CGFloat = 8.5 * 72.0
+        // US Letter portrait, shared by the live preview and exported document.
+        let pageWidth = PDFPageLayout.width
+        let pageHeight = PDFPageLayout.height
         let pageRect = CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight)
 
         let safeRoutineName = routine.name
@@ -205,7 +210,9 @@ struct PDFFormationPageView: View {
                         .foregroundColor(.secondary)
                     HStack(spacing: 8) {
                         Text("\(formationIndex + 1). \(formation.name)")
-                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .font(.system(size: 26, weight: .bold, design: .rounded))
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.75)
                             .foregroundColor(.black)
 
                         if config.showCountsBadge && formationIndex > 0 {
@@ -235,37 +242,15 @@ struct PDFFormationPageView: View {
             .padding(.horizontal, 36)
             .padding(.top, 24)
 
-            // Court Diagram
-            // Court is 54x42. At cellSize = 11.0: width = 594, height = 462.
-            let cellSize: CGFloat = 11.0
-            let courtWidth = CourtConstants.width * cellSize
-            let courtHeight = CourtConstants.height * cellSize
-
-            FloorCanvasView(
-                athletes: processedAthletes,
-                groupedAthleteIDSets: stuntGroupIDSets,
-                transitionPaths: transitionPaths,
-                alignmentGuides: [],
-                mirrorGuides: [],
-                collisionIDs: config.showSpacingAlerts ? PathCalculations.collisionSummary(in: processedAthletes).ids : [],
-                cellSize: cellSize,
-                offset: .zero,
-                formationColor: config.colorMode == .formationAccent ? TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: formationIndex) : (config.colorMode == .monochrome ? .black : .white),
-                useRoleColors: config.colorMode == .roleColors,
-                showCenterMark: config.showCenterMark,
-                showCountSteps: config.showCountTicks,
-                ghostAthletes: ghostAthletes,
-                ghostColor: ghostColor
-            )
-            .frame(width: courtWidth, height: courtHeight)
-            .background(Color(white: 0.96))
-            .overlay(
-                Rectangle().stroke(Color.gray.opacity(0.35), lineWidth: 1)
-            )
-            .environment(\.colorScheme, .light)
+            PDFCourtView(athletes: processedAthletes, paths: transitionPaths,
+                         ghosts: ghostAthletes, groups: stuntGroupIDSets,
+                         config: config, formationIndex: formationIndex,
+                         counts: transitionDurationCounts)
+                .frame(width: 552, height: 470)
+                .padding(.vertical, 12)
 
             // Footer: Notes & Legend
-            HStack(alignment: .top, spacing: 24) {
+            VStack(alignment: .leading, spacing: 16) {
                 if config.showNotes && !formation.notes.isEmpty {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Notes & Coaching Cues")
@@ -274,11 +259,9 @@ struct PDFFormationPageView: View {
                         Text(formation.notes)
                             .font(.system(size: 9.5, weight: .regular))
                             .foregroundColor(.secondary)
-                            .lineLimit(3)
+                            .lineLimit(5)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    Spacer()
                 }
 
                 if config.showRoleLegend {
@@ -290,8 +273,9 @@ struct PDFFormationPageView: View {
 
             Spacer(minLength: 0)
         }
-        .frame(width: 792, height: 612)
+        .frame(width: PDFPageLayout.width, height: PDFPageLayout.height)
         .background(Color.white)
+        .environment(\.colorScheme, .light)
     }
 }
 
@@ -340,6 +324,9 @@ struct PDFCoverPageView: View {
 
                 Text(routine.name)
                     .font(.system(size: 34, weight: .heavy, design: .rounded))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.7)
+                    .padding(.horizontal, 32)
                     .foregroundColor(.black)
 
                 Text("Generated on \(formattedDate) • FormationFlow")
@@ -352,7 +339,7 @@ struct PDFCoverPageView: View {
                 .padding(.horizontal, 48)
 
             // Summary Stats Grid
-            HStack(spacing: 40) {
+            HStack(spacing: 12) {
                 SummaryCard(title: "Formations", value: "\(targetFormations.count)", icon: "square.grid.2x2")
                 SummaryCard(title: "Roster Size", value: "\(totalAthletes) Athletes", icon: "person.3")
                 SummaryCard(title: "Court Size", value: "\(Int(CourtConstants.width))′ × \(Int(CourtConstants.height))′", icon: "grid")
@@ -396,7 +383,7 @@ struct PDFCoverPageView: View {
 
                 // Right: Team Roster Summary
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("TEAM ROSTER")
+                    Text(routine.roster.count > 16 ? "ROSTER PREVIEW" : "TEAM ROSTER")
                         .font(.system(size: 11, weight: .bold, design: .monospaced))
                         .foregroundColor(.secondary)
 
@@ -439,8 +426,9 @@ struct PDFCoverPageView: View {
                     .padding(.bottom, 24)
             }
         }
-        .frame(width: 792, height: 612)
+        .frame(width: PDFPageLayout.width, height: PDFPageLayout.height)
         .background(Color.white)
+        .environment(\.colorScheme, .light)
     }
 }
 
@@ -478,7 +466,7 @@ struct PDFLegendView: View {
     }
 
     var body: some View {
-        VStack(alignment: .trailing, spacing: 4) {
+        VStack(alignment: .leading, spacing: 4) {
             Text("Role Legend")
                 .font(.system(size: 10, weight: .bold, design: .rounded))
                 .foregroundColor(.black)
@@ -506,5 +494,118 @@ private struct PDFLegendItem: View {
                 .font(.system(size: 9.5, weight: .medium))
                 .foregroundColor(.black)
         }
+    }
+}
+
+// MARK: - Print Floor
+
+/// Static document rendering: no editor chrome, animation, or dark stage.
+private struct PDFCourtView: View {
+    let athletes: [RenderedAthlete]
+    let paths: [TransitionPathRenderItem]
+    let ghosts: [RenderedAthlete]
+    let groups: [Set<UUID>]
+    let config: PDFExportConfiguration
+    let formationIndex: Int
+    let counts: Int
+
+    private func ink(for athlete: RenderedAthlete) -> Color {
+        switch config.colorMode {
+        case .roleColors: return athlete.role.color
+        case .formationAccent: return TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: formationIndex)
+        case .monochrome: return .black
+        }
+    }
+
+    private func routePoint(_ item: TransitionPathRenderItem, progress: CGFloat) -> CGPoint {
+        if !item.waypoints.isEmpty {
+            let lengths = PathCalculations.segmentLengths(item.nodes)
+            return PathCalculations.interpolateWaypointPath(nodes: item.nodes, lengths: lengths,
+                totalLength: lengths.reduce(0, +), waypoints: item.waypoints, progress: progress)
+        }
+        if let control = item.controlPoint {
+            return PathCalculations.quadraticBezierPoint(from: item.startPosition, control: control,
+                                                         to: item.endPosition, t: progress)
+        }
+        return CGPoint(x: item.startPosition.x + (item.endPosition.x - item.startPosition.x) * progress,
+                       y: item.startPosition.y + (item.endPosition.y - item.startPosition.y) * progress)
+    }
+
+    var body: some View {
+        Canvas { context, size in
+            let inset: CGFloat = 18
+            let scale = min((size.width - inset * 2) / CourtConstants.width,
+                            (size.height - 36) / CourtConstants.height)
+            let floor = CGRect(x: (size.width - CourtConstants.width * scale) / 2, y: 12,
+                               width: CourtConstants.width * scale, height: CourtConstants.height * scale)
+            func point(_ p: CGPoint) -> CGPoint {
+                CGPoint(x: floor.minX + p.x * scale, y: floor.minY + p.y * scale)
+            }
+            context.fill(Path(floor), with: .color(Color(white: 0.98)))
+            if config.showFloorGrid {
+                var grid = Path()
+                for x in stride(from: CGFloat(0), through: CourtConstants.width, by: 6) {
+                    grid.move(to: point(CGPoint(x: x, y: 0)))
+                    grid.addLine(to: point(CGPoint(x: x, y: CourtConstants.height)))
+                }
+                for y in stride(from: CGFloat(0), through: CourtConstants.height, by: 6) {
+                    grid.move(to: point(CGPoint(x: 0, y: y)))
+                    grid.addLine(to: point(CGPoint(x: CourtConstants.width, y: y)))
+                }
+                context.stroke(grid, with: .color(.black.opacity(0.12)), lineWidth: 0.6)
+            }
+            context.stroke(Path(floor), with: .color(.black.opacity(0.3)), lineWidth: 1)
+            if config.showCenterMark {
+                let c = point(CGPoint(x: CourtConstants.width / 2, y: CourtConstants.height / 2))
+                var mark = Path()
+                mark.move(to: CGPoint(x: c.x - 5, y: c.y)); mark.addLine(to: CGPoint(x: c.x + 5, y: c.y))
+                mark.move(to: CGPoint(x: c.x, y: c.y - 5)); mark.addLine(to: CGPoint(x: c.x, y: c.y + 5))
+                context.stroke(mark, with: .color(.black.opacity(0.35)), lineWidth: 1)
+            }
+            for group in groups {
+                let members = athletes.filter { group.contains($0.id) }.map { point($0.position) }
+                if let first = members.first {
+                    let bounds = members.reduce(CGRect(origin: first, size: .zero)) { rect, p in
+                        rect.union(CGRect(x: p.x, y: p.y, width: 0.01, height: 0.01))
+                    }.insetBy(dx: -17, dy: -17)
+                    context.stroke(Path(roundedRect: bounds, cornerRadius: 12),
+                                   with: .color(.black.opacity(0.25)), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                }
+            }
+            for ghost in ghosts {
+                let c = point(ghost.position)
+                context.stroke(Path(ellipseIn: CGRect(x: c.x - 10, y: c.y - 10, width: 20, height: 20)),
+                               with: .color(.black.opacity(0.25)), style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
+            }
+            for item in paths {
+                let samples = (0...80).map { point(routePoint(item, progress: CGFloat($0) / 80)) }
+                var line = Path(); line.addLines(samples)
+                context.stroke(line, with: .color(.black.opacity(0.35)), lineWidth: 1)
+                if config.showCountTicks && counts > 1 {
+                    for count in 1..<counts {
+                        let c = point(routePoint(item, progress: CGFloat(count) / CGFloat(counts)))
+                        context.fill(Path(ellipseIn: CGRect(x: c.x - 1.5, y: c.y - 1.5, width: 3, height: 3)),
+                                     with: .color(.black.opacity(0.6)))
+                    }
+                }
+            }
+            let conflicts = config.showSpacingAlerts ? PathCalculations.collisionSummary(in: athletes).ids : []
+            for athlete in athletes {
+                let c = point(athlete.position)
+                let rect = CGRect(x: c.x - 12, y: c.y - 12, width: 24, height: 24)
+                let shape = AthleteRoleMarkerShape(role: athlete.role).path(in: rect)
+                context.fill(shape, with: .color(.white))
+                context.fill(shape, with: .color(ink(for: athlete).opacity(0.18)))
+                context.stroke(shape, with: .color(ink(for: athlete)), lineWidth: 1.5)
+                if conflicts.contains(athlete.id) {
+                    context.stroke(Path(ellipseIn: rect.insetBy(dx: -4, dy: -4)), with: .color(.red), lineWidth: 1.5)
+                }
+                context.draw(Text(athlete.label).font(.system(size: athlete.label.count > 3 ? 7 : 9,
+                                                             weight: .bold, design: .rounded)).foregroundColor(.black), at: c)
+            }
+            context.draw(Text("FRONT").font(.system(size: 9, weight: .semibold, design: .monospaced))
+                .foregroundColor(.gray), at: CGPoint(x: size.width / 2, y: floor.maxY + 18))
+        }
+        .accessibilityLabel("Formation diagram with \(athletes.count) athletes")
     }
 }
