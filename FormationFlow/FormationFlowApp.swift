@@ -25,6 +25,7 @@ struct FormationFlowApp: App {
     private var mainRoot: some View {
         RoutineWorkspaceView()
             .tint(.coral)
+            .preferredColorScheme(.dark)
             .environmentObject(entitlementManager)
             .fullScreenCover(isPresented: Binding(
                 get: { !hasSeenOnboarding },
@@ -57,6 +58,7 @@ private struct PDFExportCaptureRoot: View {
         RoutineWorkspaceView()
             .environmentObject(entitlementManager)
             .tint(.coral)
+            .preferredColorScheme(.dark)
             .sheet(isPresented: $presented) {
                 PDFExportSheetView(store: store, initialPreviewIndex: capturePreviewIndex)
                     .tint(.coral)
