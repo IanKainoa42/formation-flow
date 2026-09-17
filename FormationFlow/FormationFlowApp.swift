@@ -24,6 +24,7 @@ struct FormationFlowApp: App {
 
     private var mainRoot: some View {
         RoutineWorkspaceView()
+            .tint(.coral)
             .environmentObject(entitlementManager)
             .fullScreenCover(isPresented: Binding(
                 get: { !hasSeenOnboarding },
@@ -55,8 +56,10 @@ private struct PDFExportCaptureRoot: View {
     var body: some View {
         RoutineWorkspaceView()
             .environmentObject(entitlementManager)
+            .tint(.coral)
             .sheet(isPresented: $presented) {
                 PDFExportSheetView(store: store, initialPreviewIndex: capturePreviewIndex)
+                    .tint(.coral)
                     .environmentObject(entitlementManager)
             }
             .task {
@@ -66,6 +69,11 @@ private struct PDFExportCaptureRoot: View {
     }
 }
 #endif
+
+/// App-wide accent. One coral everywhere — onboarding, controls, locks, Pro CTA.
+extension Color {
+    static let coral = Color(hex: 0xFF375F)
+}
 
 /// Holds the current allowed-orientation mask. The floor editor on iPhone forces
 /// landscape (the wide court fills the screen); the rest of the phone app stays
@@ -196,7 +204,7 @@ private enum OB {
     static let txt = Color(hex: 0xF5F5F7)
     static let txtDim = Color(red: 235/255, green: 235/255, blue: 245/255).opacity(0.60)
     static let txtFaint = Color(red: 235/255, green: 235/255, blue: 245/255).opacity(0.30)
-    static let accent = Color(hex: 0xFF375F)
+    static let accent = Color.coral
 
     /// The floor color for screen `index` — cycles the app's formation palette so
     /// the flow walks every color (one per page). Mirrors how the editor colors a

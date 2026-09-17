@@ -109,7 +109,7 @@ struct PortraitActionBar: View {
                     }
                     .buttonStyle(.bordered)
                     .frame(minWidth: 44, minHeight: 44)
-                    .background(showTransitionPaths ? Color.accentColor.opacity(0.2) : .clear, in: RoundedRectangle(cornerRadius: 6))
+                    .background(showTransitionPaths ? Color.coral.opacity(0.2) : .clear, in: RoundedRectangle(cornerRadius: 6))
                     .accessibilityLabel(showTransitionPaths ? "Hide paths" : "Show paths")
                     .accessibilityHint("Toggle visibility of transition paths")
                     .help("Toggle visibility of transition paths")

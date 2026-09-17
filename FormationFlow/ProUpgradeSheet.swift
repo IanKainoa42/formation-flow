@@ -39,7 +39,7 @@ struct ProUpgradeSheet: View {
 
             Image(systemName: "star.circle.fill")
                 .font(.system(size: 64))
-                .foregroundStyle(.orange)
+                .foregroundStyle(Color.coral)
 
             Text("Unlock FormationFlow Pro")
                 .font(.title2.bold())
@@ -73,7 +73,7 @@ struct ProUpgradeSheet: View {
                     purchaseButtonLabel
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(.orange)
+                .tint(.coral)
                 .disabled(isPurchaseLoading)
                 .accessibilityLabel(purchaseAccessibilityLabel)
                 .accessibilityHint(purchaseAccessibilityHint)

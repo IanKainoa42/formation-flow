@@ -319,7 +319,7 @@ struct PDFCoverPageView: View {
             VStack(spacing: 8) {
                 Text("FORMATION PLAYBOOK")
                     .font(.system(size: 14, weight: .bold, design: .monospaced))
-                    .foregroundColor(.accentColor)
+                    .foregroundColor(.coral)
                     .tracking(2)
 
                 Text(routine.name)
@@ -441,7 +441,7 @@ private struct SummaryCard: View {
         VStack(spacing: 4) {
             Image(systemName: icon)
                 .font(.system(size: 16))
-                .foregroundColor(.accentColor)
+                .foregroundColor(.coral)
             Text(value)
                 .font(.system(size: 15, weight: .bold, design: .rounded))
                 .foregroundColor(.black)

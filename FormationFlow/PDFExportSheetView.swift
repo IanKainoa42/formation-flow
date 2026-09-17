@@ -228,7 +228,7 @@ struct PDFExportSheetView: View {
                             } label: {
                                 HStack(spacing: 8) {
                                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                        .foregroundColor(isSelected ? .accentColor : .secondary)
+                                        .foregroundColor(isSelected ? .coral : .secondary)
 
                                     Circle()
                                         .fill(TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: index))

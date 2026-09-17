@@ -44,7 +44,7 @@ struct FormationThumbnailView: View {
             RenderedAthlete(id: UUID(), label: "S1", role: .spotter, position: CGPoint(x: 28, y: 36))
         ],
         isSelected: true,
-        accentColor: .blue
+        accentColor: .coral
     )
     .padding()
     .background(.black)

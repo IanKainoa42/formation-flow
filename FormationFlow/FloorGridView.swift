@@ -138,7 +138,7 @@ private struct EditorToolbarButtonLabel: View {
         .frame(height: editorToolbarButtonHeight)
         .background {
             Capsule(style: .continuous)
-                .fill(isProminent ? Color.accentColor : Color.secondary.opacity(0.14))
+                .fill(isProminent ? Color.coral : Color.secondary.opacity(0.14))
         }
         .overlay {
             Capsule(style: .continuous)
@@ -839,7 +839,7 @@ struct FloorGridView: View {
         }
 
         if !hasMadeFirstSelection {
-            return ("Tap an athlete to edit it. Drag on empty space to lasso-select.", .accentColor)
+            return ("Tap an athlete to edit it. Drag on empty space to lasso-select.", .coral)
         }
 
         return nil
@@ -1569,7 +1569,7 @@ struct FloorGridView: View {
             VStack(spacing: 18) {
                 Image(systemName: "figure.stand.line.dotted.figure.stand")
                     .font(.system(size: 52))
-                    .foregroundColor(.accentColor)
+                    .foregroundColor(.coral)
                 Text("Start your first picture")
                     .font(.title2.weight(.semibold))
                 Text("Add one athlete, drop in a 10-athlete template, or duplicate after you have a picture to build from.")
@@ -1849,7 +1849,7 @@ struct FloorGridView: View {
                                 banner(text: compactBannerConfiguration.text, color: compactBannerConfiguration.color)
                             }
                             if let pathSketchStatusText {
-                                banner(text: pathSketchStatusText, color: .accentColor)
+                                banner(text: pathSketchStatusText, color: .coral)
                             }
                         }
                         .padding(.horizontal, 12)
@@ -1860,7 +1860,7 @@ struct FloorGridView: View {
                         if isSwapMode, let athlete = swapSourceRosterAthlete {
                             swapBanner(athleteLabel: athlete.label)
                         } else if let pathSketchStatusText {
-                            banner(text: pathSketchStatusText, color: .accentColor)
+                            banner(text: pathSketchStatusText, color: .coral)
                         } else if isCompactLayout {
                             if let compactBannerConfiguration {
                                 banner(text: compactBannerConfiguration.text, color: compactBannerConfiguration.color)
@@ -1868,7 +1868,7 @@ struct FloorGridView: View {
                         } else if !hasMadeFirstSelection {
                             banner(
                                 text: "Tap an athlete to edit it. Drag on empty space to lasso-select.",
-                                color: .accentColor
+                                color: .coral
                             )
                         }
                     }
@@ -2674,7 +2674,7 @@ struct FloorGridView: View {
     @ViewBuilder
     private func swapBanner(athleteLabel: String) -> some View {
         VStack(spacing: 6) {
-            banner(text: "Tap another athlete to swap with \(athleteLabel).", color: .blue)
+            banner(text: "Tap another athlete to swap with \(athleteLabel).", color: .coral)
 
             if hasTransition, let startFormationName, let endFormationName {
                 Picker("Swap in", selection: $swapFormationTarget) {

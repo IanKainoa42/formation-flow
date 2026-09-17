@@ -840,7 +840,7 @@ struct RoutineWorkspaceView: View {
             if isFormationLocked(formation.id) {
                 Image(systemName: "lock.fill")
                     .font(.footnote)
-                    .foregroundColor(.orange)
+                    .foregroundColor(.coral)
                     .accessibilityLabel("Locked — upgrade to Pro")
             }
 
@@ -1379,7 +1379,7 @@ private struct FormationListThumbnailView: View {
         .frame(width: 34, height: 34)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(Color.accentColor.opacity(0.12))
+                .fill(Color.coral.opacity(0.12))
         )
     }
 }

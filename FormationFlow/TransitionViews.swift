@@ -175,7 +175,7 @@ enum TransportControls {
         }
         .buttonStyle(.bordered)
         .frame(minWidth: 44, minHeight: 44)
-        .tint(player.isLooping ? .accentColor : .secondary)
+        .tint(player.isLooping ? .coral : .secondary)
         .accessibilityLabel("Toggle loop")
         .accessibilityValue(player.isLooping ? "On" : "Off")
         .accessibilityHint(player.isLooping ? "Stop looping — play once and stop" : "Loop — repeat the transition continuously")
@@ -213,7 +213,7 @@ enum TransportControls {
         .buttonStyle(.bordered)
         .frame(minWidth: 44, minHeight: 44)
         .disabled(disabled)
-        .tint(isActive ? .blue : .secondary)
+        .tint(isActive ? .coral : .secondary)
         .accessibilityLabel(isActive ? "Cancel Swap" : "Swap Position")
         .accessibilityValue(isActive ? "Active" : "Inactive")
         .accessibilityHint(isActive ? "Cancel the swap operation" : "Swap start or end positions between two athletes")
@@ -618,7 +618,7 @@ struct CompactTransitionPlaybackRailView: View {
     var canEditPath: Bool = false
     var onAdd: (() -> Void)? = nil
     var formationLabel: String? = nil
-    var formationColor: Color = .accentColor
+    var formationColor: Color = .coral
     var onPreviousFormation: () -> Void = {}
     var onNextFormation: () -> Void = {}
     var isFirstFormation: Bool = false
