@@ -107,6 +107,12 @@ struct PDFExportSheetView: View {
             .onChange(of: config.includeCoverPage) { _, _ in
                 clampPreviewIndex()
             }
+            .onChange(of: config.focusedAthleteID) { _, focusedAthleteID in
+                // A focused athlete export is specifically a path handoff.
+                if focusedAthleteID != nil {
+                    config.showTransitionPaths = true
+                }
+            }
         }
         .modifier(WidePresentationSizing())
     }
@@ -255,9 +261,24 @@ struct PDFExportSheetView: View {
 
             // Section 2: Floor Canvas Overlays
             Section(header: Text("Floor Overlays & Layers")) {
+                Picker("Athlete Path", selection: $config.focusedAthleteID) {
+                    Text("Entire Team").tag(UUID?.none)
+                    ForEach(store.routine.roster) { athlete in
+                        Text("\(athlete.label) · \(athlete.role.displayName)")
+                            .tag(Optional(athlete.id))
+                    }
+                }
+
+                if config.focusedAthleteID != nil {
+                    Text("Keeps the full formation for context and highlights only the selected athlete's route.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 Toggle(isOn: $config.showTransitionPaths) {
                     Label("Transition Paths", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
                 }
+                .disabled(config.focusedAthleteID != nil)
 
                 if config.showTransitionPaths {
                     Toggle(isOn: $config.showCountTicks) {

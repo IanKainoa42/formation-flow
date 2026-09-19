@@ -34,6 +34,9 @@ struct PDFExportConfiguration: Equatable {
     // Scope & Pages
     var scope: ExportScope = .all
     var selectedFormationIDs: Set<UUID> = []
+    /// When set, the document keeps the full floor context but prints only this
+    /// athlete's transition route. Useful as a replacement or individual job sheet.
+    var focusedAthleteID: UUID? = nil
     var includeCoverPage: Bool = true
     var includePageNumbers: Bool = true
 
@@ -58,6 +61,7 @@ struct PDFExportConfiguration: Equatable {
     init(
         scope: ExportScope = .all,
         selectedFormationIDs: Set<UUID> = [],
+        focusedAthleteID: UUID? = nil,
         includeCoverPage: Bool = true,
         includePageNumbers: Bool = true,
         showTransitionPaths: Bool = false,
@@ -75,6 +79,7 @@ struct PDFExportConfiguration: Equatable {
     ) {
         self.scope = scope
         self.selectedFormationIDs = selectedFormationIDs
+        self.focusedAthleteID = focusedAthleteID
         self.includeCoverPage = includeCoverPage
         self.includePageNumbers = includePageNumbers
         self.showTransitionPaths = showTransitionPaths

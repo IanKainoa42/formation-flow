@@ -144,6 +144,7 @@ struct PDFFormationPageView: View {
         let currentLookup = Dictionary(uniqueKeysWithValues: currentAthletes.map { ($0.id, $0) })
 
         return prevAthletes.compactMap { start in
+            guard config.focusedAthleteID == nil || start.id == config.focusedAthleteID else { return nil }
             guard let end = currentLookup[start.id] else { return nil }
             let transition = spec.athleteTransitions.first { $0.athleteID == start.id }
             return TransitionPathRenderItem(
@@ -200,6 +201,11 @@ struct PDFFormationPageView: View {
         return Int(spec.duration.rounded())
     }
 
+    private var focusedAthlete: RosterAthlete? {
+        guard let focusedAthleteID = config.focusedAthleteID else { return nil }
+        return store.routine.roster.first { $0.id == focusedAthleteID }
+    }
+
     var body: some View {
         VStack(spacing: 12) {
             // Header Bar
@@ -221,8 +227,14 @@ struct PDFFormationPageView: View {
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 3)
-                                .background(Color.accentColor, in: Capsule())
+                                .background(Color.coral, in: Capsule())
                         }
+                    }
+
+                    if let focusedAthlete {
+                        Text("ATHLETE PATH · \(focusedAthlete.label) · \(focusedAthlete.role.displayName.uppercased())")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(.coral)
                     }
                 }
 
@@ -245,7 +257,8 @@ struct PDFFormationPageView: View {
             PDFCourtView(athletes: processedAthletes, paths: transitionPaths,
                          ghosts: ghostAthletes, groups: stuntGroupIDSets,
                          config: config, formationIndex: formationIndex,
-                         counts: transitionDurationCounts)
+                         counts: transitionDurationCounts,
+                         focusedAthleteID: config.focusedAthleteID)
                 .frame(width: 552, height: 470)
                 .padding(.vertical, 12)
 
@@ -508,6 +521,7 @@ private struct PDFCourtView: View {
     let config: PDFExportConfiguration
     let formationIndex: Int
     let counts: Int
+    let focusedAthleteID: UUID?
 
     private func ink(for athlete: RenderedAthlete) -> Color {
         switch config.colorMode {
@@ -580,7 +594,10 @@ private struct PDFCourtView: View {
             for item in paths {
                 let samples = (0...80).map { point(routePoint(item, progress: CGFloat($0) / 80)) }
                 var line = Path(); line.addLines(samples)
-                context.stroke(line, with: .color(.black.opacity(0.35)), lineWidth: 1)
+                let isFocusedPath = item.athleteID == focusedAthleteID
+                context.stroke(line,
+                               with: .color(isFocusedPath ? .coral : .black.opacity(0.35)),
+                               lineWidth: isFocusedPath ? 2.5 : 1)
                 if config.showCountTicks && counts > 1 {
                     for count in 1..<counts {
                         let c = point(routePoint(item, progress: CGFloat(count) / CGFloat(counts)))
@@ -594,14 +611,18 @@ private struct PDFCourtView: View {
                 let c = point(athlete.position)
                 let rect = CGRect(x: c.x - 12, y: c.y - 12, width: 24, height: 24)
                 let shape = AthleteRoleMarkerShape(role: athlete.role).path(in: rect)
+                let isFocusedAthlete = focusedAthleteID == nil || athlete.id == focusedAthleteID
                 context.fill(shape, with: .color(.white))
-                context.fill(shape, with: .color(ink(for: athlete).opacity(0.18)))
-                context.stroke(shape, with: .color(ink(for: athlete)), lineWidth: 1.5)
+                context.fill(shape, with: .color(ink(for: athlete).opacity(isFocusedAthlete ? 0.24 : 0.06)))
+                context.stroke(shape, with: .color(ink(for: athlete).opacity(isFocusedAthlete ? 1 : 0.28)),
+                               lineWidth: isFocusedAthlete ? 2 : 1)
                 if conflicts.contains(athlete.id) {
                     context.stroke(Path(ellipseIn: rect.insetBy(dx: -4, dy: -4)), with: .color(.red), lineWidth: 1.5)
                 }
-                context.draw(Text(athlete.label).font(.system(size: athlete.label.count > 3 ? 7 : 9,
-                                                             weight: .bold, design: .rounded)).foregroundColor(.black), at: c)
+                if isFocusedAthlete {
+                    context.draw(Text(athlete.label).font(.system(size: athlete.label.count > 3 ? 7 : 9,
+                                                                 weight: .bold, design: .rounded)).foregroundColor(.black), at: c)
+                }
             }
             context.draw(Text("FRONT").font(.system(size: 9, weight: .semibold, design: .monospaced))
                 .foregroundColor(.gray), at: CGPoint(x: size.width / 2, y: floor.maxY + 18))
