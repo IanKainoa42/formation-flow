@@ -326,6 +326,7 @@ struct MoreCoachingAppsView: View {
                                 }
                             }
                             .padding(.vertical, 4)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("\(app.name), \(app.price). Opens the App Store.")

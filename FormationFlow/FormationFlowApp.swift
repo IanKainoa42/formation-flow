@@ -13,6 +13,10 @@ struct FormationFlowApp: App {
             if CommandLine.arguments.contains("-ShowPDFExport") {
                 PDFExportCaptureRoot()
                     .environmentObject(entitlementManager)
+            } else if CommandLine.arguments.contains("-ShowMoreApps") {
+                MoreCoachingAppsView()
+                    .tint(.coral)
+                    .preferredColorScheme(.dark)
             } else {
                 mainRoot
             }
