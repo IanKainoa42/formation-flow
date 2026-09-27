@@ -1,1 +1,6 @@
-• Export Playbook now opens as a full-width sheet on iPad, so the live page preview sits beside the export options instead of being squeezed into a strip above them — much easier to check a page before you print it
+• Playbook export is now preview-first, with clean printable formations
+• New: export a focused page per athlete showing just their own path
+• Collision markers now appear immediately, no manual path refresh needed
+• Bigger playback controls on iPhone in portrait
+• One consistent coral accent and dark chrome across the whole app
+• New "More Coaching Tools" page in the menu with our other cheer coaching apps
