@@ -1,6 +1,5 @@
 {
-  "version": "1.1",
-  "build": "300",
-  "commit": "15dc7693f60d0b4e377a7df851ae3aac61c728cf",
-  "seeded": true
+  "version": "1.1.1",
+  "build": "302",
+  "commit": "8f387bb4cf301f5b9552e0c1a10fbcc2aec8a1f6"
 }
