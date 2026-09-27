@@ -266,3 +266,83 @@ struct ProUpgradeSheet: View {
         }
     }
 }
+
+
+// MARK: - More Coaching Apps (cross-promotion)
+
+/// One of Ian's other App Store apps, surfaced from the workspace overflow menus.
+/// Keep this list in sync with the developer page (apps.apple.com/developer/id1864051409).
+struct CoachingApp: Identifiable {
+    let id: String          // App Store numeric ID
+    let name: String
+    let tagline: String
+    let systemImage: String
+    let price: String
+
+    var storeURL: URL { URL(string: "https://apps.apple.com/app/id\(id)")! }
+
+    static let others: [CoachingApp] = [
+        CoachingApp(id: "6777192892", name: "HitRate: Skill Tracker",
+                    tagline: "Count every hit, bobble and fall. Hit % per skill, per group, over the season. Apple Watch included.",
+                    systemImage: "chart.line.uptrend.xyaxis", price: "$2.99"),
+        CoachingApp(id: "6760259826", name: "CoachCard",
+                    tagline: "Silent coaching whiteboard for iPad. Flash scores and cues across a loud gym.",
+                    systemImage: "rectangle.on.rectangle.angled", price: "$0.99"),
+        CoachingApp(id: "6766343275", name: "PracticeMix",
+                    tagline: "Turn your competition mix into timed practice blocks with reps and rest.",
+                    systemImage: "music.note.list", price: "$4.99"),
+        CoachingApp(id: "6763985604", name: "Vid-e-Note",
+                    tagline: "Draw on any video with Apple Pencil. Mark up stunts and tumbling frame by frame.",
+                    systemImage: "pencil.and.scribble", price: "$0.99")
+    ]
+}
+
+/// Sheet listing the rest of the coaching toolkit. Every row opens the App Store.
+struct MoreCoachingAppsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(CoachingApp.others) { app in
+                        Button {
+                            openURL(app.storeURL)
+                        } label: {
+                            HStack(alignment: .top, spacing: 14) {
+                                Image(systemName: app.systemImage)
+                                    .font(.title2)
+                                    .foregroundStyle(Color.coral)
+                                    .frame(width: 36, height: 36)
+                                    .background(Color.coral.opacity(0.12), in: RoundedRectangle(cornerRadius: 9))
+                                VStack(alignment: .leading, spacing: 3) {
+                                    HStack {
+                                        Text(app.name).font(.headline)
+                                        Spacer()
+                                        Text(app.price).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                                    }
+                                    Text(app.tagline).font(.subheadline).foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(app.name), \(app.price). Opens the App Store.")
+                    }
+                } header: {
+                    Text("From the same coach")
+                } footer: {
+                    Text("Built at CheerForce San Diego for real practices. Every app works offline with no account.")
+                }
+            }
+            .navigationTitle("More Coaching Tools")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+}

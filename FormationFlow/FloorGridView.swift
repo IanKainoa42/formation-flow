@@ -279,6 +279,7 @@ struct FloorGridView: View {
     @State private var sharePayload: TransitionSharePayload?
     @State private var documentSharePayload: DocumentSharePayload?
     @State private var showingPDFExportSheet = false
+    @State private var showingMoreAppsSheet = false
     @State private var shareResultMessage = ""
     @State private var showingShareResult = false
     @State private var recentPathEditSnapshot: PathEditUndoSnapshot?
@@ -892,6 +893,9 @@ struct FloorGridView: View {
         .sheet(isPresented: $showingRosterSheet) {
             rosterSheet
         }
+        .sheet(isPresented: $showingMoreAppsSheet) {
+            MoreCoachingAppsView()
+        }
         .sheet(isPresented: $showingNotesSheet) {
             notesSheet
         }
@@ -1257,6 +1261,10 @@ struct FloorGridView: View {
             Label("Notes", systemImage: "note.text")
         }
 
+        Button(action: { showingMoreAppsSheet = true }) {
+            Label("More Coaching Tools", systemImage: "square.grid.2x2")
+        }
+
         Divider()
 
         Button(action: onDuplicateAsNext) {
@@ -1503,6 +1511,10 @@ struct FloorGridView: View {
 
             Button(action: { showingNotesSheet = true }) {
                 Label("Notes", systemImage: "note.text")
+            }
+
+            Button(action: { showingMoreAppsSheet = true }) {
+                Label("More Coaching Tools", systemImage: "square.grid.2x2")
             }
 
             Button(action: {
@@ -2198,6 +2210,10 @@ struct FloorGridView: View {
             Label("Notes", systemImage: "note.text")
         }
 
+        Button(action: { showingMoreAppsSheet = true }) {
+            Label("More Coaching Tools", systemImage: "square.grid.2x2")
+        }
+
         Divider()
 
         Button(action: onDuplicateAsNext) {
@@ -2343,6 +2359,10 @@ struct FloorGridView: View {
 
             Button(action: { showingNotesSheet = true }) {
                 Label("Notes", systemImage: "note.text")
+            }
+
+            Button(action: { showingMoreAppsSheet = true }) {
+                Label("More Coaching Tools", systemImage: "square.grid.2x2")
             }
 
             if hasTransition {

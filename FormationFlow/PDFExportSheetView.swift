@@ -1,4 +1,5 @@
 import SwiftUI
+import StoreKit
 
 // MARK: - PDF Export Sheet View
 
@@ -7,6 +8,11 @@ struct PDFExportSheetView: View {
     let currentFormationID: UUID?
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var entitlementManager: EntitlementManager
+    @Environment(\.requestReview) private var requestReview
+    /// Lifetime count of playbooks a coach has actually shared. A finished export is the
+    /// one moment in the app where a Pro user has just gotten value, so it's where we ask
+    /// for a rating — on the 1st and 5th export only. The system still rate-limits.
+    @AppStorage("playbookExportCount") private var playbookExportCount: Int = 0
 
     @State private var config = PDFExportConfiguration()
     @State private var previewIndex: Int = 0
@@ -84,7 +90,15 @@ struct PDFExportSheetView: View {
             .sheet(item: $sharePayload) { payload in
                 ShareSheetView(items: [payload.url]) { completed, _ in
                     if completed {
+                        playbookExportCount += 1
+                        let shouldAskForReview = playbookExportCount == 1 || playbookExportCount == 5
                         dismiss()
+                        if shouldAskForReview {
+                            // Let the sheet finish dismissing so the system prompt isn't dropped.
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                                requestReview()
+                            }
+                        }
                     }
                     sharePayload = nil
                 }
