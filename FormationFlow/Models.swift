@@ -1147,23 +1147,16 @@ enum AlignmentSnapEngine {
             let cellX = Int(floor(point.x / tolerance))
             let cellY = Int(floor(point.y / tolerance))
 
-            var alreadyIncluded = false
-            for cx in (cellX - 1)...(cellX + 1) {
-                for cy in (cellY - 1)...(cellY + 1) {
-                    let cell = GridCell(x: cx, y: cy)
-                    if let cellPoints = grid[cell] {
-                        for p in cellPoints {
-                            let dx = p.x - point.x
-                            let dy = p.y - point.y
-                            if dx * dx + dy * dy < toleranceSq {
-                                alreadyIncluded = true
-                                break
-                            }
-                        }
-                    }
-                    if alreadyIncluded { break }
-                }
-                if alreadyIncluded { break }
+            let searchCells = [
+                GridCell(x: cellX - 1, y: cellY - 1), GridCell(x: cellX, y: cellY - 1), GridCell(x: cellX + 1, y: cellY - 1),
+                GridCell(x: cellX - 1, y: cellY),     GridCell(x: cellX, y: cellY),     GridCell(x: cellX + 1, y: cellY),
+                GridCell(x: cellX - 1, y: cellY + 1), GridCell(x: cellX, y: cellY + 1), GridCell(x: cellX + 1, y: cellY + 1)
+            ]
+
+            let alreadyIncluded = searchCells.lazy.compactMap({ grid[$0] }).joined().contains { p in
+                let dx = p.x - point.x
+                let dy = p.y - point.y
+                return dx * dx + dy * dy < toleranceSq
             }
 
             if !alreadyIncluded {
@@ -2613,20 +2606,17 @@ struct PathCalculations {
             let cellX = Int(floor(athlete.position.x / cellSize))
             let cellY = Int(floor(athlete.position.y / cellSize))
 
-            for cx in (cellX - 1)...(cellX + 1) {
-                for cy in (cellY - 1)...(cellY + 1) {
-                    let cell = GridCell(x: cx, y: cy)
-                    if let cellIndices = grid[cell] {
-                        for otherIndex in cellIndices {
-                            if otherIndex > index {
-                                if squaredDistance(from: athlete.position, to: athletes[otherIndex].position) < minDistanceSquared {
-                                    count += 1
-                                    ids.insert(athlete.id)
-                                    ids.insert(athletes[otherIndex].id)
-                                }
-                            }
-                        }
-                    }
+            let searchCells = [
+                GridCell(x: cellX - 1, y: cellY - 1), GridCell(x: cellX, y: cellY - 1), GridCell(x: cellX + 1, y: cellY - 1),
+                GridCell(x: cellX - 1, y: cellY),     GridCell(x: cellX, y: cellY),     GridCell(x: cellX + 1, y: cellY),
+                GridCell(x: cellX - 1, y: cellY + 1), GridCell(x: cellX, y: cellY + 1), GridCell(x: cellX + 1, y: cellY + 1)
+            ]
+
+            for otherIndex in searchCells.lazy.compactMap({ grid[$0] }).joined() where otherIndex > index {
+                if squaredDistance(from: athlete.position, to: athletes[otherIndex].position) < minDistanceSquared {
+                    count += 1
+                    ids.insert(athlete.id)
+                    ids.insert(athletes[otherIndex].id)
                 }
             }
         }
@@ -2765,8 +2755,10 @@ struct PathCalculations {
 
         // Skip first and last steps — static proximity is already
         // handled by collisionSummary; only flag mid-transition crossings.
+        var grid: [GridCell: [Int]] = [:]
+
         for step in 1..<steps {
-            var grid: [GridCell: [Int]] = [:]
+            grid.removeAll(keepingCapacity: true)
             for index in 0..<paths.count {
                 let pos = sampledPositions[index][step]
                 let cellX = Int(floor(pos.x / cellSize))
@@ -2780,22 +2772,19 @@ struct PathCalculations {
                 let cellX = Int(floor(pos.x / cellSize))
                 let cellY = Int(floor(pos.y / cellSize))
 
-                for cx in (cellX - 1)...(cellX + 1) {
-                    for cy in (cellY - 1)...(cellY + 1) {
-                        let cell = GridCell(x: cx, y: cy)
-                        if let cellIndices = grid[cell] {
-                            for otherIndex in cellIndices {
-                                if otherIndex > index {
-                                    let packedKey = Int64(index) << 32 | Int64(otherIndex)
-                                    if !seenPairs.contains(packedKey) {
-                                        if squaredDistance(from: pos, to: sampledPositions[otherIndex][step]) < minDistanceSquared {
-                                            seenPairs.insert(packedKey)
-                                            collisionIDs.insert(paths[index].athleteID)
-                                            collisionIDs.insert(paths[otherIndex].athleteID)
-                                        }
-                                    }
-                                }
-                            }
+                let searchCells = [
+                    GridCell(x: cellX - 1, y: cellY - 1), GridCell(x: cellX, y: cellY - 1), GridCell(x: cellX + 1, y: cellY - 1),
+                    GridCell(x: cellX - 1, y: cellY),     GridCell(x: cellX, y: cellY),     GridCell(x: cellX + 1, y: cellY),
+                    GridCell(x: cellX - 1, y: cellY + 1), GridCell(x: cellX, y: cellY + 1), GridCell(x: cellX + 1, y: cellY + 1)
+                ]
+
+                for otherIndex in searchCells.lazy.compactMap({ grid[$0] }).joined() where otherIndex > index {
+                    let packedKey = Int64(index) << 32 | Int64(otherIndex)
+                    if !seenPairs.contains(packedKey) {
+                        if squaredDistance(from: pos, to: sampledPositions[otherIndex][step]) < minDistanceSquared {
+                            seenPairs.insert(packedKey)
+                            collisionIDs.insert(paths[index].athleteID)
+                            collisionIDs.insert(paths[otherIndex].athleteID)
                         }
                     }
                 }
@@ -2914,8 +2903,10 @@ struct PathCalculations {
         var responses: [UUID: [CollisionResponse]] = [:]
         var seenPairs = Set<Int64>()
 
+        var grid: [GridCell: [Int]] = [:]
+
         for step in 1..<steps {
-            var grid: [GridCell: [Int]] = [:]
+            grid.removeAll(keepingCapacity: true)
             for index in 0..<paths.count {
                 let pos = sampledPaths[index][step].position
                 let cellX = Int(floor(pos.x / cellSize))
@@ -2929,81 +2920,78 @@ struct PathCalculations {
                 let cellX = Int(floor(a.x / cellSize))
                 let cellY = Int(floor(a.y / cellSize))
 
-                for cx in (cellX - 1)...(cellX + 1) {
-                    for cy in (cellY - 1)...(cellY + 1) {
-                        let cell = GridCell(x: cx, y: cy)
-                        if let cellIndices = grid[cell] {
-                            for otherIndex in cellIndices {
-                                if otherIndex > index {
-                                    let packedKey = Int64(index) << 32 | Int64(otherIndex)
-                                    if !seenPairs.contains(packedKey) {
-                                        let b = sampledPaths[otherIndex][step].position
-                                        let currentDistanceSquared = squaredDistance(from: a, to: b)
-                                        if currentDistanceSquared < minDistanceSquared {
-                                            seenPairs.insert(packedKey)
-                                            let firstAthleteID = paths[index].athleteID
-                                            let secondAthleteID = paths[otherIndex].athleteID
-                                            collisionIDs.insert(firstAthleteID)
-                                            collisionIDs.insert(secondAthleteID)
-                                            collisionStartProgresses[firstAthleteID] = min(
-                                                collisionStartProgresses[firstAthleteID] ?? 1,
-                                                sampledPaths[index][step].pathProgress
-                                            )
-                                            collisionStartProgresses[secondAthleteID] = min(
-                                                collisionStartProgresses[secondAthleteID] ?? 1,
-                                                sampledPaths[otherIndex][step].pathProgress
-                                            )
-                                            let midpoint = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
-                                            if !markers.contains(where: { squaredDistance(from: $0, to: midpoint) < 1 }) {
-                                                markers.append(midpoint)
-                                                if case .full = detailLevel {
-                                                    let contactStartProgress = collisionContactStartProgress(
-                                                        firstSamples: sampledPaths[index],
-                                                        secondSamples: sampledPaths[otherIndex],
-                                                        step: step,
-                                                        steps: steps,
-                                                        minDistanceSquared: minDistanceSquared
-                                                    )
-                                                    markerProgresses.append(
-                                                        max(0, contactStartProgress - collisionPulseLeadProgress)
-                                                    )
-                                                }
-                                            }
+                let searchCells = [
+                    GridCell(x: cellX - 1, y: cellY - 1), GridCell(x: cellX, y: cellY - 1), GridCell(x: cellX + 1, y: cellY - 1),
+                    GridCell(x: cellX - 1, y: cellY),     GridCell(x: cellX, y: cellY),     GridCell(x: cellX + 1, y: cellY),
+                    GridCell(x: cellX - 1, y: cellY + 1), GridCell(x: cellX, y: cellY + 1), GridCell(x: cellX + 1, y: cellY + 1)
+                ]
 
-                                            if case .full = detailLevel,
-                                               timings[index].travel > collisionResponseMinimumTravel {
-                                                responses[paths[index].athleteID, default: []].append(
-                                                    CollisionResponse(
-                                                        progress: sampledPaths[index][step].pathProgress,
-                                                        holdCounts: collisionPenaltyCounts,
-                                                        redirectOffset: collisionRedirectOffset(
-                                                            samples: sampledPaths[index],
-                                                            step: step,
-                                                            fallbackStart: paths[index].startPosition,
-                                                            fallbackEnd: paths[index].endPosition
-                                                        )
-                                                    )
-                                                )
-                                            }
-
-                                            if case .full = detailLevel,
-                                               timings[otherIndex].travel > collisionResponseMinimumTravel {
-                                                responses[paths[otherIndex].athleteID, default: []].append(
-                                                    CollisionResponse(
-                                                        progress: sampledPaths[otherIndex][step].pathProgress,
-                                                        holdCounts: collisionPenaltyCounts,
-                                                        redirectOffset: collisionRedirectOffset(
-                                                            samples: sampledPaths[otherIndex],
-                                                            step: step,
-                                                            fallbackStart: paths[otherIndex].startPosition,
-                                                            fallbackEnd: paths[otherIndex].endPosition
-                                                        )
-                                                    )
-                                                )
-                                            }
-                                        }
-                                    }
+                for otherIndex in searchCells.lazy.compactMap({ grid[$0] }).joined() where otherIndex > index {
+                    let packedKey = Int64(index) << 32 | Int64(otherIndex)
+                    if !seenPairs.contains(packedKey) {
+                        let b = sampledPaths[otherIndex][step].position
+                        let currentDistanceSquared = squaredDistance(from: a, to: b)
+                        if currentDistanceSquared < minDistanceSquared {
+                            seenPairs.insert(packedKey)
+                            let firstAthleteID = paths[index].athleteID
+                            let secondAthleteID = paths[otherIndex].athleteID
+                            collisionIDs.insert(firstAthleteID)
+                            collisionIDs.insert(secondAthleteID)
+                            collisionStartProgresses[firstAthleteID] = min(
+                                collisionStartProgresses[firstAthleteID] ?? 1,
+                                sampledPaths[index][step].pathProgress
+                            )
+                            collisionStartProgresses[secondAthleteID] = min(
+                                collisionStartProgresses[secondAthleteID] ?? 1,
+                                sampledPaths[otherIndex][step].pathProgress
+                            )
+                            let midpoint = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
+                            if !markers.contains(where: { squaredDistance(from: $0, to: midpoint) < 1 }) {
+                                markers.append(midpoint)
+                                if case .full = detailLevel {
+                                    let contactStartProgress = collisionContactStartProgress(
+                                        firstSamples: sampledPaths[index],
+                                        secondSamples: sampledPaths[otherIndex],
+                                        step: step,
+                                        steps: steps,
+                                        minDistanceSquared: minDistanceSquared
+                                    )
+                                    markerProgresses.append(
+                                        max(0, contactStartProgress - collisionPulseLeadProgress)
+                                    )
                                 }
+                            }
+
+                            if case .full = detailLevel,
+                               timings[index].travel > collisionResponseMinimumTravel {
+                                responses[paths[index].athleteID, default: []].append(
+                                    CollisionResponse(
+                                        progress: sampledPaths[index][step].pathProgress,
+                                        holdCounts: collisionPenaltyCounts,
+                                        redirectOffset: collisionRedirectOffset(
+                                            samples: sampledPaths[index],
+                                            step: step,
+                                            fallbackStart: paths[index].startPosition,
+                                            fallbackEnd: paths[index].endPosition
+                                        )
+                                    )
+                                )
+                            }
+
+                            if case .full = detailLevel,
+                               timings[otherIndex].travel > collisionResponseMinimumTravel {
+                                responses[paths[otherIndex].athleteID, default: []].append(
+                                    CollisionResponse(
+                                        progress: sampledPaths[otherIndex][step].pathProgress,
+                                        holdCounts: collisionPenaltyCounts,
+                                        redirectOffset: collisionRedirectOffset(
+                                            samples: sampledPaths[otherIndex],
+                                            step: step,
+                                            fallbackStart: paths[otherIndex].startPosition,
+                                            fallbackEnd: paths[otherIndex].endPosition
+                                        )
+                                    )
+                                )
                             }
                         }
                     }
