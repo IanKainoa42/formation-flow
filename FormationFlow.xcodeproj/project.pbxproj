@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		1FBACD3F3072969D00838DC8 /* RosterImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FBACD3E3072969D00838DC8 /* RosterImport.swift */; };
+		1FBACD413072971000838DC8 /* RosterManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FBACD403072971000838DC8 /* RosterManagementView.swift */; };
 		334C42A5B839654CCBC14ACF /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F4F48ABA5AD5A9438964E6B /* Models.swift */; };
 		5A25437D9A0BBC0AC8856EE5 /* FormationFlowApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21E94990B494F1D3D617A4E7 /* FormationFlowApp.swift */; };
 		76954392907776D3D5EA6400 /* RoutinePDFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E0F49798D236EBFBB832F29 /* RoutinePDFExporter.swift */; };
@@ -30,6 +32,8 @@
 /* Begin PBXFileReference section */
 		1F08C9AC2F57AAC400425930 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = FormationFlow/Assets.xcassets; sourceTree = SOURCE_ROOT; };
 		1F08C9AD2F57AAED00425930 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = FormationFlow/Info.plist; sourceTree = SOURCE_ROOT; };
+		1FBACD3E3072969D00838DC8 /* RosterImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RosterImport.swift; sourceTree = "<group>"; };
+		1FBACD403072971000838DC8 /* RosterManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RosterManagementView.swift; sourceTree = "<group>"; };
 		1FEE788C2F3E5E9900012373 /* FormationFlow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FormationFlow.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		21E94990B494F1D3D617A4E7 /* FormationFlowApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FormationFlowApp.swift; path = FormationFlow/FormationFlowApp.swift; sourceTree = SOURCE_ROOT; };
 		22EB4E82B510B78E55C92084 /* TransitionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TransitionViews.swift; path = FormationFlow/TransitionViews.swift; sourceTree = SOURCE_ROOT; };
@@ -91,6 +95,8 @@
 				FF220001FF220001FF220001 /* FormationThumbnailView.swift */,
 				FF220002FF220002FF220002 /* FormationThumbnailStrip.swift */,
 				FF220003FF220003FF220003 /* PortraitActionBar.swift */,
+				1FBACD3E3072969D00838DC8 /* RosterImport.swift */,
+				1FBACD403072971000838DC8 /* RosterManagementView.swift */,
 			);
 			path = FormationFlow;
 			sourceTree = "<group>";
@@ -166,8 +172,10 @@
 				5A25437D9A0BBC0AC8856EE5 /* FormationFlowApp.swift in Sources */,
 				CC220001CC220001CC220001 /* EntitlementManager.swift in Sources */,
 				CC220002CC220002CC220002 /* FreeTierLimits.swift in Sources */,
+				1FBACD3F3072969D00838DC8 /* RosterImport.swift in Sources */,
 				CC220003CC220003CC220003 /* ProUpgradeSheet.swift in Sources */,
 				DD330001DD330001DD330001 /* RoutinePlaybackView.swift in Sources */,
+				1FBACD413072971000838DC8 /* RosterManagementView.swift in Sources */,
 				EE110001EE110001EE110001 /* FormationThumbnailView.swift in Sources */,
 				EE110002EE110002EE110002 /* FormationThumbnailStrip.swift in Sources */,
 				EE110003EE110003EE110003 /* PortraitActionBar.swift in Sources */,

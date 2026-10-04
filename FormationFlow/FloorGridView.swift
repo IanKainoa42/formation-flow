@@ -2587,71 +2587,15 @@ struct FloorGridView: View {
     }
 
     private var rosterSheet: some View {
-        NavigationStack {
-            Group {
-                if store.routine.roster.isEmpty {
-                    ContentUnavailableView {
-                        Label("No Athletes", systemImage: "person.3")
-                    } description: {
-                        Text("Add athletes to your roster to start building formations.")
-                    } actions: {
-                        Button {
-                            showingRosterSheet = false
-                            addAthlete()
-                        } label: {
-                            Text("Add Athlete")
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                } else {
-                    List {
-                        ForEach(store.routine.roster) { athlete in
-                            HStack(spacing: 12) {
-                                AthleteRoleMarkerShape(role: athlete.role)
-                                    .fill(.primary)
-                                    .frame(width: 14, height: 14)
-                                    .frame(width: 26, height: 26)
-                                    .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(athlete.label)
-                                    Text(athlete.role.displayName)
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-
-                                Spacer()
-                            }
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button(role: .destructive) {
-                                    requestRosterAthleteDeletion([athlete.id])
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                            }
-                        }
-                        .onDelete { offsets in
-                            let athletes = store.routine.roster
-                            requestRosterAthleteDeletion(
-                                offsets.compactMap { athletes.indices.contains($0) ? athletes[$0].id : nil }
-                            )
-                        }
-                        .onMove { from, to in
-                            store.moveRoster(fromOffsets: from, toOffset: to)
-                        }
-                    }
-                }
-            }
-            .navigationTitle("Manage Roster")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    EditButton()
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") { showingRosterSheet = false }
-                }
-            }
-        }
+        RosterManagementView(
+            store: store,
+            onAddAthlete: {
+                showingRosterSheet = false
+                addAthlete()
+            },
+            onDeleteAthletes: requestRosterAthleteDeletion
+        )
+        .environmentObject(entitlementManager)
     }
 
     private var notesSheet: some View {

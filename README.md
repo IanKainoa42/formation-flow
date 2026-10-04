@@ -51,3 +51,26 @@ FormationFlow/
 ---
 
 Built for CFSD
+
+## Quick team setup (Pro)
+
+Open **Roster** from the editor’s tools menu, then choose **Add Team from Names**.
+Paste one athlete per line, or copy a spreadsheet’s **Name** and optional **Role**
+columns. `Alex Smith, Flyer` also works. Review the suggested 1–3 character floor
+labels and roles before adding the team. Full names are shown during review;
+only the short labels and roles are saved. Unknown roles start as Base.
+
+Use **Apply Role to Everyone** to assign a shared role, then adjust individual
+athletes. Distinct labels are suggested for matching initials or repeated names.
+Each batch supports up to 200 athletes and adds to the current roster without
+replacing existing athletes or moving their placements.
+
+Choose **Copy Roster from Routine** to reuse another routine’s labels and roles.
+Copied athletes get new identities; choreography and positions are not copied.
+You can edit existing labels and roles directly in **Manage Roster**.
+
+Run the isolated import and persistence regression checks with:
+
+```sh
+Tests/run_bulk_roster_regression.sh
+```

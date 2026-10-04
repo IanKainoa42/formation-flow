@@ -51,6 +51,7 @@ struct ProUpgradeSheet: View {
                 featureRow("Advanced path waypoints")
                 featureRow("Sketch paths by drawing")
                 featureRow("Multiple routines")
+                featureRow("Paste & reuse team rosters")
             }
             .padding(.horizontal, 32)
 
