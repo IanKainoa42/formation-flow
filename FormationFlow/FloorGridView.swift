@@ -5319,9 +5319,6 @@ struct FloorGridView: View {
         }
     }
 
-    private func performResetSelectedPath() {
-        resetPathForSelectedAthlete()
-    }
 }
 
 enum SelectionSpacing {
