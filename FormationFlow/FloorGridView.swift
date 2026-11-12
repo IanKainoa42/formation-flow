@@ -346,6 +346,11 @@ struct FloorGridView: View {
         isPhoneLayout && isHeightConstrained
     }
 
+    private var phonePortraitHasSelection: Bool {
+        isPhoneLayout && !isPhoneLandscape
+            && (selectedRosterAthlete != nil || selectedAthleteIDs.count > 1)
+    }
+
     private var isHeightConstrained: Bool {
         verticalSizeClass == .compact
     }
@@ -787,10 +792,10 @@ struct FloorGridView: View {
 
     private var compactInspectorTitle: String {
         if selectedAthleteIDs.count > 1 {
-            return "Selection"
+            return "\(selectedAthleteIDs.count) Selected"
         }
-        if selectedAthleteID != nil {
-            return "Athlete"
+        if let selectedRosterAthlete, selectedAthleteIDs.count == 1 {
+            return selectedRosterAthlete.label
         }
         return "Inspector"
     }
@@ -1934,6 +1939,7 @@ struct FloorGridView: View {
             currentIndex: currentIndex,
             total: total,
             formationName: formation?.name ?? "Formation",
+            showsFormationTitle: !(isPhoneLayout && !isPhoneLandscape),
             direction: direction,
             canInto: !isFirstFormation,
             canOutOf: !isLastFormation,
@@ -1955,23 +1961,33 @@ struct FloorGridView: View {
 
     private var compactInspectorSheet: some View {
         NavigationStack {
-            SidebarInspectorView(
-                store: store,
-                formationID: formationID,
-                selectedAthleteIDs: $selectedAthleteIDs,
-                isCompactLayout: true,
-                onDeleteAthlete: { deleteSelectedAthlete() },
-                player: player,
-                startFormationID: startFormationID,
-                endFormationID: endFormationID,
-                isPro: entitlementManager.isPro,
-                onUpgrade: { showingUpgradeSheet = true },
-                onRefreshTransition: { refreshTransitionFromStore() },
-                onDrawPath: { toggleExplicitPathDrawMode() }
-            )
+            ScrollView {
+                SidebarInspectorView(
+                    store: store,
+                    formationID: formationID,
+                    selectedAthleteIDs: $selectedAthleteIDs,
+                    isCompactLayout: true,
+                    onDeleteAthlete: { deleteSelectedAthlete() },
+                    player: player,
+                    startFormationID: startFormationID,
+                    endFormationID: endFormationID,
+                    isPro: entitlementManager.isPro,
+                    onUpgrade: { showingUpgradeSheet = true },
+                    onRefreshTransition: { refreshTransitionFromStore() },
+                    onDrawPath: { toggleExplicitPathDrawMode() }
+                )
+            }
             .navigationTitle(compactInspectorTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    if !selectedAthleteIDs.isEmpty {
+                        Button("Clear") {
+                            selectedAthleteIDs = []
+                            showingInspectorSheet = false
+                        }
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
                         showingInspectorSheet = false
@@ -1979,8 +1995,9 @@ struct FloorGridView: View {
                 }
             }
         }
-        .presentationDetents(isPhoneLayout ? [.large] : [.medium, .large])
+        .presentationDetents(isPhoneLayout ? [.medium, .large] : [.medium, .large])
         .presentationDragIndicator(.visible)
+        .presentationBackgroundInteraction(.enabled(upThrough: .medium))
     }
 
     private var pathSettingsSheet: some View {
@@ -2189,6 +2206,8 @@ struct FloorGridView: View {
             Image(systemName: "ellipsis")
                 .font(.caption.weight(.bold))
                 .frame(width: 36, height: 36)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
                 .overlay(alignment: .topTrailing) {
                     if formation?.notes.isEmpty == false {
                         Circle()
@@ -2204,8 +2223,10 @@ struct FloorGridView: View {
 
     private var phonePortraitTopChrome: some View {
         VStack(alignment: .leading, spacing: 8) {
-            phoneTopOverlay
-            formationContextBadge
+            if !phonePortraitHasSelection {
+                phoneTopOverlay
+                formationContextBadge
+            }
             phoneStatusBanners
         }
         .padding(.horizontal, 12)
@@ -2219,23 +2240,44 @@ struct FloorGridView: View {
                 phoneSelectionOverlay
             }
             if let player, let startFormationName, let endFormationName {
-                CompactTransitionPlaybackOverlayView(
-                    player: player,
-                    startFormationName: startFormationName,
-                    endFormationName: endFormationName,
-                    onSwap: toggleSwapMode,
-                    onPath: { showingInspectorSheet = true },
-                    isSwapMode: isSwapMode,
-                    canSwap: selectedAthleteID != nil,
-                    canEditPath: selectedAthleteID != nil,
-                    onPreviousFormation: { onCyclePreviousFormation?() },
-                    onNextFormation: { onCycleFormation?() },
-                    isFirstFormation: isFirstFormation,
-                    isLastFormation: isLastFormation,
-                    onAdjustCounts: { setTransitionCounts($0) },
-                    countsLocked: !entitlementManager.isPro,
-                    onLockedCounts: { showingUpgradeSheet = true }
-                )
+                if phonePortraitHasSelection {
+                    ThinTransitionTransportBar(
+                        player: player,
+                        startFormationName: startFormationName,
+                        endFormationName: endFormationName,
+                        onSwap: toggleSwapMode,
+                        onPath: { showingInspectorSheet = true },
+                        isSwapMode: isSwapMode,
+                        canSwap: selectedAthleteID != nil,
+                        canEditPath: selectedAthleteID != nil,
+                        onPreviousFormation: { onCyclePreviousFormation?() },
+                        onNextFormation: { onCycleFormation?() },
+                        isFirstFormation: isFirstFormation,
+                        isLastFormation: isLastFormation,
+                        showsTransitionTitle: false,
+                        hidesDisabledActions: true
+                    )
+                } else {
+                    CompactTransitionPlaybackOverlayView(
+                        player: player,
+                        startFormationName: startFormationName,
+                        endFormationName: endFormationName,
+                        onSwap: toggleSwapMode,
+                        onPath: { showingInspectorSheet = true },
+                        isSwapMode: isSwapMode,
+                        canSwap: selectedAthleteID != nil,
+                        canEditPath: selectedAthleteID != nil,
+                        onPreviousFormation: { onCyclePreviousFormation?() },
+                        onNextFormation: { onCycleFormation?() },
+                        isFirstFormation: isFirstFormation,
+                        isLastFormation: isLastFormation,
+                        onAdjustCounts: { setTransitionCounts($0) },
+                        countsLocked: !entitlementManager.isPro,
+                        onLockedCounts: { showingUpgradeSheet = true },
+                        showsTransitionTitle: true,
+                        hidesDisabledActions: true
+                    )
+                }
             }
         }
         .padding(.horizontal, 12)
@@ -2271,8 +2313,11 @@ struct FloorGridView: View {
     /// Side rail for phone landscape. Safe-area insets keep it off the notch
     /// and the home indicator in either rotation, so it does not need to swap sides.
     private var phoneLandscapeRail: some View {
-        Group {
-            if let player, let startFormationName, let endFormationName {
+        VStack(alignment: .leading, spacing: 6) {
+            if selectedRosterAthlete != nil || selectedAthleteIDs.count > 1 {
+                phoneLandscapeSelectionRailSection
+            }
+        if let player, let startFormationName, let endFormationName {
                 CompactTransitionPlaybackRailView(
                     player: player,
                     startFormationName: startFormationName,
@@ -2297,15 +2342,79 @@ struct FloorGridView: View {
                     directionLabel: hasTransition ? (endFormationID == formationID ? "Into" : "Out of") : nil,
                     canToggleDirection: !isFirstFormation && !isLastFormation,
                     onToggleDirection: onToggleTransitionDirection,
-                    tools: phoneLandscapeToolsButton
+                    tools: phoneLandscapeToolsButton,
+                    phoneCompact: true,
+                    hidesDisabledActions: true
                 )
             } else {
                 phoneLandscapeIdleRail
             }
         }
+        }
         .padding(.leading, 8)
         .padding(.vertical, 8)
         .frame(width: 184)
+    }
+
+    @ViewBuilder
+    private var phoneLandscapeSelectionRailSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if selectedAthleteIDs.count > 1 {
+                Text("\(selectedAthleteIDs.count) selected")
+                    .font(.caption.weight(.bold))
+                ScrollView(.horizontal, showsIndicators: true) {
+                    HStack(spacing: 6) {
+                        if hasTransition {
+                            Button("Waypoint") {
+                                addWaypoint()
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            Button(isExplicitPathDrawMode ? "Cancel" : "Draw") {
+                                toggleExplicitPathDrawMode()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                            Button(selectionIsTransitionGroup ? "Ungroup" : "Stunt Group") {
+                                if selectionIsTransitionGroup {
+                                    ungroupSelectedTransitionGroup()
+                                } else {
+                                    createSelectedTransitionGroup()
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .disabled(!selectionIsTransitionGroup && !canCreateSelectedTransitionGroup)
+                        }
+                        Button("Clear") { selectedAthleteIDs = [] }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                    }
+                }
+            } else if let selectedRosterAthlete {
+                Text(selectedRosterAthlete.label)
+                    .font(.caption.weight(.bold))
+                HStack(spacing: 6) {
+                    if hasTransition {
+                        Button("Path") { showingInspectorSheet = true }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        Button(isExplicitPathDrawMode ? "Cancel" : "Draw") {
+                            toggleExplicitPathDrawMode()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .disabled(!isExplicitPathDrawMode && !canBeginExplicitPathDraw)
+                    }
+                    Button("Clear") { selectedAthleteIDs = [] }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                }
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .formationGlassPanel(cornerRadius: 14, shadowRadius: 6)
     }
 
     private var phoneLandscapeIdleRail: some View {
@@ -2532,7 +2641,7 @@ struct FloorGridView: View {
                         .lineLimit(2)
                 }
 
-                ScrollView(.horizontal, showsIndicators: false) {
+                ScrollView(.horizontal, showsIndicators: true) {
                 HStack(spacing: 8) {
                 if hasTransition {
                     Button {
@@ -2628,24 +2737,38 @@ struct FloorGridView: View {
 
     private var notesSheet: some View {
         NavigationStack {
-            TextEditor(
-                text: Binding(
-                    get: { formation?.notes ?? "" },
-                    set: { newValue in
-                        store.mutateFormation(id: formationID) { formation in
-                            formation.notes = newValue
+            ZStack(alignment: .topLeading) {
+                TextEditor(
+                    text: Binding(
+                        get: { formation?.notes ?? "" },
+                        set: { newValue in
+                            store.mutateFormation(id: formationID) { formation in
+                                formation.notes = newValue
+                            }
                         }
-                    }
+                    )
                 )
-            )
-            .padding()
-            .navigationTitle("Formation Notes")
+                .padding(8)
+
+                if formation?.notes.isEmpty != false {
+                    Text("Add notes for this formation — counts, cues, or reminders.")
+                        .font(.body)
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 16)
+                        .allowsHitTesting(false)
+                }
+            }
+            .navigationTitle("\(formation?.name ?? "Formation") Notes")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") { showingNotesSheet = false }
                 }
             }
         }
+        .presentationDetents(isPhoneLayout ? [.medium, .large] : [.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 
     private func banner(text: String, color: Color) -> some View {
@@ -2654,7 +2777,9 @@ struct FloorGridView: View {
                 .font(.caption2)
             Text(text)
                 .font(.caption2.weight(.medium))
-                .lineLimit(1)
+                .lineLimit(isPhoneLayout ? 2 : 1)
+                .minimumScaleFactor(isPhoneLayout ? 0.85 : 1)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
