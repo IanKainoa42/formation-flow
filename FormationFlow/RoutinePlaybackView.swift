@@ -5,6 +5,7 @@ import SwiftUI
 struct RoutinePlaybackView: View {
     @StateObject private var player: RoutinePlayer
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private static let bottomBarHeight: CGFloat = 64
 
@@ -144,23 +145,18 @@ struct RoutinePlaybackView: View {
             .frame(minHeight: 44)
             .layoutPriority(1)
 
-            Picker("Speed", selection: Binding(
-                get: { player.speed },
-                set: { player.setSpeed($0) }
-            )) {
-                Text("0.5x").tag(CGFloat(0.5))
-                Text("0.75x").tag(CGFloat(0.75))
-                Text("1x").tag(CGFloat(1.0))
-                Text("2x").tag(CGFloat(2.0))
-                Text("4x").tag(CGFloat(4.0))
+            if horizontalSizeClass != .compact {
+                playbackSpeedPicker
+                    .pickerStyle(.segmented)
+                    .frame(width: 210)
             }
-            .pickerStyle(.segmented)
-            .frame(width: 210)
-            .accessibilityLabel("Playback Speed")
-            .accessibilityHint("Adjust the playback speed of the routine animation")
 
             Menu {
                 Text("\(player.currentSegmentIndex + 1) / \(player.segmentCount)")
+
+                if horizontalSizeClass == .compact {
+                    playbackSpeedPicker
+                }
 
                 Button(action: player.reset) {
                     Label("Reset to Start", systemImage: "backward.end.fill")
@@ -182,5 +178,20 @@ struct RoutinePlaybackView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background(.bar)
+    }
+
+    private var playbackSpeedPicker: some View {
+        Picker("Speed", selection: Binding(
+            get: { player.speed },
+            set: { player.setSpeed($0) }
+        )) {
+            Text("0.5x").tag(CGFloat(0.5))
+            Text("0.75x").tag(CGFloat(0.75))
+            Text("1x").tag(CGFloat(1.0))
+            Text("2x").tag(CGFloat(2.0))
+            Text("4x").tag(CGFloat(4.0))
+        }
+        .accessibilityLabel("Playback Speed")
+        .accessibilityHint("Adjust the playback speed of the routine animation")
     }
 }

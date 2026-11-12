@@ -27,16 +27,17 @@ struct FormationFlowApp: App {
     }
 
     private var mainRoot: some View {
-        RoutineWorkspaceView()
-            .tint(.coral)
-            .preferredColorScheme(.dark)
-            .environmentObject(entitlementManager)
-            .fullScreenCover(isPresented: Binding(
-                get: { !hasSeenOnboarding },
-                set: { hasSeenOnboarding = !$0 }
-            )) {
+        ZStack {
+            RoutineWorkspaceView()
+            if !hasSeenOnboarding {
                 OnboardingView()
+                    .ignoresSafeArea()
+                    .transition(.opacity)
             }
+        }
+        .tint(.coral)
+        .preferredColorScheme(.dark)
+        .environmentObject(entitlementManager)
     }
 }
 
@@ -81,9 +82,9 @@ extension Color {
     static let coral = Color(hex: 0xFF375F)
 }
 
-/// Holds the current allowed-orientation mask. The floor editor on iPhone forces
-/// landscape (the wide court fills the screen); the rest of the phone app stays
-/// portrait. iPad is never constrained — its default mask is `.all`.
+/// Holds the current allowed-orientation mask. iPhone allows portrait and both
+/// landscapes (the floor layout adapts). iPad is never constrained — its default
+/// mask is `.all`.
 final class AppDelegate: NSObject, UIApplicationDelegate {
     static var orientationLock: UIInterfaceOrientationMask = .all
 
@@ -322,7 +323,7 @@ struct OnboardingView: View {
                     }
                     Spacer()
                 }
-                .padding(.top, isPhone ? 52 : 60)
+                .padding(.top, isPhone && geo.size.width > geo.size.height ? 6 : (isPhone ? 52 : 60))
                 .padding(.trailing, 12)
             }
             .preferredColorScheme(.dark)
@@ -381,19 +382,76 @@ private struct OnboardingScreen: View {
         }
     }
 
-    // iPhone: wordmark bar, floor sized to the court (no dead gap), copy fills the rest.
+    // iPhone portrait: wordmark bar, floor sized to the court, copy fills the rest.
+    // Landscape is too short for that stack, so the copy sits beside the floor.
     private var phoneLayout: some View {
         GeometryReader { geo in
-            let courtH = geo.size.width * CourtConstants.height / CourtConstants.width
-            VStack(spacing: 0) {
-                phoneWordmarkBar
-                floor
-                    .frame(height: courtH)
-                    .clipped()
-                bottomSheet
-                    .frame(maxHeight: .infinity, alignment: .top)
+            if geo.size.width > geo.size.height {
+                phoneLandscapeLayout
+            } else {
+                phonePortraitLayout(width: geo.size.width)
             }
-            .ignoresSafeArea(edges: .bottom)
+        }
+    }
+
+    private func phonePortraitLayout(width: CGFloat) -> some View {
+        let courtH = width * CourtConstants.height / CourtConstants.width
+        return VStack(spacing: 0) {
+            phoneWordmarkBar
+            floor
+                .frame(height: courtH)
+                .clipped()
+            bottomSheet
+                .frame(maxHeight: .infinity, alignment: .top)
+        }
+        .ignoresSafeArea(edges: .bottom)
+    }
+
+    private var phoneLandscapeLayout: some View {
+        VStack(spacing: 0) {
+            phoneWordmarkBar
+            HStack(spacing: 0) {
+                fittedFloor
+                VStack(alignment: .leading, spacing: 8) {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 8) {
+                            eyebrowView
+                            titleView(size: 20)
+                            bodyView(size: 13)
+                        }
+                    }
+                    HStack(alignment: .center) {
+                        pageDots
+                        Spacer(minLength: 8)
+                        if let cta = spec.cta { ctaButton(cta) }
+                    }
+                }
+                .padding(14)
+                .frame(width: 300)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .background(RoundedRectangle(cornerRadius: 20).fill(OB.card.opacity(0.96)))
+                .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.06), lineWidth: 1))
+                .padding(.vertical, 8)
+                .padding(.trailing, 10)
+            }
+        }
+    }
+
+    /// Court sized to the space it is given, so a short landscape pane does not
+    /// crop the floor the way a width-only measurement does.
+    private var fittedFloor: some View {
+        GeometryReader { geo in
+            let cell = min(
+                geo.size.width / CourtConstants.width,
+                geo.size.height / CourtConstants.height
+            )
+            let size = CGSize(
+                width: CourtConstants.width * cell,
+                height: CourtConstants.height * cell
+            )
+            floor
+                .frame(width: size.width, height: size.height)
+                .position(x: geo.size.width / 2, y: geo.size.height / 2)
         }
     }
 

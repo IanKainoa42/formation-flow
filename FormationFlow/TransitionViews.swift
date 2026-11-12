@@ -574,39 +574,44 @@ struct CompactTransitionPlaybackOverlayView: View {
     var onLockedCounts: () -> Void = {}
 
     var body: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 10) {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
                 Text("\(startFormationName) \u{2192} \(endFormationName)")
-                    .font(.callout.weight(.semibold))
+                    .font(.caption.weight(.semibold))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
-                Spacer()
+                    .minimumScaleFactor(0.75)
+                Spacer(minLength: 8)
                 if let onAdjustCounts {
                     TransitionLengthControl(player: player, locked: countsLocked, onAdjust: onAdjustCounts, onLocked: onLockedCounts)
                         .fixedSize()
                 }
-                TransportControls.loopButton(player: player, size: 36)
-                TransportControls.swapButton(isActive: isSwapMode, size: 36, disabled: !canSwap, action: onSwap)
-                TransportControls.pathButton(size: 36, disabled: !canEditPath, action: onPath)
             }
 
-            HStack(spacing: 10) {
-                TransportControls.previousFormationButton(size: 38, disabled: isFirstFormation, action: onPreviousFormation)
-                TransportControls.resetButton(player: player, size: 38)
-                TransportControls.playPauseButton(player: player, size: 44)
+            HStack(spacing: 8) {
+                TransportControls.previousFormationButton(size: 32, disabled: isFirstFormation, action: onPreviousFormation)
+                TransportControls.resetButton(player: player, size: 32)
+                TransportControls.playPauseButton(player: player, size: 40)
                 TransportControls.progressSlider(player: player)
                     .frame(minHeight: 44)
-                TransportControls.nextFormationButton(size: 38, disabled: isLastFormation, action: onNextFormation)
+                TransportControls.nextFormationButton(size: 32, disabled: isLastFormation, action: onNextFormation)
+            }
+
+            HStack(spacing: 8) {
+                TransportControls.loopButton(player: player, size: 32)
+                TransportControls.swapButton(isActive: isSwapMode, size: 32, disabled: !canSwap, action: onSwap)
+                TransportControls.pathButton(size: 32, disabled: !canEditPath, action: onPath)
+                Spacer(minLength: 0)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
         .formationGlassPanel(cornerRadius: 20, shadowRadius: 12)
         .playbackHaptics(player)
     }
 }
 
-struct CompactTransitionPlaybackRailView: View {
+struct CompactTransitionPlaybackRailView<Tools: View>: View {
     @ObservedObject var player: TransitionPlayer
     let startFormationName: String
     let endFormationName: String
@@ -623,9 +628,32 @@ struct CompactTransitionPlaybackRailView: View {
     var onNextFormation: () -> Void = {}
     var isFirstFormation: Bool = false
     var isLastFormation: Bool = false
+    var onBack: (() -> Void)? = nil
+    var onAdjustCounts: ((Int) -> Void)? = nil
+    var countsLocked: Bool = false
+    var onLockedCounts: () -> Void = {}
+    var directionLabel: String? = nil
+    var canToggleDirection: Bool = false
+    var onToggleDirection: (() -> Void)? = nil
+    let tools: Tools
 
     var body: some View {
+        ScrollView {
         VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 4) {
+                if let onBack {
+                    Button(action: onBack) {
+                        Image(systemName: "chevron.left")
+                            .font(.caption.weight(.bold))
+                            .frame(width: 36, height: 36)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Back to formations")
+                }
+                Spacer(minLength: 0)
+                tools
+            }
+
             // Formation context (replaces the canvas overlay that was covering the floor)
             if let formationLabel {
                 HStack(spacing: 6) {
@@ -643,6 +671,28 @@ struct CompactTransitionPlaybackRailView: View {
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .lineLimit(2)
+
+            if let directionLabel, let onToggleDirection {
+                Button(action: onToggleDirection) {
+                    Text(directionLabel)
+                        .font(.caption.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(!canToggleDirection)
+                .accessibilityLabel("Transition direction \(directionLabel)")
+                .accessibilityHint(canToggleDirection ? "Switch between the transition into and out of this formation" : "Only one direction is available")
+            }
+
+            if let onAdjustCounts {
+                TransitionLengthControl(
+                    player: player,
+                    locked: countsLocked,
+                    onAdjust: onAdjustCounts,
+                    onLocked: onLockedCounts
+                )
+            }
 
             // Add athlete button
             if let onAdd {
@@ -704,6 +754,10 @@ struct CompactTransitionPlaybackRailView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 12)
         .frame(width: availableWidth, alignment: .leading)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .scrollIndicators(.hidden)
+        .frame(width: availableWidth)
         .frame(maxHeight: .infinity, alignment: .top)
         .formationGlassPanel(cornerRadius: 22, shadowRadius: 12)
         .playbackHaptics(player)

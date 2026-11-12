@@ -350,21 +350,6 @@ struct FloorGridView: View {
         verticalSizeClass == .compact
     }
 
-    /// Controls go on the side opposite the notch/Dynamic Island.
-    private var landscapeControlsTrailing: Bool {
-        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return true }
-        switch scene.interfaceOrientation {
-        case .landscapeRight:
-            // Device rotated clockwise → notch on LEFT → controls on RIGHT
-            return true
-        case .landscapeLeft:
-            // Device rotated counter-clockwise → notch on RIGHT → controls on LEFT
-            return false
-        default:
-            return true
-        }
-    }
-
     private var canAddFormation: Bool {
         entitlementManager.isPro || store.routine.formations.count < FreeTierLimits.maxFormations
     }
@@ -1063,20 +1048,6 @@ struct FloorGridView: View {
                 }
             }
         }
-        .overlay {
-            if isPhoneLandscape {
-                VStack {
-                    Spacer()
-                    HStack {
-                        if landscapeControlsTrailing { Spacer() }
-                        landscapeControlStrip
-                        if !landscapeControlsTrailing { Spacer() }
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 20)
-                }
-            }
-        }
     }
 
     private var editorBody: some View {
@@ -1085,6 +1056,31 @@ struct FloorGridView: View {
                 emptyState
             } else {
                 canvasArea
+            }
+        }
+        .background {
+            if isPhoneLayout {
+                FormationEditorTheme.stageBackground.ignoresSafeArea()
+            }
+        }
+        // Phone chrome is an inset, so the court scales into the space that
+        // remains instead of rendering underneath the controls. Landscape uses
+        // one side rail (the only transport). Portrait uses the bottom bar.
+        .safeAreaInset(edge: .leading, spacing: 0) {
+            if isPhoneLandscape {
+                phoneLandscapeRail
+            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if !renderedAthletes.isEmpty, isPhoneLayout, !isPhoneLandscape {
+                phonePortraitTopChrome
+            } else if isPhoneLandscape {
+                phoneLandscapeStatusInset
+            }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if !renderedAthletes.isEmpty, isPhoneLayout, !isPhoneLandscape {
+                phonePortraitBottomChrome
             }
         }
     }
@@ -1578,20 +1574,37 @@ struct FloorGridView: View {
     private var emptyState: some View {
         VStack {
             Spacer()
-            VStack(spacing: 18) {
+            VStack(spacing: isHeightConstrained ? 10 : 18) {
                 Image(systemName: "figure.stand.line.dotted.figure.stand")
-                    .font(.system(size: 52))
+                    .font(.system(size: isHeightConstrained ? 32 : 52))
                     .foregroundColor(.coral)
                 Text("Start your first picture")
-                    .font(.title2.weight(.semibold))
-                Text("Add one athlete, drop in a 10-athlete template, or duplicate after you have a picture to build from.")
-                    .font(.body)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 460)
+                    .font(isHeightConstrained ? .headline : .title2.weight(.semibold))
+                if !isHeightConstrained {
+                    Text("Add one athlete, drop in a 10-athlete template, or duplicate after you have a picture to build from.")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 460)
+                }
 
                 Group {
-                    if isCompactLayout {
+                    if isHeightConstrained {
+                        VStack(spacing: 8) {
+                            Button(action: addAthlete) {
+                                Label("Add Athlete", systemImage: "plus.circle.fill")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.borderedProminent)
+
+                            Button(action: applyTemplate) {
+                                Label("10-Athlete Template", systemImage: "square.grid.3x3.fill")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        .controlSize(.small)
+                    } else if isCompactLayout {
                         VStack(spacing: 12) {
                             Button(action: addAthlete) {
                                 Label("Add Athlete", systemImage: "plus.circle.fill")
@@ -1642,9 +1655,9 @@ struct FloorGridView: View {
                     }
                 }
             }
-            .padding(32)
+            .padding(isHeightConstrained ? 16 : 32)
             .formationGlassPanel(cornerRadius: 24, material: .thinMaterial, shadowRadius: 16)
-            .padding(.horizontal, isCompactLayout ? 20 : 0)
+            .padding(.horizontal, isHeightConstrained ? 12 : (isCompactLayout ? 20 : 0))
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1666,24 +1679,8 @@ struct FloorGridView: View {
                 viewportSize: geometry.size,
                 canvasSize: canvasSize
             )
-            let baseOffsetX = (geometry.size.width - canvasWidth) / 2 + displayPanOffset.width
-            let availableLeadingSideSpace = max(0, baseOffsetX)
-            let phonePlaybackRailWidth = max(0, availableLeadingSideSpace - 16)
-            let phoneUsesPlaybackRail =
-                isPhoneLandscape
-                && phonePlaybackRailWidth >= 140
-                && player != nil
-                && startFormationName != nil
-                && endFormationName != nil
-
-            // When rail is present, center canvas in the space to the right of the rail
-            // instead of the full viewport, eliminating the empty gap on the right side.
-            let railRegionWidth: CGFloat = phoneUsesPlaybackRail ? (8 + phonePlaybackRailWidth) : 0
-            let adjustedOffsetX = phoneUsesPlaybackRail
-                ? railRegionWidth + (geometry.size.width - railRegionWidth - canvasWidth) / 2 + displayPanOffset.width
-                : baseOffsetX
             let offset = CGPoint(
-                x: adjustedOffsetX,
+                x: (geometry.size.width - canvasWidth) / 2 + displayPanOffset.width,
                 y: (geometry.size.height - canvasHeight) / 2 + displayPanOffset.height
             )
 
@@ -1846,28 +1843,7 @@ struct FloorGridView: View {
                 }
             }
             .overlay(alignment: .top) {
-                if isPhoneLayout {
-                    // In landscape, keep the floor fully visible — no top overlay.
-                    // When the playback rail is showing on the left side, it contains
-                    // the Add button and formation context — skip the canvas overlay to
-                    // avoid covering the floor.
-                    if !phoneUsesPlaybackRail && !isPhoneLandscape {
-                        VStack(alignment: .leading, spacing: 8) {
-                            phoneTopOverlay
-
-                            formationContextBadge
-
-                            if let compactBannerConfiguration {
-                                banner(text: compactBannerConfiguration.text, color: compactBannerConfiguration.color)
-                            }
-                            if let pathSketchStatusText {
-                                banner(text: pathSketchStatusText, color: .coral)
-                            }
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.top, 12)
-                    }
-                } else {
+                if !isPhoneLayout {
                     VStack(spacing: isCompactLayout ? 8 : 10) {
                         if isSwapMode, let athlete = swapSourceRosterAthlete {
                             swapBanner(athleteLabel: athlete.label)
@@ -1886,73 +1862,6 @@ struct FloorGridView: View {
                     }
                     .padding(.horizontal, isCompactLayout ? 12 : 0)
                     .padding(.top, isHeightConstrained ? 4 : 8)
-                }
-            }
-            .overlay(alignment: .bottom) {
-                if isPhoneLayout {
-                    VStack(spacing: 10) {
-                        // In landscape the selection overlay moves to the right side.
-                        if !isPhoneLandscape, (selectedRosterAthlete != nil || selectedAthleteIDs.count > 1) {
-                            phoneSelectionOverlay
-                        }
-
-                        if !phoneUsesPlaybackRail,
-                            let player,
-                            let startFormationName,
-                            let endFormationName
-                        {
-                            CompactTransitionPlaybackOverlayView(
-                                player: player,
-                                startFormationName: startFormationName,
-                                endFormationName: endFormationName,
-                                onSwap: toggleSwapMode,
-                                onPath: { showingInspectorSheet = true },
-                                isSwapMode: isSwapMode,
-                                canSwap: selectedAthleteID != nil,
-                                canEditPath: selectedAthleteID != nil,
-                                onPreviousFormation: { onCyclePreviousFormation?() },
-                                onNextFormation: { onCycleFormation?() },
-                                isFirstFormation: isFirstFormation,
-                                isLastFormation: isLastFormation,
-                                onAdjustCounts: { setTransitionCounts($0) },
-                                countsLocked: !entitlementManager.isPro,
-                                onLockedCounts: { showingUpgradeSheet = true }
-                            )
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 12)
-                }
-            }
-            // In phone landscape, skip the selection overlay — screen is too
-            // narrow and it overlaps the floor canvas. The user can still tap
-            // the athlete or use the inspector sheet for edits.
-            .overlay(alignment: .topLeading) {
-                if phoneUsesPlaybackRail,
-                    let player,
-                    let startFormationName,
-                    let endFormationName
-                {
-                    CompactTransitionPlaybackRailView(
-                        player: player,
-                        startFormationName: startFormationName,
-                        endFormationName: endFormationName,
-                        availableWidth: phonePlaybackRailWidth,
-                        onSwap: toggleSwapMode,
-                        onPath: { showingInspectorSheet = true },
-                        isSwapMode: isSwapMode,
-                        canSwap: selectedAthleteID != nil,
-                        canEditPath: selectedAthleteID != nil,
-                        onAdd: addAthlete,
-                        formationLabel: formationContextLabel,
-                        formationColor: currentFormationColor,
-                        onPreviousFormation: { onCyclePreviousFormation?() },
-                        onNextFormation: { onCycleFormation?() },
-                        isFirstFormation: isFirstFormation,
-                        isLastFormation: isLastFormation
-                    )
-                    .padding(.leading, 8)
-                    .padding(.top, 12)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -2002,24 +1911,9 @@ struct FloorGridView: View {
                     }
                 }
                 .overlay(alignment: .bottomTrailing) {
-                    if zoomScale != 1.0 || canvasPanOffset != .zero {
-                        Button(action: resetView) {
-                            Label("Reset View", systemImage: "arrow.counterclockwise")
-                                .font(.subheadline.weight(.medium))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                        }
-                        .foregroundColor(.primary)
-                        .background(.ultraThinMaterial, in: Capsule())
-                        .accessibilityLabel("Reset View")
-                        .padding(.trailing, 12)
-                        .padding(.bottom, isPhoneLayout && !isPhoneLandscape ? 92 : 12)
-                    }
-                }
-                .overlay(alignment: .bottomTrailing) {
                     resetViewFloatingButton
                         .padding(.trailing, 12)
-                        .padding(.bottom, isPhoneLayout ? (isPhoneLandscape ? 12 : 80) : 12)
+                        .padding(.bottom, 12)
                         .animation(.spring(), value: isViewTransformed)
                 }
         }
@@ -2288,36 +2182,169 @@ struct FloorGridView: View {
         .accessibilityValue(formation?.notes.isEmpty == false ? "Has notes" : "")
     }
 
-    private var landscapeControlStrip: some View {
-        HStack(spacing: 2) {
-            if let onBack {
-                Button(action: onBack) {
-                    Image(systemName: "chevron.left")
-                        .font(.caption.weight(.bold))
-                        .frame(width: 44, height: 44)
-                }
-                .accessibilityLabel("Back to formations")
-            }
-
-            Menu {
-                phoneToolbarMenuContent
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.caption.weight(.bold))
-                    .frame(width: 44, height: 44)
-                    .overlay(alignment: .topTrailing) {
-                        if formation?.notes.isEmpty == false {
-                            Circle()
-                                .fill(.orange)
-                                .frame(width: 6, height: 6)
-                                .offset(x: 2, y: 2)
-                        }
+    private var phoneLandscapeToolsButton: some View {
+        Menu {
+            phoneToolbarMenuContent
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.caption.weight(.bold))
+                .frame(width: 36, height: 36)
+                .overlay(alignment: .topTrailing) {
+                    if formation?.notes.isEmpty == false {
+                        Circle()
+                            .fill(.orange)
+                            .frame(width: 6, height: 6)
+                            .offset(x: 2, y: 2)
                     }
-            }
-            .accessibilityLabel("Editing tools")
+                }
         }
-        .foregroundColor(.white)
-        .background(.ultraThinMaterial, in: Capsule())
+        .accessibilityLabel("Editing tools")
+        .accessibilityValue(formation?.notes.isEmpty == false ? "Has notes" : "")
+    }
+
+    private var phonePortraitTopChrome: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            phoneTopOverlay
+            formationContextBadge
+            phoneStatusBanners
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 4)
+        .padding(.bottom, 8)
+    }
+
+    private var phonePortraitBottomChrome: some View {
+        VStack(spacing: 8) {
+            if selectedRosterAthlete != nil || selectedAthleteIDs.count > 1 {
+                phoneSelectionOverlay
+            }
+            if let player, let startFormationName, let endFormationName {
+                CompactTransitionPlaybackOverlayView(
+                    player: player,
+                    startFormationName: startFormationName,
+                    endFormationName: endFormationName,
+                    onSwap: toggleSwapMode,
+                    onPath: { showingInspectorSheet = true },
+                    isSwapMode: isSwapMode,
+                    canSwap: selectedAthleteID != nil,
+                    canEditPath: selectedAthleteID != nil,
+                    onPreviousFormation: { onCyclePreviousFormation?() },
+                    onNextFormation: { onCycleFormation?() },
+                    isFirstFormation: isFirstFormation,
+                    isLastFormation: isLastFormation,
+                    onAdjustCounts: { setTransitionCounts($0) },
+                    countsLocked: !entitlementManager.isPro,
+                    onLockedCounts: { showingUpgradeSheet = true }
+                )
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+        .padding(.bottom, 8)
+    }
+
+    @ViewBuilder
+    private var phoneLandscapeStatusInset: some View {
+        if isSwapMode, let athlete = swapSourceRosterAthlete {
+            swapBanner(athleteLabel: athlete.label)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+        } else if let pathSketchStatusText {
+            banner(text: pathSketchStatusText, color: .coral)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+        }
+    }
+
+    @ViewBuilder
+    private var phoneStatusBanners: some View {
+        if isSwapMode, let athlete = swapSourceRosterAthlete {
+            swapBanner(athleteLabel: athlete.label)
+        } else if let compactBannerConfiguration {
+            banner(text: compactBannerConfiguration.text, color: compactBannerConfiguration.color)
+        }
+        if let pathSketchStatusText {
+            banner(text: pathSketchStatusText, color: .coral)
+        }
+    }
+
+    /// Side rail for phone landscape. Safe-area insets keep it off the notch
+    /// and the home indicator in either rotation, so it does not need to swap sides.
+    private var phoneLandscapeRail: some View {
+        Group {
+            if let player, let startFormationName, let endFormationName {
+                CompactTransitionPlaybackRailView(
+                    player: player,
+                    startFormationName: startFormationName,
+                    endFormationName: endFormationName,
+                    availableWidth: 176,
+                    onSwap: toggleSwapMode,
+                    onPath: { showingInspectorSheet = true },
+                    isSwapMode: isSwapMode,
+                    canSwap: selectedAthleteID != nil,
+                    canEditPath: selectedAthleteID != nil,
+                    onAdd: addAthlete,
+                    formationLabel: formationContextLabel,
+                    formationColor: currentFormationColor,
+                    onPreviousFormation: { onCyclePreviousFormation?() },
+                    onNextFormation: { onCycleFormation?() },
+                    isFirstFormation: isFirstFormation,
+                    isLastFormation: isLastFormation,
+                    onBack: onBack,
+                    onAdjustCounts: { setTransitionCounts($0) },
+                    countsLocked: !entitlementManager.isPro,
+                    onLockedCounts: { showingUpgradeSheet = true },
+                    directionLabel: hasTransition ? (endFormationID == formationID ? "Into" : "Out of") : nil,
+                    canToggleDirection: !isFirstFormation && !isLastFormation,
+                    onToggleDirection: onToggleTransitionDirection,
+                    tools: phoneLandscapeToolsButton
+                )
+            } else {
+                phoneLandscapeIdleRail
+            }
+        }
+        .padding(.leading, 8)
+        .padding(.vertical, 8)
+        .frame(width: 184)
+    }
+
+    private var phoneLandscapeIdleRail: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 4) {
+                if let onBack {
+                    Button(action: onBack) {
+                        Image(systemName: "chevron.left")
+                            .font(.caption.weight(.bold))
+                            .frame(width: 36, height: 36)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Back to formations")
+                }
+                Spacer(minLength: 0)
+                phoneLandscapeToolsButton
+            }
+            if !renderedAthletes.isEmpty {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(currentFormationColor)
+                        .frame(width: 7, height: 7)
+                    Text(formationContextLabel)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(2)
+                }
+                Button(action: addAthlete) {
+                    Label("Add", systemImage: "plus.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(width: 176, alignment: .leading)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .formationGlassPanel(cornerRadius: 22, shadowRadius: 12)
     }
 
     private var phoneTopOverlay: some View {
@@ -2403,7 +2430,7 @@ struct FloorGridView: View {
     @ViewBuilder
     private var phoneSelectionOverlay: some View {
         if let selectedRosterAthlete, let selectedPlacement {
-            HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(selectedRosterAthlete.label)
                         .font(.headline)
@@ -2415,8 +2442,8 @@ struct FloorGridView: View {
                     .lineLimit(1)
                 }
 
-                Spacer(minLength: 0)
-
+                ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
                 if hasTransition {
                     Button("Path") {
                         showingInspectorSheet = true
@@ -2487,12 +2514,15 @@ struct FloorGridView: View {
                 }
                 .buttonStyle(.bordered)
                 .accessibilityLabel("More actions")
+                }
+                }
+                .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
             .formationGlassPanel(cornerRadius: 18, shadowRadius: 10)
         } else if selectedAthleteIDs.count > 1 {
-            HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("\(selectedAthleteIDs.count) athletes selected")
                         .font(.headline)
@@ -2502,8 +2532,8 @@ struct FloorGridView: View {
                         .lineLimit(2)
                 }
 
-                Spacer(minLength: 0)
-
+                ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
                 if hasTransition {
                     Button {
                         addWaypoint()
@@ -2541,6 +2571,9 @@ struct FloorGridView: View {
                 }
                 .buttonStyle(.bordered)
                 .frame(minHeight: 44)
+                }
+                }
+                .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
@@ -2548,12 +2581,7 @@ struct FloorGridView: View {
         }
     }
 
-    private var pathSaveRecoveryBottomPadding: CGFloat {
-        if isPhoneLayout {
-            return isPhoneLandscape ? 18 : 156
-        }
-        return 18
-    }
+    private var pathSaveRecoveryBottomPadding: CGFloat { 18 }
 
     @ViewBuilder
     private var pathSaveRecoveryBar: some View {
