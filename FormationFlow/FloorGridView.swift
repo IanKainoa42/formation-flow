@@ -2327,24 +2327,26 @@ struct FloorGridView: View {
         Group {
             if let player, let startFormationName, let endFormationName {
                 VStack(alignment: .leading, spacing: 0) {
+                    phoneLandscapePlaybackRail(
+                        player: player,
+                        startFormationName: startFormationName,
+                        endFormationName: endFormationName,
+                        section: .header
+                    )
+                    .layoutPriority(1)
+
                     ScrollView(.vertical, showsIndicators: true) {
                         VStack(alignment: .leading, spacing: 6) {
                             if selectedRosterAthlete != nil || selectedAthleteIDs.count > 1 {
                                 phoneLandscapeSelectionRailSection
                             }
-                            phoneLandscapePlaybackRail(
-                                player: player,
-                                startFormationName: startFormationName,
-                                endFormationName: endFormationName,
-                                section: .metadata
-                            )
                         }
                         .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .padding(.bottom, 6)
                     }
                     .scrollBounceBehavior(.basedOnSize)
                     .frame(minHeight: 0, maxHeight: .infinity)
                     .layoutPriority(0)
-                    .clipped()
 
                     phoneLandscapePlaybackRail(
                         player: player,
@@ -2416,7 +2418,7 @@ struct FloorGridView: View {
                     .font(.caption.weight(.bold))
                 LazyVGrid(columns: chipColumns, alignment: .leading, spacing: 6) {
                     if hasTransition {
-                        landscapeRailChipButton(title: "Waypoint", action: addWaypoint)
+                        landscapeRailChipButton(title: "Waypoint", action: { addWaypoint() })
                         landscapeRailChipButton(
                             title: isExplicitPathDrawMode ? "Cancel" : "Draw",
                             prominent: !isExplicitPathDrawMode,
@@ -2458,21 +2460,29 @@ struct FloorGridView: View {
         .formationGlassPanel(cornerRadius: 14, shadowRadius: 6)
     }
 
+    @ViewBuilder
     private func landscapeRailChipButton(
         title: String,
         prominent: Bool = false,
         disabled: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
-            Text(title)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-                .frame(maxWidth: .infinity)
+        let label = Text(title)
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
+            .frame(maxWidth: .infinity)
+
+        if prominent {
+            Button(action: action, label: { label })
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(disabled)
+        } else {
+            Button(action: action, label: { label })
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(disabled)
         }
-        .buttonStyle(prominent ? .borderedProminent : .bordered)
-        .controlSize(.small)
-        .disabled(disabled)
     }
 
     private var phoneLandscapeIdleRail: some View {

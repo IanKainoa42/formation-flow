@@ -709,6 +709,7 @@ struct CompactTransitionPlaybackOverlayView: View {
 
 enum CompactPlaybackRailSection {
     case full
+    case header
     case metadata
     case transport
 }
@@ -753,7 +754,7 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
     }
 
   @ViewBuilder
-  private var railMetadataColumn: some View {
+  private var railHeaderColumn: some View {
         VStack(alignment: .leading, spacing: phoneCompact ? 6 : 10) {
             HStack(spacing: 4) {
                 if let onBack {
@@ -779,7 +780,6 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
                 .buttonStyle(.borderedProminent)
             }
 
-            // Formation context (replaces the canvas overlay that was covering the floor)
             if let formationLabel {
                 HStack(spacing: 6) {
                     Circle()
@@ -789,8 +789,56 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
                         .font(.caption.weight(.semibold))
                         .foregroundColor(.primary)
                         .lineLimit(2)
-                        .minimumScaleFactor(0.8)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .minimumScaleFactor(0.75)
+                }
+            }
+        }
+        .padding(.horizontal, phoneCompact ? 8 : 12)
+        .padding(.top, phoneCompact ? 8 : 12)
+        .padding(.bottom, phoneCompact ? 4 : 8)
+        .frame(width: availableWidth, alignment: .leading)
+  }
+
+  @ViewBuilder
+  private var railMetadataColumn: some View {
+        VStack(alignment: .leading, spacing: phoneCompact ? 6 : 10) {
+            if !splitsPinnedTransport {
+                HStack(spacing: 4) {
+                    if let onBack {
+                        Button(action: onBack) {
+                            Image(systemName: "chevron.left")
+                                .font(.caption.weight(.bold))
+                                .frame(width: 36, height: 36)
+                                .frame(minWidth: 44, minHeight: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Back to formations")
+                    }
+                    Spacer(minLength: 0)
+                    tools
+                }
+
+                if let onAdd {
+                    Button(action: onAdd) {
+                        Label("Add", systemImage: "plus.circle.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+
+                if let formationLabel {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(formationColor)
+                            .frame(width: 7, height: 7)
+                        Text(formationLabel)
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(.primary)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.8)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
 
@@ -937,6 +985,8 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
     var body: some View {
         Group {
             switch section {
+            case .header:
+                railHeaderColumn
             case .metadata:
                 railMetadataColumn
             case .transport:
