@@ -690,8 +690,9 @@ struct RoutineWorkspaceView: View {
                         ToolbarItem(placement: .principal) {
                             Text(formation.name)
                                 .font(.headline)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.72)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.center)
+                                .minimumScaleFactor(0.5)
                         }
                         compactDetailToolbar(for: formation)
                     }

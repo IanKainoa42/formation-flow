@@ -469,6 +469,7 @@ struct TransitionLengthControl: View {
                     stepButton("plus.circle.fill", enabled: counts < 32) { onAdjust(counts + 1) }
                 }
             } else if locked {
+                Spacer(minLength: 4)
                 Button(action: onLocked) {
                     HStack(spacing: 4) {
                         Text("\(counts) ct").font(.callout.weight(.bold).monospacedDigit())
@@ -480,15 +481,13 @@ struct TransitionLengthControl: View {
                 .accessibilityLabel("Transition length \(counts) counts, locked")
                 .accessibilityHint("Upgrade to Pro to change the transition length")
             } else {
+                Spacer(minLength: 4)
                 stepButton("minus.circle.fill", enabled: counts > 1) { onAdjust(counts - 1) }
                 Text("\(counts) ct")
                     .font(.callout.weight(.bold).monospacedDigit())
                     .frame(minWidth: 40)
                     .accessibilityLabel("Transition length \(counts) counts")
                 stepButton("plus.circle.fill", enabled: counts < 32) { onAdjust(counts + 1) }
-            }
-            if !narrowRail {
-                Spacer(minLength: 4)
             }
         }
     }
@@ -616,11 +615,11 @@ struct CompactTransitionPlaybackOverlayView: View {
     private var playControlSize: CGFloat { phoneCompactTransport ? 36 : 40 }
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: phoneCompactTransport ? 6 : 8) {
             if showsTransitionTitle || onAdjustCounts != nil {
                 Group {
                     if usesStackedHeader {
-                        VStack(alignment: .leading, spacing: 6) {
+                        VStack(alignment: .leading, spacing: 4) {
                             if showsTransitionTitle {
                                 Text("\(startFormationName) \u{2192} \(endFormationName)")
                                     .font(.caption.weight(.semibold))
@@ -662,14 +661,18 @@ struct CompactTransitionPlaybackOverlayView: View {
                 }
             }
 
-            HStack(spacing: phoneCompactTransport ? 6 : 8) {
+            HStack(spacing: phoneCompactTransport ? 4 : 8) {
                 TransportControls.previousFormationButton(size: transportControlSize, disabled: isFirstFormation, action: onPreviousFormation)
+                    .fixedSize(horizontal: true, vertical: false)
                 TransportControls.resetButton(player: player, size: transportControlSize)
+                    .fixedSize(horizontal: true, vertical: false)
                 TransportControls.playPauseButton(player: player, size: playControlSize)
+                    .fixedSize(horizontal: true, vertical: false)
                 TransportControls.progressSlider(player: player)
                     .frame(minHeight: 44)
-                    .layoutPriority(1)
+                    .layoutPriority(-1)
                 TransportControls.nextFormationButton(size: transportControlSize, disabled: isLastFormation, action: onNextFormation)
+                    .fixedSize(horizontal: true, vertical: false)
             }
 
             HStack(spacing: 8) {
@@ -685,10 +688,16 @@ struct CompactTransitionPlaybackOverlayView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, phoneCompactTransport ? 10 : 12)
-        .padding(.vertical, 10)
+        .padding(.vertical, phoneCompactTransport ? 8 : 10)
         .formationGlassPanel(cornerRadius: 20, shadowRadius: 12)
         .playbackHaptics(player)
     }
+}
+
+enum CompactPlaybackRailSection {
+    case full
+    case metadata
+    case transport
 }
 
 struct CompactTransitionPlaybackRailView<Tools: View>: View {
@@ -719,14 +728,15 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
     var hidesDisabledActions: Bool = false
   /// When false, the parent provides the only vertical `ScrollView` (landscape phone rail).
     var scrollsInternally: Bool = true
+    var section: CompactPlaybackRailSection = .full
     let tools: Tools
 
     private var usesNarrowLength: Bool {
-        phoneCompact || availableWidth < 200
+        phoneCompact
     }
 
   @ViewBuilder
-  private var railColumn: some View {
+  private var railMetadataColumn: some View {
         VStack(alignment: .leading, spacing: phoneCompact ? 8 : 10) {
             HStack(spacing: 4) {
                 if let onBack {
@@ -795,7 +805,16 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
                     onLocked: onLockedCounts
                 )
             }
+        }
+        .padding(.horizontal, phoneCompact ? 8 : 12)
+        .padding(.top, phoneCompact ? 8 : 12)
+        .padding(.bottom, phoneCompact ? 4 : 8)
+        .frame(width: availableWidth, alignment: .leading)
+  }
 
+  @ViewBuilder
+  private var railTransportColumn: some View {
+        VStack(alignment: .leading, spacing: phoneCompact ? 8 : 10) {
             Divider()
 
             // Two rows so the transport fits the narrow landscape rail (as little
@@ -853,25 +872,54 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
             }
         }
         .padding(.horizontal, phoneCompact ? 8 : 12)
-        .padding(.vertical, phoneCompact ? 8 : 12)
+        .padding(.top, phoneCompact ? 4 : 8)
+        .padding(.bottom, phoneCompact ? 8 : 12)
         .frame(width: availableWidth, alignment: .leading)
+  }
+
+  @ViewBuilder
+  private var railColumn: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            railMetadataColumn
+            railTransportColumn
+        }
   }
 
     var body: some View {
         Group {
-            if scrollsInternally {
-                ScrollView(.vertical, showsIndicators: true) {
+            switch section {
+            case .metadata:
+                railMetadataColumn
+            case .transport:
+                railTransportColumn
+            case .full:
+                if scrollsInternally {
+                    ScrollView(.vertical, showsIndicators: true) {
+                        railColumn
+                    }
+                    .scrollBounceBehavior(.basedOnSize)
+                    .frame(width: availableWidth)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                } else {
                     railColumn
                 }
-                .scrollBounceBehavior(.basedOnSize)
-                .frame(width: availableWidth)
-                .frame(maxHeight: .infinity, alignment: .top)
-            } else {
-                railColumn
             }
         }
-        .formationGlassPanel(cornerRadius: 22, shadowRadius: 12)
+        .modifier(CompactPlaybackRailChrome(section: section))
         .playbackHaptics(player)
+    }
+}
+
+private struct CompactPlaybackRailChrome: ViewModifier {
+    let section: CompactPlaybackRailSection
+
+    func body(content: Content) -> some View {
+        if section == .full {
+            content
+                .formationGlassPanel(cornerRadius: 22, shadowRadius: 12)
+        } else {
+            content
+        }
     }
 }
 

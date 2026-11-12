@@ -2323,118 +2323,147 @@ struct FloorGridView: View {
     /// Side rail for phone landscape. Safe-area insets keep it off the notch
     /// and the home indicator in either rotation, so it does not need to swap sides.
     private var phoneLandscapeRail: some View {
-        ScrollView(.vertical, showsIndicators: true) {
-            VStack(alignment: .leading, spacing: 6) {
-                if selectedRosterAthlete != nil || selectedAthleteIDs.count > 1 {
-                    phoneLandscapeSelectionRailSection
-                }
-                if let player, let startFormationName, let endFormationName {
-                    CompactTransitionPlaybackRailView(
+        Group {
+            if let player, let startFormationName, let endFormationName {
+                VStack(alignment: .leading, spacing: 0) {
+                    ScrollView(.vertical, showsIndicators: true) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            if selectedRosterAthlete != nil || selectedAthleteIDs.count > 1 {
+                                phoneLandscapeSelectionRailSection
+                            }
+                            phoneLandscapePlaybackRail(
+                                player: player,
+                                startFormationName: startFormationName,
+                                endFormationName: endFormationName,
+                                section: .metadata
+                            )
+                        }
+                    }
+                    .scrollBounceBehavior(.basedOnSize)
+                    .frame(minHeight: 0, maxHeight: .infinity)
+
+                    phoneLandscapePlaybackRail(
                         player: player,
                         startFormationName: startFormationName,
                         endFormationName: endFormationName,
-                        availableWidth: 176,
-                        onSwap: toggleSwapMode,
-                        onPath: { showingInspectorSheet = true },
-                        isSwapMode: isSwapMode,
-                        canSwap: selectedAthleteID != nil,
-                        canEditPath: selectedAthleteID != nil,
-                        onAdd: addAthlete,
-                        formationLabel: formationContextLabel,
-                        formationColor: currentFormationColor,
-                        onPreviousFormation: { onCyclePreviousFormation?() },
-                        onNextFormation: { onCycleFormation?() },
-                        isFirstFormation: isFirstFormation,
-                        isLastFormation: isLastFormation,
-                        onBack: onBack,
-                        onAdjustCounts: { setTransitionCounts($0) },
-                        countsLocked: !entitlementManager.isPro,
-                        onLockedCounts: { showingUpgradeSheet = true },
-                        directionLabel: hasTransition ? (endFormationID == formationID ? "Into" : "Out of") : nil,
-                        canToggleDirection: !isFirstFormation && !isLastFormation,
-                        onToggleDirection: onToggleTransitionDirection,
-                        phoneCompact: true,
-                        hidesDisabledActions: true,
-                        scrollsInternally: false,
-                        tools: phoneLandscapeToolsButton
+                        section: .transport
                     )
-                } else {
-                    phoneLandscapeIdleRail
                 }
+                .formationGlassPanel(cornerRadius: 22, shadowRadius: 12)
+            } else {
+                phoneLandscapeIdleRail
             }
         }
-        .scrollBounceBehavior(.basedOnSize)
         .padding(.leading, 8)
         .padding(.vertical, 8)
         .frame(width: 184)
         .frame(maxHeight: .infinity, alignment: .top)
     }
 
+    private func phoneLandscapePlaybackRail(
+        player: TransitionPlayer,
+        startFormationName: String,
+        endFormationName: String,
+        section: CompactPlaybackRailSection
+    ) -> some View {
+        CompactTransitionPlaybackRailView(
+            player: player,
+            startFormationName: startFormationName,
+            endFormationName: endFormationName,
+            availableWidth: 176,
+            onSwap: toggleSwapMode,
+            onPath: { showingInspectorSheet = true },
+            isSwapMode: isSwapMode,
+            canSwap: selectedAthleteID != nil,
+            canEditPath: selectedAthleteID != nil,
+            onAdd: addAthlete,
+            formationLabel: formationContextLabel,
+            formationColor: currentFormationColor,
+            onPreviousFormation: { onCyclePreviousFormation?() },
+            onNextFormation: { onCycleFormation?() },
+            isFirstFormation: isFirstFormation,
+            isLastFormation: isLastFormation,
+            onBack: onBack,
+            onAdjustCounts: { setTransitionCounts($0) },
+            countsLocked: !entitlementManager.isPro,
+            onLockedCounts: { showingUpgradeSheet = true },
+            directionLabel: hasTransition ? (endFormationID == formationID ? "Into" : "Out of") : nil,
+            canToggleDirection: !isFirstFormation && !isLastFormation,
+            onToggleDirection: onToggleTransitionDirection,
+            phoneCompact: true,
+            hidesDisabledActions: true,
+            scrollsInternally: false,
+            section: section,
+            tools: phoneLandscapeToolsButton
+        )
+    }
+
     @ViewBuilder
     private var phoneLandscapeSelectionRailSection: some View {
+        let chipColumns = [
+            GridItem(.flexible(minimum: 68), spacing: 6),
+            GridItem(.flexible(minimum: 68), spacing: 6),
+        ]
+
         VStack(alignment: .leading, spacing: 6) {
             if selectedAthleteIDs.count > 1 {
                 Text("\(selectedAthleteIDs.count) selected")
                     .font(.caption.weight(.bold))
-                ScrollView(.horizontal, showsIndicators: true) {
-                    HStack(spacing: 6) {
-                        if hasTransition {
-                            Button("Waypoint") {
-                                addWaypoint()
-                            }
+                LazyVGrid(columns: chipColumns, alignment: .leading, spacing: 6) {
+                    if hasTransition {
+                        Button("Waypoint") { addWaypoint() }
                             .buttonStyle(.bordered)
                             .controlSize(.small)
                             .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                            Button(isExplicitPathDrawMode ? "Cancel" : "Draw") {
-                                toggleExplicitPathDrawMode()
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
-                            Button(selectionIsTransitionGroup ? "Ungroup" : "Group") {
-                                if selectionIsTransitionGroup {
-                                    ungroupSelectedTransitionGroup()
-                                } else {
-                                    createSelectedTransitionGroup()
-                                }
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                            .disabled(!selectionIsTransitionGroup && !canCreateSelectedTransitionGroup)
+                            .minimumScaleFactor(0.85)
+                        Button(isExplicitPathDrawMode ? "Cancel" : "Draw") {
+                            toggleExplicitPathDrawMode()
                         }
-                        Button("Clear") { selectedAthleteIDs = [] }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        Button(selectionIsTransitionGroup ? "Ungroup" : "Group") {
+                            if selectionIsTransitionGroup {
+                                ungroupSelectedTransitionGroup()
+                            } else {
+                                createSelectedTransitionGroup()
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .disabled(!selectionIsTransitionGroup && !canCreateSelectedTransitionGroup)
                     }
+                    Button("Clear") { selectedAthleteIDs = [] }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .lineLimit(1)
                 }
             } else if let selectedRosterAthlete {
                 Text(selectedRosterAthlete.label)
                     .font(.caption.weight(.bold))
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        if hasTransition {
-                            Button("Path") { showingInspectorSheet = true }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
-                            Button(isExplicitPathDrawMode ? "Cancel" : "Draw") {
-                                toggleExplicitPathDrawMode()
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                            .disabled(!isExplicitPathDrawMode && !canBeginExplicitPathDraw)
-                        }
-                        Button("Clear") { selectedAthleteIDs = [] }
+                LazyVGrid(columns: chipColumns, alignment: .leading, spacing: 6) {
+                    if hasTransition {
+                        Button("Path") { showingInspectorSheet = true }
                             .buttonStyle(.bordered)
                             .controlSize(.small)
                             .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
+                            .minimumScaleFactor(0.85)
+                        Button(isExplicitPathDrawMode ? "Cancel" : "Draw") {
+                            toggleExplicitPathDrawMode()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .disabled(!isExplicitPathDrawMode && !canBeginExplicitPathDraw)
                     }
+                    Button("Clear") { selectedAthleteIDs = [] }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .lineLimit(1)
                 }
             }
         }
