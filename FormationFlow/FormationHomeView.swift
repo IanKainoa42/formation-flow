@@ -37,6 +37,7 @@ struct RoutineWorkspaceView: View {
     // iPad portrait has no sidebar — the selected-athlete inspector opens as a
     // sheet from the bottom transport's edit-path button instead.
     @State private var showingPortraitInspector = false
+    @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding: Bool = false
 
     private var isCompactLayout: Bool {
         let isPhone: Bool
@@ -528,6 +529,15 @@ struct RoutineWorkspaceView: View {
         .navigationTitle(selectedAthleteIDs.isEmpty ? "Routine" : "Athlete")
         .toolbar {
             if selectedAthleteIDs.isEmpty {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.25)) { hasSeenOnboarding = false }
+                    } label: {
+                        Image(systemName: "questionmark.circle")
+                    }
+                    .accessibilityLabel("Replay tutorial")
+                    .help("Replay tutorial")
+                }
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
                     EditButton()
                     Button(action: addFormation) {
@@ -605,6 +615,15 @@ struct RoutineWorkspaceView: View {
         }
         .navigationTitle("Routine")
         .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.25)) { hasSeenOnboarding = false }
+                } label: {
+                    Image(systemName: "questionmark.circle")
+                }
+                .accessibilityLabel("Replay tutorial")
+                .help("Replay tutorial")
+            }
             ToolbarItemGroup(placement: .navigationBarTrailing) {
                 Button {
                     attemptRoutinePlayback()
