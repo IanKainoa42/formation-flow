@@ -443,33 +443,19 @@ struct TransitionLengthControl: View {
     private var counts: Int { max(1, Int(player.counts.rounded())) }
 
     var body: some View {
-        HStack(spacing: narrowRail ? 4 : 8) {
+        if narrowRail {
+            phoneRailBody
+        } else {
+            standardBody
+        }
+    }
+
+    private var standardBody: some View {
+        HStack(spacing: 8) {
             Image(systemName: "metronome").font(.caption2).foregroundStyle(.secondary)
-            if !narrowRail {
-                Text("Length")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .fixedSize(horizontal: true, vertical: false)
-            }
-            if narrowRail {
-                if locked {
-                    Button(action: onLocked) {
-                        Text("\(counts) ct")
-                            .font(.caption.weight(.bold).monospacedDigit())
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    stepButton("minus.circle.fill", enabled: counts > 1) { onAdjust(counts - 1) }
-                    Text("\(counts) ct")
-                        .font(.caption.weight(.bold).monospacedDigit())
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                    stepButton("plus.circle.fill", enabled: counts < 32) { onAdjust(counts + 1) }
-                }
-            } else if locked {
-                Spacer(minLength: 4)
+            Text("Length").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+            Spacer(minLength: 4)
+            if locked {
                 Button(action: onLocked) {
                     HStack(spacing: 4) {
                         Text("\(counts) ct").font(.callout.weight(.bold).monospacedDigit())
@@ -481,25 +467,52 @@ struct TransitionLengthControl: View {
                 .accessibilityLabel("Transition length \(counts) counts, locked")
                 .accessibilityHint("Upgrade to Pro to change the transition length")
             } else {
-                Spacer(minLength: 4)
-                stepButton("minus.circle.fill", enabled: counts > 1) { onAdjust(counts - 1) }
+                standardStepButton("minus.circle.fill", enabled: counts > 1) { onAdjust(counts - 1) }
                 Text("\(counts) ct")
                     .font(.callout.weight(.bold).monospacedDigit())
                     .frame(minWidth: 40)
                     .accessibilityLabel("Transition length \(counts) counts")
-                stepButton("plus.circle.fill", enabled: counts < 32) { onAdjust(counts + 1) }
+                standardStepButton("plus.circle.fill", enabled: counts < 32) { onAdjust(counts + 1) }
             }
         }
     }
 
-    private func stepButton(_ icon: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+    private var phoneRailBody: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "metronome").font(.caption2).foregroundStyle(.secondary)
+            if locked {
+                Button(action: onLocked) {
+                    Text("\(counts) ct")
+                        .font(.caption.weight(.bold).monospacedDigit())
+                }
+                .buttonStyle(.plain)
+            } else {
+                phoneRailStepButton("minus.circle.fill", enabled: counts > 1) { onAdjust(counts - 1) }
+                Text("\(counts) ct")
+                    .font(.caption.weight(.bold).monospacedDigit())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                phoneRailStepButton("plus.circle.fill", enabled: counts < 32) { onAdjust(counts + 1) }
+            }
+        }
+    }
+
+    private func standardStepButton(_ icon: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: icon)
-                .font(narrowRail ? .body : .title3)
-                .symbolRenderingMode(.hierarchical)
+            Image(systemName: icon).font(.title3).symbolRenderingMode(.hierarchical)
         }
         .buttonStyle(.plain)
-        .frame(minWidth: narrowRail ? 32 : 44, minHeight: narrowRail ? 32 : 44)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.3)
+        .accessibilityLabel(icon.hasPrefix("minus") ? "Decrease length" : "Increase length")
+    }
+
+    private func phoneRailStepButton(_ icon: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon).font(.body).symbolRenderingMode(.hierarchical)
+        }
+        .buttonStyle(.plain)
+        .frame(minWidth: 32, minHeight: 32)
         .contentShape(Rectangle())
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.3)
@@ -735,9 +748,13 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
         phoneCompact
     }
 
+    private var splitsPinnedTransport: Bool {
+        phoneCompact && section != .full
+    }
+
   @ViewBuilder
   private var railMetadataColumn: some View {
-        VStack(alignment: .leading, spacing: phoneCompact ? 8 : 10) {
+        VStack(alignment: .leading, spacing: phoneCompact ? 6 : 10) {
             HStack(spacing: 4) {
                 if let onBack {
                     Button(action: onBack) {
@@ -777,11 +794,13 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
                 }
             }
 
-            Text("\(startFormationName) \u{2192} \(endFormationName)")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .lineLimit(2)
-                .minimumScaleFactor(0.85)
+            if !splitsPinnedTransport {
+                Text("\(startFormationName) \u{2192} \(endFormationName)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+            }
 
             if let directionLabel, let onToggleDirection {
                 Button(action: onToggleDirection) {
@@ -796,7 +815,7 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
                 .accessibilityHint(canToggleDirection ? "Switch between the transition into and out of this formation" : "Only one direction is available")
             }
 
-            if let onAdjustCounts {
+            if let onAdjustCounts, !splitsPinnedTransport {
                 TransitionLengthControl(
                     player: player,
                     locked: countsLocked,
@@ -808,13 +827,23 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
         }
         .padding(.horizontal, phoneCompact ? 8 : 12)
         .padding(.top, phoneCompact ? 8 : 12)
-        .padding(.bottom, phoneCompact ? 4 : 8)
+        .padding(.bottom, phoneCompact ? 6 : 8)
         .frame(width: availableWidth, alignment: .leading)
   }
 
   @ViewBuilder
   private var railTransportColumn: some View {
-        VStack(alignment: .leading, spacing: phoneCompact ? 8 : 10) {
+        VStack(alignment: .leading, spacing: phoneCompact ? 6 : 10) {
+            if let onAdjustCounts, splitsPinnedTransport {
+                TransitionLengthControl(
+                    player: player,
+                    locked: countsLocked,
+                    narrowRail: true,
+                    onAdjust: onAdjustCounts,
+                    onLocked: onLockedCounts
+                )
+            }
+
             Divider()
 
             // Two rows so the transport fits the narrow landscape rail (as little
@@ -1005,9 +1034,13 @@ struct ThinTransitionTransportBar: View {
     var isLastFormation: Bool = false
     var showsTransitionTitle: Bool = true
     var hidesDisabledActions: Bool = false
+    var phoneCompactLayout: Bool = false
+
+    private var compactChevronSize: CGFloat { phoneCompactLayout ? 30 : 36 }
+    private var compactPlaySize: CGFloat { phoneCompactLayout ? 26 : 30 }
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: phoneCompactLayout ? 6 : 10) {
             if showsTransitionTitle {
                 Text("\(startFormationName) \u{2192} \(endFormationName)")
                     .font(.caption.weight(.semibold))
@@ -1019,23 +1052,26 @@ struct ThinTransitionTransportBar: View {
             }
 
             Button(action: onPreviousFormation) {
-                Image(systemName: "chevron.up").frame(width: 36, height: 36)
+                Image(systemName: "chevron.up").frame(width: compactChevronSize, height: compactChevronSize)
             }
             .buttonStyle(.bordered)
             .frame(minWidth: 44, minHeight: 44)
             .disabled(isFirstFormation)
+            .fixedSize(horizontal: phoneCompactLayout, vertical: false)
             .accessibilityLabel("Previous formation")
             .accessibilityHint(isFirstFormation ? "Already at the first formation" : "Go to the previous formation")
             .help(isFirstFormation ? "Already at the first formation" : "Go to the previous formation")
 
-            TransportControls.playPauseButton(player: player, size: 30)
+            TransportControls.playPauseButton(player: player, size: compactPlaySize)
+                .fixedSize(horizontal: phoneCompactLayout, vertical: false)
 
             Button(action: onNextFormation) {
-                Image(systemName: "chevron.down").frame(width: 36, height: 36)
+                Image(systemName: "chevron.down").frame(width: compactChevronSize, height: compactChevronSize)
             }
             .buttonStyle(.bordered)
             .frame(minWidth: 44, minHeight: 44)
             .disabled(isLastFormation)
+            .fixedSize(horizontal: phoneCompactLayout, vertical: false)
             .accessibilityLabel("Next formation")
             .accessibilityHint(isLastFormation ? "Already at the last formation" : "Go to the next formation")
             .help(isLastFormation ? "Already at the last formation" : "Go to the next formation")
