@@ -674,7 +674,6 @@ struct RoutineWorkspaceView: View {
 
         if compact {
             editor
-                .navigationTitle(formation.name)
                 .navigationBarTitleDisplayMode(.inline)
                 // Landscape hides the nav bar so the court can use the short axis.
                 // Back and tools move into the side rail. Portrait keeps the bar.
@@ -688,6 +687,12 @@ struct RoutineWorkspaceView: View {
                 }
                 .toolbar {
                     if !isPhoneLandscape {
+                        ToolbarItem(placement: .principal) {
+                            Text(formation.name)
+                                .font(.headline)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.72)
+                        }
                         compactDetailToolbar(for: formation)
                     }
                 }

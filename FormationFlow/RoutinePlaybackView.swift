@@ -5,9 +5,17 @@ import SwiftUI
 struct RoutinePlaybackView: View {
     @StateObject private var player: RoutinePlayer
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     private static let bottomBarHeight: CGFloat = 64
+
+    private var isPhoneLayout: Bool {
+        UIDevice.current.userInterfaceIdiom == .phone
+    }
+
+    private var isPhoneLandscape: Bool {
+        isPhoneLayout && verticalSizeClass == .compact
+    }
 
     init(store: RoutineStore) {
         _player = StateObject(wrappedValue: RoutinePlayer(store: store))
@@ -22,12 +30,15 @@ struct RoutinePlaybackView: View {
         GeometryReader { geometry in
             let courtWidth = CourtConstants.width
             let courtHeight = CourtConstants.height
-            let availableWidth = geometry.size.width - 40
-            let availableHeight = geometry.size.height - Self.bottomBarHeight - 40
+            let sideRailWidth: CGFloat = isPhoneLandscape ? 148 : 0
+            let horizontalPad: CGFloat = isPhoneLayout ? 16 : 40
+            let verticalPad: CGFloat = isPhoneLayout ? 12 : 40
+            let availableWidth = geometry.size.width - sideRailWidth - horizontalPad
+            let availableHeight = geometry.size.height - Self.bottomBarHeight - verticalPad
             let cellSize = min(availableWidth / courtWidth, availableHeight / courtHeight)
             let gridWidth = courtWidth * cellSize
             let gridHeight = courtHeight * cellSize
-            let offsetX = (geometry.size.width - gridWidth) / 2
+            let offsetX = sideRailWidth + (geometry.size.width - sideRailWidth - gridWidth) / 2
             let offsetY = (geometry.size.height - Self.bottomBarHeight - gridHeight) / 2
 
             ZStack {
@@ -46,7 +57,6 @@ struct RoutinePlaybackView: View {
                 )
                 .ignoresSafeArea()
                 #if canImport(UIKit)
-                // Two-finger tap = play/pause, two-finger horizontal drag = scrub.
                 .background(
                     TwoFingerPlaybackGesture(
                         scrubEnabled: true,
@@ -68,28 +78,32 @@ struct RoutinePlaybackView: View {
                                 .font(.body.weight(.semibold))
                                 .foregroundColor(.white)
                                 .padding(10)
+                                .frame(minWidth: 44, minHeight: 44)
                                 .background(.ultraThinMaterial, in: Circle())
                         }
-                        .padding(16)
+                        .padding(isPhoneLayout ? 12 : 16)
                         .accessibilityLabel("Close")
                         .help("Close routine playback")
 
                         Spacer()
 
-                        // Same pip badge as the editor; editor-only bits (Into/Out
-                        // tab, long-press rename) are omitted since linear playback
-                        // has no selected formation. Left/right = jump segments.
-                        FormationPipBadge(
-                            currentIndex: player.currentSegmentIndex,
-                            total: player.segmentCount,
-                            formationName: player.currentFormationName,
-                            onPrev: { player.jumpToPreviousSegment() },
-                            onNext: { player.jumpToNextSegment() }
-                        )
-                        .padding(.top, 16)
-                        .padding(.trailing, 16)
+                        if !isPhoneLandscape {
+                            playbackFormationBadge
+                                .padding(.top, 12)
+                                .padding(.trailing, 12)
+                        }
                     }
                     Spacer()
+                }
+
+                if isPhoneLandscape {
+                    HStack(alignment: .top, spacing: 0) {
+                        playbackFormationBadge
+                            .padding(.leading, 8)
+                            .padding(.top, 64)
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
 
                 VStack(spacing: 0) {
@@ -103,6 +117,19 @@ struct RoutinePlaybackView: View {
         .onAppear {
             player.play()
         }
+    }
+
+    private var playbackFormationBadge: some View {
+        FormationPipBadge(
+            currentIndex: player.currentSegmentIndex,
+            total: player.segmentCount,
+            formationName: player.currentFormationName,
+            onPrev: { player.jumpToPreviousSegment() },
+            onNext: { player.jumpToNextSegment() }
+        )
+        .scaleEffect(isPhoneLandscape ? 0.82 : 1, anchor: .topLeading)
+        .opacity(player.isPlaying ? 0.55 : 1)
+        .animation(.easeInOut(duration: 0.25), value: player.isPlaying)
     }
 
     // MARK: - Transport Bar (thin single row)
@@ -145,7 +172,7 @@ struct RoutinePlaybackView: View {
             .frame(minHeight: 44)
             .layoutPriority(1)
 
-            if horizontalSizeClass != .compact {
+            if !isPhoneLayout {
                 playbackSpeedPicker
                     .pickerStyle(.segmented)
                     .frame(width: 210)
@@ -154,7 +181,7 @@ struct RoutinePlaybackView: View {
             Menu {
                 Text("\(player.currentSegmentIndex + 1) / \(player.segmentCount)")
 
-                if horizontalSizeClass == .compact {
+                if isPhoneLayout {
                     playbackSpeedPicker
                 }
 
@@ -175,7 +202,7 @@ struct RoutinePlaybackView: View {
             }
             .accessibilityLabel("More playback options")
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, isPhoneLayout ? 12 : 16)
         .padding(.vertical, 8)
         .background(.bar)
     }
