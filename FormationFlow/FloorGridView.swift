@@ -2350,7 +2350,6 @@ struct FloorGridView: View {
                 phoneLandscapeIdleRail
             }
         }
-        }
         .padding(.leading, 8)
         .padding(.vertical, 8)
         .frame(width: 184)
