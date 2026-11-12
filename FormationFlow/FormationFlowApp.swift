@@ -316,10 +316,12 @@ struct OnboardingView: View {
                         Spacer()
                         Button("Skip", action: dismiss)
                             .font(.system(.footnote, design: .monospaced).weight(.semibold))
-                            .foregroundStyle(OB.txtFaint)
+                            .foregroundStyle(OB.txt.opacity(0.82))
                             .padding(.horizontal, 14)
-                            .padding(.vertical, 7)
-                            .background(Capsule().fill(Color.black.opacity(0.28)))
+                            .padding(.vertical, 10)
+                            .frame(minHeight: 44)
+                            .background(Capsule().fill(Color.black.opacity(0.45)))
+                            .contentShape(Capsule())
                     }
                     Spacer()
                 }
@@ -389,13 +391,15 @@ private struct OnboardingScreen: View {
             if geo.size.width > geo.size.height {
                 phoneLandscapeLayout
             } else {
-                phonePortraitLayout(width: geo.size.width)
+                phonePortraitLayout(in: geo.size)
             }
         }
     }
 
-    private func phonePortraitLayout(width: CGFloat) -> some View {
-        let courtH = width * CourtConstants.height / CourtConstants.width
+    private func phonePortraitLayout(in size: CGSize) -> some View {
+        let width = size.width
+        let idealCourtH = width * CourtConstants.height / CourtConstants.width
+        let courtH = min(idealCourtH, max(120, size.height * 0.36))
         return VStack(spacing: 0) {
             phoneWordmarkBar
             floor
@@ -404,7 +408,6 @@ private struct OnboardingScreen: View {
             bottomSheet
                 .frame(maxHeight: .infinity, alignment: .top)
         }
-        .ignoresSafeArea(edges: .bottom)
     }
 
     private var phoneLandscapeLayout: some View {
@@ -527,22 +530,32 @@ private struct OnboardingScreen: View {
     // MARK: Bottom sheet (iPhone) — fills the space below the court
 
     private var bottomSheet: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 0) {
             Capsule().fill(OB.txtFaint).frame(width: 36, height: 5)
                 .frame(maxWidth: .infinity)
                 .padding(.bottom, 2)
-            eyebrowView
-            titleView(size: 26)
-            bodyView(size: 14)
-            Spacer(minLength: 8)
+
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 14) {
+                    eyebrowView
+                    titleView(size: 26)
+                    bodyView(size: 14)
+                }
+            }
+            .layoutPriority(1)
+
             pageDots
+                .padding(.top, 8)
+                .padding(.bottom, 10)
+
             if let cta = spec.cta {
                 ctaButton(cta).frame(maxWidth: .infinity)
             }
         }
         .padding(.horizontal, 22)
         .padding(.top, 18)
-        .padding(.bottom, 38)
+        .padding(.bottom, 12)
+        .safeAreaPadding(.bottom, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24)
@@ -592,6 +605,7 @@ private struct OnboardingScreen: View {
                     .frame(width: i == page ? 22 : 6, height: 6)
             }
         }
+        .padding(.horizontal, 2)
     }
 
     private func ctaButton(_ text: String) -> some View {

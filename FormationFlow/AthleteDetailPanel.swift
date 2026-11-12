@@ -20,24 +20,26 @@ struct AthleteInspectorView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: compactLayout ? 14 : 18) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Athlete")
-                        .font(.headline)
-                    Text("Shared across every formation")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+            if !compactLayout {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Athlete")
+                            .font(.headline)
+                        Text("Shared across every formation")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Button(action: onClearSelection) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title3)
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear selection")
+                    .accessibilityHint("Deselect this athlete")
+                    .help("Deselect this athlete")
                 }
-                Spacer()
-                Button(action: onClearSelection) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title3)
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Clear selection")
-                .accessibilityHint("Deselect this athlete")
-                .help("Deselect this athlete")
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -793,13 +795,14 @@ struct TransitionInspectorSectionView: View {
                 Text("Transition")
                     .font(.headline)
                 Spacer()
-                Button(role: .destructive, action: onResetAllPaths) {
-                    Label("Reset All", systemImage: "arrow.uturn.backward.circle")
-                        .font(.caption)
+                if hasCustomPaths {
+                    Button(role: .destructive, action: onResetAllPaths) {
+                        Label("Reset All", systemImage: "arrow.uturn.backward.circle")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.bordered)
+                    .help("Reset all paths to default")
                 }
-                .buttonStyle(.bordered)
-                .disabled(!hasCustomPaths)
-                .help(!hasCustomPaths ? "No custom paths to reset" : "Reset all paths to default")
             }
             Text("\(startFormationName) \u{2192} \(endFormationName)")
                 .font(.subheadline)
