@@ -2323,6 +2323,10 @@ struct FloorGridView: View {
 
     /// Side rail for phone landscape. Safe-area insets keep it off the notch
     /// and the home indicator in either rotation, so it does not need to swap sides.
+    private var phoneLandscapeHasSelection: Bool {
+        selectedRosterAthlete != nil || selectedAthleteIDs.count > 1
+    }
+
     private var phoneLandscapeRail: some View {
         Group {
             if let player, let startFormationName, let endFormationName {
@@ -2333,28 +2337,39 @@ struct FloorGridView: View {
                         endFormationName: endFormationName,
                         section: .header
                     )
-                    .layoutPriority(1)
+                    .fixedSize(horizontal: false, vertical: true)
 
                     ScrollView(.vertical, showsIndicators: true) {
                         VStack(alignment: .leading, spacing: 6) {
-                            if selectedRosterAthlete != nil || selectedAthleteIDs.count > 1 {
+                            if phoneLandscapeHasSelection {
                                 phoneLandscapeSelectionRailSection
+                                phoneLandscapePlaybackRail(
+                                    player: player,
+                                    startFormationName: startFormationName,
+                                    endFormationName: endFormationName,
+                                    pinsPlaybackMetadataInTransport: false,
+                                    section: .scrollSupplement
+                                )
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                         .padding(.bottom, 6)
                     }
                     .scrollBounceBehavior(.basedOnSize)
-                    .frame(minHeight: 0, maxHeight: .infinity)
-                    .layoutPriority(0)
+                    .frame(
+                        minHeight: phoneLandscapeHasSelection ? 130 : 0,
+                        maxHeight: .infinity
+                    )
+                    .layoutPriority(phoneLandscapeHasSelection ? 1 : 0)
 
                     phoneLandscapePlaybackRail(
                         player: player,
                         startFormationName: startFormationName,
                         endFormationName: endFormationName,
+                        pinsPlaybackMetadataInTransport: !phoneLandscapeHasSelection,
                         section: .transport
                     )
-                    .layoutPriority(1)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
                 .formationGlassPanel(cornerRadius: 22, shadowRadius: 12)
             } else {
@@ -2371,6 +2386,7 @@ struct FloorGridView: View {
         player: TransitionPlayer,
         startFormationName: String,
         endFormationName: String,
+        pinsPlaybackMetadataInTransport: Bool = true,
         section: CompactPlaybackRailSection
     ) -> some View {
         CompactTransitionPlaybackRailView(
@@ -2400,6 +2416,7 @@ struct FloorGridView: View {
             phoneCompact: true,
             hidesDisabledActions: true,
             scrollsInternally: false,
+            pinsPlaybackMetadataInTransport: pinsPlaybackMetadataInTransport,
             section: section,
             tools: phoneLandscapeToolsButton
         )

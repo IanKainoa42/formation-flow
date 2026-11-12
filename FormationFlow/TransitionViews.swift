@@ -711,6 +711,7 @@ enum CompactPlaybackRailSection {
     case full
     case header
     case metadata
+    case scrollSupplement
     case transport
 }
 
@@ -742,6 +743,8 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
     var hidesDisabledActions: Bool = false
   /// When false, the parent provides the only vertical `ScrollView` (landscape phone rail).
     var scrollsInternally: Bool = true
+  /// When false, Into/Out and Length render in the parent's scroll (landscape phone + selection).
+    var pinsPlaybackMetadataInTransport: Bool = true
     var section: CompactPlaybackRailSection = .full
     let tools: Tools
 
@@ -794,8 +797,46 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
             }
         }
         .padding(.horizontal, phoneCompact ? 8 : 12)
-        .padding(.top, phoneCompact ? 8 : 12)
+        .padding(.top, phoneCompact ? 12 : 12)
         .padding(.bottom, phoneCompact ? 4 : 8)
+        .frame(width: availableWidth, alignment: .leading)
+  }
+
+  @ViewBuilder
+  private var railPlaybackMetadataBlock: some View {
+        if let directionLabel, let onToggleDirection {
+            Button(action: onToggleDirection) {
+                Text(directionLabel)
+                    .font(.caption.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(!canToggleDirection)
+            .accessibilityLabel("Transition direction \(directionLabel)")
+            .accessibilityHint(canToggleDirection ? "Switch between the transition into and out of this formation" : "Only one direction is available")
+        }
+
+        if let onAdjustCounts {
+            TransitionLengthControl(
+                player: player,
+                locked: countsLocked,
+                narrowRail: usesNarrowLength,
+                onAdjust: onAdjustCounts,
+                onLocked: onLockedCounts
+            )
+        }
+  }
+
+  @ViewBuilder
+  private var railScrollSupplementColumn: some View {
+        VStack(alignment: .leading, spacing: phoneCompact ? 6 : 10) {
+            if splitsPinnedTransport, !pinsPlaybackMetadataInTransport {
+                railPlaybackMetadataBlock
+            }
+        }
+        .padding(.horizontal, phoneCompact ? 8 : 12)
+        .padding(.vertical, phoneCompact ? 4 : 8)
         .frame(width: availableWidth, alignment: .leading)
   }
 
@@ -882,29 +923,8 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
   @ViewBuilder
   private var railTransportColumn: some View {
         VStack(alignment: .leading, spacing: phoneCompact ? 6 : 10) {
-            if splitsPinnedTransport {
-                if let directionLabel, let onToggleDirection {
-                    Button(action: onToggleDirection) {
-                        Text(directionLabel)
-                            .font(.caption.weight(.semibold))
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(!canToggleDirection)
-                    .accessibilityLabel("Transition direction \(directionLabel)")
-                    .accessibilityHint(canToggleDirection ? "Switch between the transition into and out of this formation" : "Only one direction is available")
-                }
-
-                if let onAdjustCounts {
-                    TransitionLengthControl(
-                        player: player,
-                        locked: countsLocked,
-                        narrowRail: true,
-                        onAdjust: onAdjustCounts,
-                        onLocked: onLockedCounts
-                    )
-                }
+            if splitsPinnedTransport, pinsPlaybackMetadataInTransport {
+                railPlaybackMetadataBlock
             }
 
             Divider()
@@ -989,6 +1009,8 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
                 railHeaderColumn
             case .metadata:
                 railMetadataColumn
+            case .scrollSupplement:
+                railScrollSupplementColumn
             case .transport:
                 railTransportColumn
             case .full:
