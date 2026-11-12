@@ -1044,7 +1044,15 @@ struct FloorGridView: View {
         }
         .toolbar {
             if isPhoneLayout && !isPhoneLandscape {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: undoLastMove) {
+                        Image(systemName: "arrow.uturn.backward")
+                    }
+                    .disabled(undoStack.isEmpty)
+                    .accessibilityLabel("Undo Move")
+                    .help(undoStack.isEmpty ? "Nothing to undo" : "Undo the last move")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     phoneToolbarMenu
                 }
             } else if !isPhoneLayout {
@@ -2275,7 +2283,9 @@ struct FloorGridView: View {
                         countsLocked: !entitlementManager.isPro,
                         onLockedCounts: { showingUpgradeSheet = true },
                         showsTransitionTitle: true,
-                        hidesDisabledActions: true
+                        hidesDisabledActions: true,
+                        usesStackedHeader: true,
+                        phoneCompactTransport: true
                     )
                 }
             }
@@ -2313,46 +2323,51 @@ struct FloorGridView: View {
     /// Side rail for phone landscape. Safe-area insets keep it off the notch
     /// and the home indicator in either rotation, so it does not need to swap sides.
     private var phoneLandscapeRail: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if selectedRosterAthlete != nil || selectedAthleteIDs.count > 1 {
-                phoneLandscapeSelectionRailSection
-            }
-        if let player, let startFormationName, let endFormationName {
-                CompactTransitionPlaybackRailView(
-                    player: player,
-                    startFormationName: startFormationName,
-                    endFormationName: endFormationName,
-                    availableWidth: 176,
-                    onSwap: toggleSwapMode,
-                    onPath: { showingInspectorSheet = true },
-                    isSwapMode: isSwapMode,
-                    canSwap: selectedAthleteID != nil,
-                    canEditPath: selectedAthleteID != nil,
-                    onAdd: addAthlete,
-                    formationLabel: formationContextLabel,
-                    formationColor: currentFormationColor,
-                    onPreviousFormation: { onCyclePreviousFormation?() },
-                    onNextFormation: { onCycleFormation?() },
-                    isFirstFormation: isFirstFormation,
-                    isLastFormation: isLastFormation,
-                    onBack: onBack,
-                    onAdjustCounts: { setTransitionCounts($0) },
-                    countsLocked: !entitlementManager.isPro,
-                    onLockedCounts: { showingUpgradeSheet = true },
-                    directionLabel: hasTransition ? (endFormationID == formationID ? "Into" : "Out of") : nil,
-                    canToggleDirection: !isFirstFormation && !isLastFormation,
-                    onToggleDirection: onToggleTransitionDirection,
-                    tools: phoneLandscapeToolsButton,
-                    phoneCompact: true,
-                    hidesDisabledActions: true
-                )
-            } else {
-                phoneLandscapeIdleRail
+        ScrollView(.vertical, showsIndicators: true) {
+            VStack(alignment: .leading, spacing: 6) {
+                if selectedRosterAthlete != nil || selectedAthleteIDs.count > 1 {
+                    phoneLandscapeSelectionRailSection
+                }
+                if let player, let startFormationName, let endFormationName {
+                    CompactTransitionPlaybackRailView(
+                        player: player,
+                        startFormationName: startFormationName,
+                        endFormationName: endFormationName,
+                        availableWidth: 176,
+                        onSwap: toggleSwapMode,
+                        onPath: { showingInspectorSheet = true },
+                        isSwapMode: isSwapMode,
+                        canSwap: selectedAthleteID != nil,
+                        canEditPath: selectedAthleteID != nil,
+                        onAdd: addAthlete,
+                        formationLabel: formationContextLabel,
+                        formationColor: currentFormationColor,
+                        onPreviousFormation: { onCyclePreviousFormation?() },
+                        onNextFormation: { onCycleFormation?() },
+                        isFirstFormation: isFirstFormation,
+                        isLastFormation: isLastFormation,
+                        onBack: onBack,
+                        onAdjustCounts: { setTransitionCounts($0) },
+                        countsLocked: !entitlementManager.isPro,
+                        onLockedCounts: { showingUpgradeSheet = true },
+                        directionLabel: hasTransition ? (endFormationID == formationID ? "Into" : "Out of") : nil,
+                        canToggleDirection: !isFirstFormation && !isLastFormation,
+                        onToggleDirection: onToggleTransitionDirection,
+                        phoneCompact: true,
+                        hidesDisabledActions: true,
+                        scrollsInternally: false,
+                        tools: phoneLandscapeToolsButton
+                    )
+                } else {
+                    phoneLandscapeIdleRail
+                }
             }
         }
+        .scrollBounceBehavior(.basedOnSize)
         .padding(.leading, 8)
         .padding(.vertical, 8)
         .frame(width: 184)
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     @ViewBuilder
@@ -2369,12 +2384,14 @@ struct FloorGridView: View {
                             }
                             .buttonStyle(.bordered)
                             .controlSize(.small)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                             Button(isExplicitPathDrawMode ? "Cancel" : "Draw") {
                                 toggleExplicitPathDrawMode()
                             }
                             .buttonStyle(.borderedProminent)
                             .controlSize(.small)
-                            Button(selectionIsTransitionGroup ? "Ungroup" : "Stunt Group") {
+                            Button(selectionIsTransitionGroup ? "Ungroup" : "Group") {
                                 if selectionIsTransitionGroup {
                                     ungroupSelectedTransitionGroup()
                                 } else {
@@ -2383,6 +2400,8 @@ struct FloorGridView: View {
                             }
                             .buttonStyle(.bordered)
                             .controlSize(.small)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                             .disabled(!selectionIsTransitionGroup && !canCreateSelectedTransitionGroup)
                         }
                         Button("Clear") { selectedAthleteIDs = [] }
@@ -2393,21 +2412,29 @@ struct FloorGridView: View {
             } else if let selectedRosterAthlete {
                 Text(selectedRosterAthlete.label)
                     .font(.caption.weight(.bold))
-                HStack(spacing: 6) {
-                    if hasTransition {
-                        Button("Path") { showingInspectorSheet = true }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        if hasTransition {
+                            Button("Path") { showingInspectorSheet = true }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                            Button(isExplicitPathDrawMode ? "Cancel" : "Draw") {
+                                toggleExplicitPathDrawMode()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .disabled(!isExplicitPathDrawMode && !canBeginExplicitPathDraw)
+                        }
+                        Button("Clear") { selectedAthleteIDs = [] }
                             .buttonStyle(.bordered)
                             .controlSize(.small)
-                        Button(isExplicitPathDrawMode ? "Cancel" : "Draw") {
-                            toggleExplicitPathDrawMode()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .disabled(!isExplicitPathDrawMode && !canBeginExplicitPathDraw)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
-                    Button("Clear") { selectedAthleteIDs = [] }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
                 }
             }
         }
@@ -2647,7 +2674,9 @@ struct FloorGridView: View {
                         addWaypoint()
                     } label: {
                         Label(
-                            entitlementManager.isPro ? "Add Waypoint" : "Waypoint (Pro)",
+                            entitlementManager.isPro
+                                ? (isPhoneLayout ? "Waypoint" : "Add Waypoint")
+                                : "Waypoint (Pro)",
                             systemImage: entitlementManager.isPro ? "plus.circle" : "lock.fill"
                         )
                     }
@@ -2662,7 +2691,7 @@ struct FloorGridView: View {
                     .disabled(!isExplicitPathDrawMode && !canBeginExplicitPathDraw)
                     .frame(minHeight: 44)
 
-                    Button(selectionIsTransitionGroup ? "Ungroup" : "Create Stunt Group") {
+                    Button(selectionIsTransitionGroup ? "Ungroup" : (isPhoneLayout ? "Group" : "Create Stunt Group")) {
                         if selectionIsTransitionGroup {
                             ungroupSelectedTransitionGroup()
                         } else {
@@ -2672,6 +2701,8 @@ struct FloorGridView: View {
                     .buttonStyle(.borderedProminent)
                     .disabled(!selectionIsTransitionGroup && !canCreateSelectedTransitionGroup)
                     .frame(minHeight: 44)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
                 }
 
                 Button("Clear") {

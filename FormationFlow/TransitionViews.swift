@@ -453,8 +453,22 @@ struct TransitionLengthControl: View {
                     .minimumScaleFactor(0.8)
                     .fixedSize(horizontal: true, vertical: false)
             }
-            Spacer(minLength: 4)
-            if locked {
+            if narrowRail {
+                if locked {
+                    Button(action: onLocked) {
+                        Text("\(counts) ct")
+                            .font(.caption.weight(.bold).monospacedDigit())
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    stepButton("minus.circle.fill", enabled: counts > 1) { onAdjust(counts - 1) }
+                    Text("\(counts) ct")
+                        .font(.caption.weight(.bold).monospacedDigit())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    stepButton("plus.circle.fill", enabled: counts < 32) { onAdjust(counts + 1) }
+                }
+            } else if locked {
                 Button(action: onLocked) {
                     HStack(spacing: 4) {
                         Text("\(counts) ct").font(.callout.weight(.bold).monospacedDigit())
@@ -473,15 +487,20 @@ struct TransitionLengthControl: View {
                     .accessibilityLabel("Transition length \(counts) counts")
                 stepButton("plus.circle.fill", enabled: counts < 32) { onAdjust(counts + 1) }
             }
+            if !narrowRail {
+                Spacer(minLength: 4)
+            }
         }
     }
 
     private func stepButton(_ icon: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: icon).font(.title3).symbolRenderingMode(.hierarchical)
+            Image(systemName: icon)
+                .font(narrowRail ? .body : .title3)
+                .symbolRenderingMode(.hierarchical)
         }
         .buttonStyle(.plain)
-        .frame(minWidth: 44, minHeight: 44)
+        .frame(minWidth: narrowRail ? 32 : 44, minHeight: narrowRail ? 32 : 44)
         .contentShape(Rectangle())
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.3)
@@ -588,47 +607,84 @@ struct CompactTransitionPlaybackOverlayView: View {
     var onLockedCounts: () -> Void = {}
     var showsTransitionTitle: Bool = true
     var hidesDisabledActions: Bool = false
+  /// Portrait phone: stack transition title above length so neither row overflows the panel.
+    var usesStackedHeader: Bool = false
+  /// Tighter transport button sizing for narrow portrait panels.
+    var phoneCompactTransport: Bool = false
+
+    private var transportControlSize: CGFloat { phoneCompactTransport ? 28 : 32 }
+    private var playControlSize: CGFloat { phoneCompactTransport ? 36 : 40 }
 
     var body: some View {
         VStack(spacing: 8) {
             if showsTransitionTitle || onAdjustCounts != nil {
-                HStack(spacing: 8) {
-                    if showsTransitionTitle {
-                        Text("\(startFormationName) \u{2192} \(endFormationName)")
-                            .font(.caption.weight(.semibold))
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.75)
-                    }
-                    Spacer(minLength: 8)
-                    if let onAdjustCounts {
-                        TransitionLengthControl(player: player, locked: countsLocked, onAdjust: onAdjustCounts, onLocked: onLockedCounts)
-                            .frame(maxWidth: showsTransitionTitle ? nil : .infinity, alignment: .trailing)
+                Group {
+                    if usesStackedHeader {
+                        VStack(alignment: .leading, spacing: 6) {
+                            if showsTransitionTitle {
+                                Text("\(startFormationName) \u{2192} \(endFormationName)")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            if let onAdjustCounts {
+                                TransitionLengthControl(
+                                    player: player,
+                                    locked: countsLocked,
+                                    narrowRail: phoneCompactTransport,
+                                    onAdjust: onAdjustCounts,
+                                    onLocked: onLockedCounts
+                                )
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                    } else {
+                        HStack(spacing: 8) {
+                            if showsTransitionTitle {
+                                Text("\(startFormationName) \u{2192} \(endFormationName)")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                    .minimumScaleFactor(0.75)
+                                    .layoutPriority(-1)
+                                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                            }
+                            if let onAdjustCounts {
+                                TransitionLengthControl(player: player, locked: countsLocked, onAdjust: onAdjustCounts, onLocked: onLockedCounts)
+                                    .layoutPriority(1)
+                                    .fixedSize(horizontal: true, vertical: false)
+                            }
+                        }
                     }
                 }
             }
 
-            HStack(spacing: 8) {
-                TransportControls.previousFormationButton(size: 32, disabled: isFirstFormation, action: onPreviousFormation)
-                TransportControls.resetButton(player: player, size: 32)
-                TransportControls.playPauseButton(player: player, size: 40)
+            HStack(spacing: phoneCompactTransport ? 6 : 8) {
+                TransportControls.previousFormationButton(size: transportControlSize, disabled: isFirstFormation, action: onPreviousFormation)
+                TransportControls.resetButton(player: player, size: transportControlSize)
+                TransportControls.playPauseButton(player: player, size: playControlSize)
                 TransportControls.progressSlider(player: player)
                     .frame(minHeight: 44)
-                TransportControls.nextFormationButton(size: 32, disabled: isLastFormation, action: onNextFormation)
+                    .layoutPriority(1)
+                TransportControls.nextFormationButton(size: transportControlSize, disabled: isLastFormation, action: onNextFormation)
             }
 
             HStack(spacing: 8) {
-                TransportControls.loopButton(player: player, size: 32)
+                TransportControls.loopButton(player: player, size: transportControlSize)
                 if !hidesDisabledActions || canSwap {
-                    TransportControls.swapButton(isActive: isSwapMode, size: 32, disabled: !canSwap, action: onSwap)
+                    TransportControls.swapButton(isActive: isSwapMode, size: transportControlSize, disabled: !canSwap, action: onSwap)
                 }
                 if !hidesDisabledActions || canEditPath {
-                    TransportControls.pathButton(size: 32, disabled: !canEditPath, action: onPath)
+                    TransportControls.pathButton(size: transportControlSize, disabled: !canEditPath, action: onPath)
                 }
                 Spacer(minLength: 0)
             }
         }
-        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, phoneCompactTransport ? 10 : 12)
         .padding(.vertical, 10)
         .formationGlassPanel(cornerRadius: 20, shadowRadius: 12)
         .playbackHaptics(player)
@@ -661,12 +717,18 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
     var onToggleDirection: (() -> Void)? = nil
     var phoneCompact: Bool = false
     var hidesDisabledActions: Bool = false
+  /// When false, the parent provides the only vertical `ScrollView` (landscape phone rail).
+    var scrollsInternally: Bool = true
     let tools: Tools
 
-    var body: some View {
-        ScrollView(.vertical, showsIndicators: true) {
-        VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 6) {
+    private var usesNarrowLength: Bool {
+        phoneCompact || availableWidth < 200
+    }
+
+  @ViewBuilder
+  private var railColumn: some View {
+        VStack(alignment: .leading, spacing: phoneCompact ? 8 : 10) {
+            HStack(spacing: 4) {
                 if let onBack {
                     Button(action: onBack) {
                         Image(systemName: "chevron.left")
@@ -678,10 +740,8 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("Back to formations")
                 }
-                HStack {
-                    Spacer(minLength: 0)
-                    tools
-                }
+                Spacer(minLength: 0)
+                tools
             }
 
             if let onAdd {
@@ -730,7 +790,7 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
                 TransitionLengthControl(
                     player: player,
                     locked: countsLocked,
-                    narrowRail: availableWidth < 150,
+                    narrowRail: usesNarrowLength,
                     onAdjust: onAdjustCounts,
                     onLocked: onLockedCounts
                 )
@@ -792,13 +852,24 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
                 }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 12)
+        .padding(.horizontal, phoneCompact ? 8 : 12)
+        .padding(.vertical, phoneCompact ? 8 : 12)
         .frame(width: availableWidth, alignment: .leading)
+  }
+
+    var body: some View {
+        Group {
+            if scrollsInternally {
+                ScrollView(.vertical, showsIndicators: true) {
+                    railColumn
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .frame(width: availableWidth)
+                .frame(maxHeight: .infinity, alignment: .top)
+            } else {
+                railColumn
+            }
         }
-        .scrollBounceBehavior(.basedOnSize)
-        .frame(width: availableWidth)
-        .frame(maxHeight: .infinity, alignment: .top)
         .formationGlassPanel(cornerRadius: 22, shadowRadius: 12)
         .playbackHaptics(player)
     }
