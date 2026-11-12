@@ -2335,6 +2335,7 @@ struct FloorGridView: View {
                         player: player,
                         startFormationName: startFormationName,
                         endFormationName: endFormationName,
+                        usesCompactLandscapeHeader: phoneLandscapeHasSelection,
                         section: .header
                     )
                     .fixedSize(horizontal: false, vertical: true)
@@ -2348,6 +2349,7 @@ struct FloorGridView: View {
                                     startFormationName: startFormationName,
                                     endFormationName: endFormationName,
                                     pinsPlaybackMetadataInTransport: false,
+                                    pinsSwapPathInTransport: false,
                                     section: .scrollSupplement
                                 )
                             }
@@ -2357,7 +2359,7 @@ struct FloorGridView: View {
                     }
                     .scrollBounceBehavior(.basedOnSize)
                     .frame(
-                        minHeight: phoneLandscapeHasSelection ? 130 : 0,
+                        minHeight: phoneLandscapeHasSelection ? 90 : 0,
                         maxHeight: .infinity
                     )
                     .layoutPriority(phoneLandscapeHasSelection ? 1 : 0)
@@ -2367,6 +2369,7 @@ struct FloorGridView: View {
                         startFormationName: startFormationName,
                         endFormationName: endFormationName,
                         pinsPlaybackMetadataInTransport: !phoneLandscapeHasSelection,
+                        pinsSwapPathInTransport: !phoneLandscapeHasSelection,
                         section: .transport
                     )
                     .fixedSize(horizontal: false, vertical: true)
@@ -2387,6 +2390,8 @@ struct FloorGridView: View {
         startFormationName: String,
         endFormationName: String,
         pinsPlaybackMetadataInTransport: Bool = true,
+        pinsSwapPathInTransport: Bool = true,
+        usesCompactLandscapeHeader: Bool = false,
         section: CompactPlaybackRailSection
     ) -> some View {
         CompactTransitionPlaybackRailView(
@@ -2417,6 +2422,8 @@ struct FloorGridView: View {
             hidesDisabledActions: true,
             scrollsInternally: false,
             pinsPlaybackMetadataInTransport: pinsPlaybackMetadataInTransport,
+            pinsSwapPathInTransport: pinsSwapPathInTransport,
+            usesCompactLandscapeHeader: usesCompactLandscapeHeader,
             section: section,
             tools: phoneLandscapeToolsButton
         )

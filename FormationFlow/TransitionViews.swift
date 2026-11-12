@@ -745,6 +745,10 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
     var scrollsInternally: Bool = true
   /// When false, Into/Out and Length render in the parent's scroll (landscape phone + selection).
     var pinsPlaybackMetadataInTransport: Bool = true
+  /// When false, Swap/Path render in the parent's scroll (landscape phone + selection).
+    var pinsSwapPathInTransport: Bool = true
+  /// Single-row header: Back, Add icon, tools (landscape phone + selection).
+    var usesCompactLandscapeHeader: Bool = false
     var section: CompactPlaybackRailSection = .full
     let tools: Tools
 
@@ -758,46 +762,76 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
 
   @ViewBuilder
   private var railHeaderColumn: some View {
-        VStack(alignment: .leading, spacing: phoneCompact ? 6 : 10) {
-            HStack(spacing: 4) {
-                if let onBack {
-                    Button(action: onBack) {
-                        Image(systemName: "chevron.left")
-                            .font(.caption.weight(.bold))
-                            .frame(width: 36, height: 36)
-                            .frame(minWidth: 44, minHeight: 44)
-                            .contentShape(Rectangle())
+        Group {
+            if usesCompactLandscapeHeader {
+                HStack(spacing: 4) {
+                    if let onBack {
+                        Button(action: onBack) {
+                            Image(systemName: "chevron.left")
+                                .font(.caption.weight(.bold))
+                                .frame(width: 32, height: 32)
+                                .frame(minWidth: 40, minHeight: 40)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Back to formations")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Back to formations")
+                    if let onAdd {
+                        Button(action: onAdd) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.body)
+                                .frame(width: 32, height: 32)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .accessibilityLabel("Add athlete")
+                    }
+                    Spacer(minLength: 0)
+                    tools
                 }
-                Spacer(minLength: 0)
-                tools
-            }
+            } else {
+                VStack(alignment: .leading, spacing: phoneCompact ? 6 : 10) {
+                    HStack(spacing: 4) {
+                        if let onBack {
+                            Button(action: onBack) {
+                                Image(systemName: "chevron.left")
+                                    .font(.caption.weight(.bold))
+                                    .frame(width: 36, height: 36)
+                                    .frame(minWidth: 44, minHeight: 44)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Back to formations")
+                        }
+                        Spacer(minLength: 0)
+                        tools
+                    }
 
-            if let onAdd {
-                Button(action: onAdd) {
-                    Label("Add", systemImage: "plus.circle.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-            }
+                    if let onAdd {
+                        Button(action: onAdd) {
+                            Label("Add", systemImage: "plus.circle.fill")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
 
-            if let formationLabel {
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(formationColor)
-                        .frame(width: 7, height: 7)
-                    Text(formationLabel)
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(.primary)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.75)
+                    if let formationLabel {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(formationColor)
+                                .frame(width: 7, height: 7)
+                            Text(formationLabel)
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(.primary)
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.75)
+                        }
+                    }
                 }
             }
         }
         .padding(.horizontal, phoneCompact ? 8 : 12)
-        .padding(.top, phoneCompact ? 12 : 12)
+        .padding(.top, usesCompactLandscapeHeader ? 8 : (phoneCompact ? 12 : 12))
         .padding(.bottom, phoneCompact ? 4 : 8)
         .frame(width: availableWidth, alignment: .leading)
   }
@@ -829,10 +863,27 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
   }
 
   @ViewBuilder
+  private var railSwapPathRow: some View {
+        HStack(spacing: 8) {
+            if !hidesDisabledActions || canSwap {
+                TransportControls.swapButton(isActive: isSwapMode, size: 30, disabled: !canSwap, action: onSwap)
+                    .frame(maxWidth: .infinity)
+            }
+            if !hidesDisabledActions || canEditPath {
+                TransportControls.pathButton(size: 30, disabled: !canEditPath, action: onPath)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+  }
+
+  @ViewBuilder
   private var railScrollSupplementColumn: some View {
         VStack(alignment: .leading, spacing: phoneCompact ? 6 : 10) {
             if splitsPinnedTransport, !pinsPlaybackMetadataInTransport {
                 railPlaybackMetadataBlock
+            }
+            if splitsPinnedTransport, !pinsSwapPathInTransport {
+                railSwapPathRow
             }
         }
         .padding(.horizontal, phoneCompact ? 8 : 12)
@@ -922,7 +973,8 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
 
   @ViewBuilder
   private var railTransportColumn: some View {
-        VStack(alignment: .leading, spacing: phoneCompact ? 6 : 10) {
+        let compactPinnedPlayback = splitsPinnedTransport && !pinsSwapPathInTransport
+        VStack(alignment: .leading, spacing: compactPinnedPlayback ? 4 : (phoneCompact ? 6 : 10)) {
             if splitsPinnedTransport, pinsPlaybackMetadataInTransport {
                 railPlaybackMetadataBlock
             }
@@ -934,7 +986,7 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
             // and spilled outside the rail's rounded background.
             HStack(spacing: 8) {
                 TransportControls.previousFormationButton(size: 28, disabled: isFirstFormation, action: onPreviousFormation)
-                TransportControls.playPauseButton(player: player, size: 36)
+                TransportControls.playPauseButton(player: player, size: compactPinnedPlayback ? 32 : 36)
                 TransportControls.nextFormationButton(size: 28, disabled: isLastFormation, action: onNextFormation)
             }
             .frame(maxWidth: .infinity)
@@ -945,16 +997,8 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
             }
             .frame(maxWidth: .infinity)
 
-            // Swap and path buttons fill the full row width
-            HStack(spacing: 8) {
-                if !hidesDisabledActions || canSwap {
-                    TransportControls.swapButton(isActive: isSwapMode, size: 30, disabled: !canSwap, action: onSwap)
-                        .frame(maxWidth: .infinity)
-                }
-                if !hidesDisabledActions || canEditPath {
-                    TransportControls.pathButton(size: 30, disabled: !canEditPath, action: onPath)
-                        .frame(maxWidth: .infinity)
-                }
+            if !splitsPinnedTransport || pinsSwapPathInTransport {
+                railSwapPathRow
             }
 
             if phoneCompact {
@@ -984,8 +1028,8 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
             }
         }
         .padding(.horizontal, phoneCompact ? 8 : 12)
-        .padding(.top, splitsPinnedTransport ? 6 : (phoneCompact ? 4 : 8))
-        .padding(.bottom, phoneCompact ? 8 : 12)
+        .padding(.top, compactPinnedPlayback ? 4 : (splitsPinnedTransport ? 6 : (phoneCompact ? 4 : 8)))
+        .padding(.bottom, compactPinnedPlayback ? 6 : (phoneCompact ? 8 : 12))
         .frame(width: availableWidth, alignment: .leading)
         .background {
             if splitsPinnedTransport {
