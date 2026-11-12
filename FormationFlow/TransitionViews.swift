@@ -802,7 +802,7 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
                     .minimumScaleFactor(0.85)
             }
 
-            if let directionLabel, let onToggleDirection {
+            if let directionLabel, let onToggleDirection, !splitsPinnedTransport {
                 Button(action: onToggleDirection) {
                     Text(directionLabel)
                         .font(.caption.weight(.semibold))
@@ -834,14 +834,29 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
   @ViewBuilder
   private var railTransportColumn: some View {
         VStack(alignment: .leading, spacing: phoneCompact ? 6 : 10) {
-            if let onAdjustCounts, splitsPinnedTransport {
-                TransitionLengthControl(
-                    player: player,
-                    locked: countsLocked,
-                    narrowRail: true,
-                    onAdjust: onAdjustCounts,
-                    onLocked: onLockedCounts
-                )
+            if splitsPinnedTransport {
+                if let directionLabel, let onToggleDirection {
+                    Button(action: onToggleDirection) {
+                        Text(directionLabel)
+                            .font(.caption.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(!canToggleDirection)
+                    .accessibilityLabel("Transition direction \(directionLabel)")
+                    .accessibilityHint(canToggleDirection ? "Switch between the transition into and out of this formation" : "Only one direction is available")
+                }
+
+                if let onAdjustCounts {
+                    TransitionLengthControl(
+                        player: player,
+                        locked: countsLocked,
+                        narrowRail: true,
+                        onAdjust: onAdjustCounts,
+                        onLocked: onLockedCounts
+                    )
+                }
             }
 
             Divider()
@@ -901,9 +916,14 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
             }
         }
         .padding(.horizontal, phoneCompact ? 8 : 12)
-        .padding(.top, phoneCompact ? 4 : 8)
+        .padding(.top, splitsPinnedTransport ? 6 : (phoneCompact ? 4 : 8))
         .padding(.bottom, phoneCompact ? 8 : 12)
         .frame(width: availableWidth, alignment: .leading)
+        .background {
+            if splitsPinnedTransport {
+                FormationEditorTheme.stageBackground.opacity(0.98)
+            }
+        }
   }
 
   @ViewBuilder

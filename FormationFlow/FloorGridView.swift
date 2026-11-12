@@ -2326,28 +2326,33 @@ struct FloorGridView: View {
     private var phoneLandscapeRail: some View {
         Group {
             if let player, let startFormationName, let endFormationName {
-                ScrollView(.vertical, showsIndicators: true) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        if selectedRosterAthlete != nil || selectedAthleteIDs.count > 1 {
-                            phoneLandscapeSelectionRailSection
+                VStack(alignment: .leading, spacing: 0) {
+                    ScrollView(.vertical, showsIndicators: true) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            if selectedRosterAthlete != nil || selectedAthleteIDs.count > 1 {
+                                phoneLandscapeSelectionRailSection
+                            }
+                            phoneLandscapePlaybackRail(
+                                player: player,
+                                startFormationName: startFormationName,
+                                endFormationName: endFormationName,
+                                section: .metadata
+                            )
                         }
-                        phoneLandscapePlaybackRail(
-                            player: player,
-                            startFormationName: startFormationName,
-                            endFormationName: endFormationName,
-                            section: .metadata
-                        )
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                     }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                }
-                .scrollBounceBehavior(.basedOnSize)
-                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    .scrollBounceBehavior(.basedOnSize)
+                    .frame(minHeight: 0, maxHeight: .infinity)
+                    .layoutPriority(0)
+                    .clipped()
+
                     phoneLandscapePlaybackRail(
                         player: player,
                         startFormationName: startFormationName,
                         endFormationName: endFormationName,
                         section: .transport
                     )
+                    .layoutPriority(1)
                 }
                 .formationGlassPanel(cornerRadius: 22, shadowRadius: 12)
             } else {
@@ -2400,77 +2405,74 @@ struct FloorGridView: View {
 
     @ViewBuilder
     private var phoneLandscapeSelectionRailSection: some View {
+        let chipColumns = [
+            GridItem(.flexible(minimum: 72), spacing: 6),
+            GridItem(.flexible(minimum: 72), spacing: 6),
+        ]
+
         VStack(alignment: .leading, spacing: 6) {
             if selectedAthleteIDs.count > 1 {
                 Text("\(selectedAthleteIDs.count) selected")
                     .font(.caption.weight(.bold))
-                VStack(alignment: .leading, spacing: 6) {
+                LazyVGrid(columns: chipColumns, alignment: .leading, spacing: 6) {
                     if hasTransition {
-                        HStack(spacing: 6) {
-                            Button("Waypoint") { addWaypoint() }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                                .frame(maxWidth: .infinity)
-                            Button(isExplicitPathDrawMode ? "Cancel" : "Draw") {
-                                toggleExplicitPathDrawMode()
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
-                            .frame(maxWidth: .infinity)
-                        }
-                        HStack(spacing: 6) {
-                            Button(selectionIsTransitionGroup ? "Ungroup" : "Group") {
+                        landscapeRailChipButton(title: "Waypoint", action: addWaypoint)
+                        landscapeRailChipButton(
+                            title: isExplicitPathDrawMode ? "Cancel" : "Draw",
+                            prominent: !isExplicitPathDrawMode,
+                            action: toggleExplicitPathDrawMode
+                        )
+                        landscapeRailChipButton(
+                            title: selectionIsTransitionGroup ? "Ungroup" : "Group",
+                            disabled: !selectionIsTransitionGroup && !canCreateSelectedTransitionGroup,
+                            action: {
                                 if selectionIsTransitionGroup {
                                     ungroupSelectedTransitionGroup()
                                 } else {
                                     createSelectedTransitionGroup()
                                 }
                             }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            .frame(maxWidth: .infinity)
-                            .disabled(!selectionIsTransitionGroup && !canCreateSelectedTransitionGroup)
-                            Button("Clear") { selectedAthleteIDs = [] }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                                .frame(maxWidth: .infinity)
-                        }
-                    } else {
-                        Button("Clear") { selectedAthleteIDs = [] }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            .frame(maxWidth: .infinity)
+                        )
                     }
+                    landscapeRailChipButton(title: "Clear", action: { selectedAthleteIDs = [] })
                 }
             } else if let selectedRosterAthlete {
                 Text(selectedRosterAthlete.label)
                     .font(.caption.weight(.bold))
-                VStack(alignment: .leading, spacing: 6) {
+                LazyVGrid(columns: chipColumns, alignment: .leading, spacing: 6) {
                     if hasTransition {
-                        HStack(spacing: 6) {
-                            Button("Path") { showingInspectorSheet = true }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                                .frame(maxWidth: .infinity)
-                            Button(isExplicitPathDrawMode ? "Cancel" : "Draw") {
-                                toggleExplicitPathDrawMode()
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
-                            .frame(maxWidth: .infinity)
-                            .disabled(!isExplicitPathDrawMode && !canBeginExplicitPathDraw)
-                        }
+                        landscapeRailChipButton(title: "Path") { showingInspectorSheet = true }
+                        landscapeRailChipButton(
+                            title: isExplicitPathDrawMode ? "Cancel" : "Draw",
+                            prominent: !isExplicitPathDrawMode,
+                            disabled: !isExplicitPathDrawMode && !canBeginExplicitPathDraw,
+                            action: toggleExplicitPathDrawMode
+                        )
                     }
-                    Button("Clear") { selectedAthleteIDs = [] }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .frame(maxWidth: .infinity)
+                    landscapeRailChipButton(title: "Clear", action: { selectedAthleteIDs = [] })
                 }
             }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .formationGlassPanel(cornerRadius: 14, shadowRadius: 6)
+    }
+
+    private func landscapeRailChipButton(
+        title: String,
+        prominent: Bool = false,
+        disabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(title)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(prominent ? .borderedProminent : .bordered)
+        .controlSize(.small)
+        .disabled(disabled)
     }
 
     private var phoneLandscapeIdleRail: some View {
