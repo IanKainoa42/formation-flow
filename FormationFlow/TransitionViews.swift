@@ -280,6 +280,7 @@ struct FormationPipBadge: View {
     let currentIndex: Int
     let total: Int
     let formationName: String
+    var showsFormationTitle: Bool = true
 
     var direction: TransitionBadgeDirection? = nil
     var canInto: Bool = false
@@ -311,12 +312,15 @@ struct FormationPipBadge: View {
     private var navBody: some View {
         VStack(alignment: .leading, spacing: 8) {
             pipRow
-            Text(formationName.isEmpty ? "Formation" : formationName)
-                .font(.headline.weight(.semibold))
-                .foregroundColor(.primary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(width: Self.rowWidth, alignment: .leading)
+            if showsFormationTitle {
+                Text(formationName.isEmpty ? "Formation" : formationName)
+                    .font(.headline.weight(.semibold))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .minimumScaleFactor(0.85)
+                    .frame(width: Self.rowWidth, alignment: .leading)
+            }
         }
         .frame(width: Self.rowWidth, alignment: .leading)
         .contentShape(Rectangle())   // taps on padding/whitespace still register
@@ -432,15 +436,23 @@ struct FormationPipBadge: View {
 struct TransitionLengthControl: View {
     @ObservedObject var player: TransitionPlayer
     var locked: Bool = false
+    var narrowRail: Bool = false
     var onAdjust: (Int) -> Void = { _ in }
     var onLocked: () -> Void = {}
 
     private var counts: Int { max(1, Int(player.counts.rounded())) }
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: narrowRail ? 4 : 8) {
             Image(systemName: "metronome").font(.caption2).foregroundStyle(.secondary)
-            Text("Length").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+            if !narrowRail {
+                Text("Length")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
             Spacer(minLength: 4)
             if locked {
                 Button(action: onLocked) {
@@ -469,6 +481,8 @@ struct TransitionLengthControl: View {
             Image(systemName: icon).font(.title3).symbolRenderingMode(.hierarchical)
         }
         .buttonStyle(.plain)
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Rectangle())
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.3)
         .accessibilityLabel(icon.hasPrefix("minus") ? "Decrease length" : "Increase length")
@@ -572,19 +586,25 @@ struct CompactTransitionPlaybackOverlayView: View {
     var onAdjustCounts: ((Int) -> Void)? = nil
     var countsLocked: Bool = false
     var onLockedCounts: () -> Void = {}
+    var showsTransitionTitle: Bool = true
+    var hidesDisabledActions: Bool = false
 
     var body: some View {
         VStack(spacing: 8) {
-            HStack(spacing: 8) {
-                Text("\(startFormationName) \u{2192} \(endFormationName)")
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-                Spacer(minLength: 8)
-                if let onAdjustCounts {
-                    TransitionLengthControl(player: player, locked: countsLocked, onAdjust: onAdjustCounts, onLocked: onLockedCounts)
-                        .fixedSize()
+            if showsTransitionTitle || onAdjustCounts != nil {
+                HStack(spacing: 8) {
+                    if showsTransitionTitle {
+                        Text("\(startFormationName) \u{2192} \(endFormationName)")
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                    }
+                    Spacer(minLength: 8)
+                    if let onAdjustCounts {
+                        TransitionLengthControl(player: player, locked: countsLocked, onAdjust: onAdjustCounts, onLocked: onLockedCounts)
+                            .frame(maxWidth: showsTransitionTitle ? nil : .infinity, alignment: .trailing)
+                    }
                 }
             }
 
@@ -599,8 +619,12 @@ struct CompactTransitionPlaybackOverlayView: View {
 
             HStack(spacing: 8) {
                 TransportControls.loopButton(player: player, size: 32)
-                TransportControls.swapButton(isActive: isSwapMode, size: 32, disabled: !canSwap, action: onSwap)
-                TransportControls.pathButton(size: 32, disabled: !canEditPath, action: onPath)
+                if !hidesDisabledActions || canSwap {
+                    TransportControls.swapButton(isActive: isSwapMode, size: 32, disabled: !canSwap, action: onSwap)
+                }
+                if !hidesDisabledActions || canEditPath {
+                    TransportControls.pathButton(size: 32, disabled: !canEditPath, action: onPath)
+                }
                 Spacer(minLength: 0)
             }
         }
@@ -635,23 +659,37 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
     var directionLabel: String? = nil
     var canToggleDirection: Bool = false
     var onToggleDirection: (() -> Void)? = nil
+    var phoneCompact: Bool = false
+    var hidesDisabledActions: Bool = false
     let tools: Tools
 
     var body: some View {
-        ScrollView {
+        ScrollView(.vertical, showsIndicators: true) {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
                 if let onBack {
                     Button(action: onBack) {
                         Image(systemName: "chevron.left")
                             .font(.caption.weight(.bold))
                             .frame(width: 36, height: 36)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Back to formations")
                 }
-                Spacer(minLength: 0)
-                tools
+                HStack {
+                    Spacer(minLength: 0)
+                    tools
+                }
+            }
+
+            if let onAdd {
+                Button(action: onAdd) {
+                    Label("Add", systemImage: "plus.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
             }
 
             // Formation context (replaces the canvas overlay that was covering the floor)
@@ -663,7 +701,9 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
                     Text(formationLabel)
                         .font(.caption.weight(.semibold))
                         .foregroundColor(.primary)
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
@@ -671,6 +711,7 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .lineLimit(2)
+                .minimumScaleFactor(0.85)
 
             if let directionLabel, let onToggleDirection {
                 Button(action: onToggleDirection) {
@@ -689,18 +730,10 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
                 TransitionLengthControl(
                     player: player,
                     locked: countsLocked,
+                    narrowRail: availableWidth < 150,
                     onAdjust: onAdjustCounts,
                     onLocked: onLockedCounts
                 )
-            }
-
-            // Add athlete button
-            if let onAdd {
-                Button(action: onAdd) {
-                    Label("Add", systemImage: "plus.circle.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
             }
 
             Divider()
@@ -723,32 +756,40 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
 
             // Swap and path buttons fill the full row width
             HStack(spacing: 8) {
-                TransportControls.swapButton(isActive: isSwapMode, size: 30, disabled: !canSwap, action: onSwap)
-                    .frame(maxWidth: .infinity)
-                TransportControls.pathButton(size: 30, disabled: !canEditPath, action: onPath)
-                    .frame(maxWidth: .infinity)
+                if !hidesDisabledActions || canSwap {
+                    TransportControls.swapButton(isActive: isSwapMode, size: 30, disabled: !canSwap, action: onSwap)
+                        .frame(maxWidth: .infinity)
+                }
+                if !hidesDisabledActions || canEditPath {
+                    TransportControls.pathButton(size: 30, disabled: !canEditPath, action: onPath)
+                        .frame(maxWidth: .infinity)
+                }
             }
 
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    Text("Progress")
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(.secondary)
-                    Spacer(minLength: 0)
-                    Text(String(format: "%.0f%%", player.progress * 100))
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundColor(.secondary)
-                }
-
+            if phoneCompact {
                 TransportControls.progressSlider(player: player)
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Text("Progress")
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(.secondary)
+                        Spacer(minLength: 0)
+                        Text(String(format: "%.0f%%", player.progress * 100))
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
 
-                HStack(spacing: 6) {
-                    Text("0%")
-                    Spacer(minLength: 0)
-                    Text("100%")
+                    TransportControls.progressSlider(player: player)
+
+                    HStack(spacing: 6) {
+                        Text("0%")
+                        Spacer(minLength: 0)
+                        Text("100%")
+                    }
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(.secondary)
                 }
-                .font(.system(.caption2, design: .monospaced))
-                .foregroundColor(.secondary)
             }
         }
         .padding(.horizontal, 12)
@@ -756,7 +797,6 @@ struct CompactTransitionPlaybackRailView<Tools: View>: View {
         .frame(width: availableWidth, alignment: .leading)
         }
         .scrollBounceBehavior(.basedOnSize)
-        .scrollIndicators(.hidden)
         .frame(width: availableWidth)
         .frame(maxHeight: .infinity, alignment: .top)
         .formationGlassPanel(cornerRadius: 22, shadowRadius: 12)
@@ -844,15 +884,20 @@ struct ThinTransitionTransportBar: View {
     var onNextFormation: () -> Void = {}
     var isFirstFormation: Bool = false
     var isLastFormation: Bool = false
+    var showsTransitionTitle: Bool = true
+    var hidesDisabledActions: Bool = false
 
     var body: some View {
         HStack(spacing: 10) {
-            Text("\(startFormationName) \u{2192} \(endFormationName)")
-                .font(.caption.weight(.semibold))
-                .foregroundColor(.secondary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: 180, alignment: .leading)
+            if showsTransitionTitle {
+                Text("\(startFormationName) \u{2192} \(endFormationName)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .minimumScaleFactor(0.75)
+                    .frame(maxWidth: 110, alignment: .leading)
+            }
 
             Button(action: onPreviousFormation) {
                 Image(systemName: "chevron.up").frame(width: 36, height: 36)
@@ -895,15 +940,19 @@ struct ThinTransitionTransportBar: View {
 
                 Divider()
 
-                Button(action: onSwap) {
-                    Text(isSwapMode ? "Cancel Swap" : "Swap")
+                if !hidesDisabledActions || canSwap {
+                    Button(action: onSwap) {
+                        Text(isSwapMode ? "Cancel Swap" : "Swap")
+                    }
+                    .disabled(!canSwap)
                 }
-                .disabled(!canSwap)
 
-                Button(action: onPath) {
-                    Label("Edit Path", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+                if !hidesDisabledActions || canEditPath {
+                    Button(action: onPath) {
+                        Label("Edit Path", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+                    }
+                    .disabled(!canEditPath)
                 }
-                .disabled(!canEditPath)
             } label: {
                 Image(systemName: "ellipsis.circle").frame(minWidth: 44, minHeight: 44)
             }
