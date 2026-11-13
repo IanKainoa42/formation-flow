@@ -1,6 +1,6 @@
-• Playbook export is now preview-first, with clean printable formations
-• New: export a focused page per athlete showing just their own path
-• Collision markers now appear immediately, no manual path refresh needed
-• Bigger playback controls on iPhone in portrait
-• One consistent coral accent and dark chrome across the whole app
-• New "More Coaching Tools" page in the menu with our other cheer coaching apps
+• iPhone now works in portrait and landscape — the floor editor no longer forces you to rotate
+• Redesigned iPhone controls: a compact side rail in landscape and a slimmer transport in portrait
+• Better fit on smaller iPhones, including iPhone SE
+• Bulk roster entry: paste or type a whole team at once
+• Edit athlete roles from the roster, and reuse a roster in a new routine
+• Replay the tutorial any time from the dashboard
