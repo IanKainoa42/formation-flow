@@ -7,6 +7,21 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AABB000201AABB000201AABB /* EditorLayoutMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB000101AABB000101AABB /* EditorLayoutMode.swift */; };
+		AABB000401AABB000401AABB /* EditorLayoutEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB000301AABB000301AABB /* EditorLayoutEnvironment.swift */; };
+		AABB000601AABB000601AABB /* FloorGridEditorTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB000501AABB000501AABB /* FloorGridEditorTypes.swift */; };
+		AABB000801AABB000801AABB /* FloorGridView+PhoneChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB000701AABB000701AABB /* FloorGridView+PhoneChrome.swift */; };
+		AABBA00801AABBA00801AABB /* FloorGridView+Gestures.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBA00701AABBA00701AABB /* FloorGridView+Gestures.swift */; };
+		AABBA00A01AABBA00A01AABB /* FloorGridView+TransitionActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBA00901AABBA00901AABB /* FloorGridView+TransitionActions.swift */; };
+		AABBA00C01AABBA00C01AABB /* FloorGridView+FormationActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBA00B01AABBA00B01AABB /* FloorGridView+FormationActions.swift */; };
+		AABBA00E01AABBA00E01AABB /* FloorGridView+Previews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBA00D01AABBA00D01AABB /* FloorGridView+Previews.swift */; };
+		TTST00101TTST00101TTST00 /* EditorLayoutModeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TFIL00101TFIL00101TFIL00 /* EditorLayoutModeTests.swift */; };
+		TTST00201TTST00201TTST00 /* ModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TFIL00201TFIL00201TFIL00 /* ModelTests.swift */; };
+		TTST00301TTST00301TTST00 /* PathCalculationsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TFIL00301TFIL00301TFIL00 /* PathCalculationsTests.swift */; };
+		TTST00401TTST00401TTST00 /* RoutineStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TFIL00401TFIL00401TFIL00 /* RoutineStoreTests.swift */; };
+		TTST00501TTST00501TTST00 /* EntitlementManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TFIL00501TFIL00501TFIL00 /* EntitlementManagerTests.swift */; };
+		TTST00601TTST00601TTST00 /* EntitlementRevocationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TFIL00601TFIL00601TFIL00 /* EntitlementRevocationTests.swift */; };
+		TTST00701TTST00701TTST00 /* FreeTierLimitsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TFIL00701TFIL00701TFIL00 /* FreeTierLimitsTests.swift */; };
 		1FBACD3F3072969D00838DC8 /* RosterImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FBACD3E3072969D00838DC8 /* RosterImport.swift */; };
 		1FBACD413072971000838DC8 /* RosterManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FBACD403072971000838DC8 /* RosterManagementView.swift */; };
 		334C42A5B839654CCBC14ACF /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F4F48ABA5AD5A9438964E6B /* Models.swift */; };
@@ -30,6 +45,22 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		AABB000101AABB000101AABB /* EditorLayoutMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EditorLayoutMode.swift; path = FormationFlow/EditorLayoutMode.swift; sourceTree = SOURCE_ROOT; };
+		AABB000301AABB000301AABB /* EditorLayoutEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EditorLayoutEnvironment.swift; path = FormationFlow/EditorLayoutEnvironment.swift; sourceTree = SOURCE_ROOT; };
+		AABB000501AABB000501AABB /* FloorGridEditorTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FloorGridEditorTypes.swift; path = FormationFlow/FloorGridEditorTypes.swift; sourceTree = SOURCE_ROOT; };
+		AABB000701AABB000701AABB /* FloorGridView+PhoneChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FloorGridView+PhoneChrome.swift"; path = "FormationFlow/FloorGridView+PhoneChrome.swift"; sourceTree = SOURCE_ROOT; };
+		AABBA00701AABBA00701AABB /* FloorGridView+Gestures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FloorGridView+Gestures.swift"; path = "FormationFlow/FloorGridView+Gestures.swift"; sourceTree = SOURCE_ROOT; };
+		AABBA00901AABBA00901AABB /* FloorGridView+TransitionActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FloorGridView+TransitionActions.swift"; path = "FormationFlow/FloorGridView+TransitionActions.swift"; sourceTree = SOURCE_ROOT; };
+		AABBA00B01AABBA00B01AABB /* FloorGridView+FormationActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FloorGridView+FormationActions.swift"; path = "FormationFlow/FloorGridView+FormationActions.swift"; sourceTree = SOURCE_ROOT; };
+		AABBA00D01AABBA00D01AABB /* FloorGridView+Previews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FloorGridView+Previews.swift"; path = "FormationFlow/FloorGridView+Previews.swift"; sourceTree = SOURCE_ROOT; };
+		TFIL00101TFIL00101TFIL00 /* EditorLayoutModeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorLayoutModeTests.swift; sourceTree = "<group>"; };
+		TFIL00201TFIL00201TFIL00 /* ModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelTests.swift; sourceTree = "<group>"; };
+		TFIL00301TFIL00301TFIL00 /* PathCalculationsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PathCalculationsTests.swift; sourceTree = "<group>"; };
+		TFIL00401TFIL00401TFIL00 /* RoutineStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineStoreTests.swift; sourceTree = "<group>"; };
+		TFIL00501TFIL00501TFIL00 /* EntitlementManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntitlementManagerTests.swift; sourceTree = "<group>"; };
+		TFIL00601TFIL00601TFIL00 /* EntitlementRevocationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntitlementRevocationTests.swift; sourceTree = "<group>"; };
+		TFIL00701TFIL00701TFIL00 /* FreeTierLimitsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FreeTierLimitsTests.swift; sourceTree = "<group>"; };
+		TPROD001TPROD001TPROD01 /* FormationFlowTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FormationFlowTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1F08C9AC2F57AAC400425930 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = FormationFlow/Assets.xcassets; sourceTree = SOURCE_ROOT; };
 		1F08C9AD2F57AAED00425930 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = FormationFlow/Info.plist; sourceTree = SOURCE_ROOT; };
 		1FBACD3E3072969D00838DC8 /* RosterImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RosterImport.swift; sourceTree = "<group>"; };
@@ -60,6 +91,7 @@
 			isa = PBXGroup;
 			children = (
 				1FEE78952F3E5EB100012373 /* FormationFlow */,
+				TGRP0001TGRP0001TGRP0001 /* Tests */,
 				1FEE788D2F3E5E9900012373 /* Products */,
 				BB110004BB110004BB110004 /* FormationFlow.storekit */,
 			);
@@ -69,8 +101,31 @@
 			isa = PBXGroup;
 			children = (
 				1FEE788C2F3E5E9900012373 /* FormationFlow.app */,
+				TPROD001TPROD001TPROD01 /* FormationFlowTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		TGRP0001TGRP0001TGRP0001 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				TGRP0002TGRP0002TGRP0002 /* FormationFlowTests */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		TGRP0002TGRP0002TGRP0002 /* FormationFlowTests */ = {
+			isa = PBXGroup;
+			children = (
+				TFIL00101TFIL00101TFIL00 /* EditorLayoutModeTests.swift */,
+				TFIL00201TFIL00201TFIL00 /* ModelTests.swift */,
+				TFIL00301TFIL00301TFIL00 /* PathCalculationsTests.swift */,
+				TFIL00401TFIL00401TFIL00 /* RoutineStoreTests.swift */,
+				TFIL00501TFIL00501TFIL00 /* EntitlementManagerTests.swift */,
+				TFIL00601TFIL00601TFIL00 /* EntitlementRevocationTests.swift */,
+				TFIL00701TFIL00701TFIL00 /* FreeTierLimitsTests.swift */,
+			);
+			path = FormationFlowTests;
 			sourceTree = "<group>";
 		};
 		1FEE78952F3E5EB100012373 /* FormationFlow */ = {
@@ -97,11 +152,29 @@
 				FF220003FF220003FF220003 /* PortraitActionBar.swift */,
 				1FBACD3E3072969D00838DC8 /* RosterImport.swift */,
 				1FBACD403072971000838DC8 /* RosterManagementView.swift */,
+				AABB000101AABB000101AABB /* EditorLayoutMode.swift */,
+				AABB000301AABB000301AABB /* EditorLayoutEnvironment.swift */,
+				AABB000501AABB000501AABB /* FloorGridEditorTypes.swift */,
+				AABB000701AABB000701AABB /* FloorGridView+PhoneChrome.swift */,
+				AABBA00701AABBA00701AABB /* FloorGridView+Gestures.swift */,
+				AABBA00901AABBA00901AABB /* FloorGridView+TransitionActions.swift */,
+				AABBA00B01AABBA00B01AABB /* FloorGridView+FormationActions.swift */,
+				AABBA00D01AABBA00D01AABB /* FloorGridView+Previews.swift */,
 			);
 			path = FormationFlow;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
+
+/* Begin PBXContainerItemProxy section */
+		TDEP0001TDEP0001TDEP0001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0F1A1A8A1A1A1A1A1A1A1A8A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0F1A1A3A1A1A1A1A1A1A1A3A;
+			remoteInfo = FormationFlow;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXNativeTarget section */
 		0F1A1A3A1A1A1A1A1A1A1A3A /* FormationFlow */ = {
@@ -120,7 +193,32 @@
 			productReference = 1FEE788C2F3E5E9900012373 /* FormationFlow.app */;
 			productType = "com.apple.product-type.application";
 		};
+		TTGT0001TTGT0001TTGT0001 /* FormationFlowTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = TCFG0001TCFG0001TCFG0001 /* Build configuration list for PBXNativeTarget "FormationFlowTests" */;
+			buildPhases = (
+				TSRC0001TSRC0001TSRC0001 /* Sources */,
+				TFRM0001TFRM0001TFRM0001 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				TDEP0002TDEP0002TDEP0002 /* PBXTargetDependency */,
+			);
+			name = FormationFlowTests;
+			productName = FormationFlowTests;
+			productReference = TPROD001TPROD001TPROD01 /* FormationFlowTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
+
+/* Begin PBXTargetDependency section */
+		TDEP0002TDEP0002TDEP0002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0F1A1A3A1A1A1A1A1A1A1A3A /* FormationFlow */;
+			targetProxy = TDEP0001TDEP0001TDEP0001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXProject section */
 		0F1A1A8A1A1A1A1A1A1A1A8A /* Project object */ = {
@@ -143,6 +241,7 @@
 			projectRoot = "";
 			targets = (
 				0F1A1A3A1A1A1A1A1A1A1A3A /* FormationFlow */,
+				TTGT0001TTGT0001TTGT0001 /* FormationFlowTests */,
 			);
 		};
 /* End PBXProject section */
@@ -157,6 +256,16 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		TFRM0001TFRM0001TFRM0001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		0F1A1A5A1A1A1A1A1A1A1A5A /* Sources */ = {
@@ -182,6 +291,28 @@
 				76954392907776D3D5EA6400 /* RoutinePDFExporter.swift in Sources */,
 				CC220004CC220004CC220004 /* PDFExportConfiguration.swift in Sources */,
 				CC220005CC220005CC220005 /* PDFExportSheetView.swift in Sources */,
+				AABB000201AABB000201AABB /* EditorLayoutMode.swift in Sources */,
+				AABB000401AABB000401AABB /* EditorLayoutEnvironment.swift in Sources */,
+				AABB000601AABB000601AABB /* FloorGridEditorTypes.swift in Sources */,
+				AABB000801AABB000801AABB /* FloorGridView+PhoneChrome.swift in Sources */,
+				AABBA00801AABBA00801AABB /* FloorGridView+Gestures.swift in Sources */,
+				AABBA00A01AABBA00A01AABB /* FloorGridView+TransitionActions.swift in Sources */,
+				AABBA00C01AABBA00C01AABB /* FloorGridView+FormationActions.swift in Sources */,
+				AABBA00E01AABBA00E01AABB /* FloorGridView+Previews.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		TSRC0001TSRC0001TSRC0001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				TTST00101TTST00101TTST00 /* EditorLayoutModeTests.swift in Sources */,
+				TTST00201TTST00201TTST00 /* ModelTests.swift in Sources */,
+				TTST00301TTST00301TTST00 /* PathCalculationsTests.swift in Sources */,
+				TTST00401TTST00401TTST00 /* RoutineStoreTests.swift in Sources */,
+				TTST00501TTST00501TTST00 /* EntitlementManagerTests.swift in Sources */,
+				TTST00601TTST00601TTST00 /* EntitlementRevocationTests.swift in Sources */,
+				TTST00701TTST00701TTST00 /* FreeTierLimitsTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -321,6 +452,56 @@
 			};
 			name = Debug;
 		};
+		TBCF0001TBCF0001TBCF0001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 304;
+				DEVELOPMENT_TEAM = WC46K49VFA;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ianrichardson.formationflow.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FormationFlow.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/FormationFlow";
+			};
+			name = Debug;
+		};
+		TBCF0002TBCF0002TBCF0002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 304;
+				DEVELOPMENT_TEAM = WC46K49VFA;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ianrichardson.formationflow.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FormationFlow.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/FormationFlow";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -338,6 +519,15 @@
 			buildConfigurations = (
 				0F1A1AAAA1A1A1A1A1A1A1AA /* Release */,
 				1FE64A132F58F77C0044634E /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		TCFG0001TCFG0001TCFG0001 /* Build configuration list for PBXNativeTarget "FormationFlowTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				TBCF0001TBCF0001TBCF0001 /* Debug */,
+				TBCF0002TBCF0002TBCF0002 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

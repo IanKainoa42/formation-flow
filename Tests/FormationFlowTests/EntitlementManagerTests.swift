@@ -1,9 +1,7 @@
 import XCTest
 @testable import FormationFlow
 
-/// NOTE: this project has NO test target — `Tests/` is not referenced by
-/// `FormationFlow.xcodeproj/project.pbxproj`, so nothing here is compiled or run by
-/// `xcodebuild test`. Kept accurate so it is usable the day a target is wired up.
+/// Exercises entitlement manager behavior against the FormationFlow app host (see test target in `FormationFlow.xcodeproj`).
 @MainActor
 final class EntitlementManagerTests: XCTestCase {
 
