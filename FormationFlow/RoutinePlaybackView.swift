@@ -5,17 +5,12 @@ import SwiftUI
 struct RoutinePlaybackView: View {
     @StateObject private var player: RoutinePlayer
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.editorLayoutContext) private var editorLayout
 
     private static let bottomBarHeight: CGFloat = 64
 
-    private var isPhoneLayout: Bool {
-        UIDevice.current.userInterfaceIdiom == .phone
-    }
-
-    private var isPhoneLandscape: Bool {
-        isPhoneLayout && verticalSizeClass == .compact
-    }
+    private var isPhoneLayout: Bool { editorLayout.isPhone }
+    private var isPhoneLandscape: Bool { editorLayout.isPhoneLandscape }
 
     init(store: RoutineStore) {
         _player = StateObject(wrappedValue: RoutinePlayer(store: store))

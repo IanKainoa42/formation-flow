@@ -32,33 +32,28 @@ struct RoutineWorkspaceView: View {
     @State private var selectedAthleteIDs: Set<UUID> = []
     @State private var isSwapMode = false
     @State private var triggerDeleteAthlete = false
-    @State private var isIPadPortrait = false
+    @State private var editorLayout = EditorLayoutContext.fallback
+    @State private var layoutBounds: CGSize = .zero
     @State private var sidebarEditMode: EditMode = .inactive
     // iPad portrait has no sidebar — the selected-athlete inspector opens as a
     // sheet from the bottom transport's edit-path button instead.
     @State private var showingPortraitInspector = false
     @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding: Bool = false
 
-    private var isCompactLayout: Bool {
-        let isPhone: Bool
-        #if os(iOS)
-        isPhone = UIDevice.current.userInterfaceIdiom == .phone
-        #else
-        isPhone = false
-        #endif
-        return horizontalSizeClass == .compact || isPhone
-    }
+    private var isCompactLayout: Bool { editorLayout.usesCompactWorkspace }
+    private var isPhoneLayout: Bool { editorLayout.isPhone }
+    private var isPhoneLandscape: Bool { editorLayout.isPhoneLandscape }
+    private var isIPadPortrait: Bool { editorLayout.isIPadPortrait }
 
-    private var isPhoneLayout: Bool {
-        #if os(iOS)
-        return UIDevice.current.userInterfaceIdiom == .phone
-        #else
-        return false
-        #endif
-    }
-
-    private var isPhoneLandscape: Bool {
-        isPhoneLayout && verticalSizeClass == .compact
+    private func refreshEditorLayout(bounds: CGSize?) {
+        if let bounds {
+            layoutBounds = bounds
+        }
+        editorLayout = EditorLayoutContext.resolve(
+            horizontal: horizontalSizeClass,
+            vertical: verticalSizeClass,
+            bounds: layoutBounds == .zero ? nil : layoutBounds
+        )
     }
 
     private var effectiveFormationID: UUID? {
@@ -227,15 +222,22 @@ struct RoutineWorkspaceView: View {
 
     var body: some View {
         workspaceContent
+        .environment(\.editorLayoutContext, editorLayout)
         .background {
             GeometryReader { geo in
                 Color.clear.onChange(of: geo.size) { _, size in
-                    isIPadPortrait = !isPhoneLayout && size.height > size.width
+                    refreshEditorLayout(bounds: size)
                 }
                 .onAppear {
-                    isIPadPortrait = !isPhoneLayout && geo.size.height > geo.size.width
+                    refreshEditorLayout(bounds: geo.size)
                 }
             }
+        }
+        .onChange(of: horizontalSizeClass) { _, _ in
+            refreshEditorLayout(bounds: nil)
+        }
+        .onChange(of: verticalSizeClass) { _, _ in
+            refreshEditorLayout(bounds: nil)
         }
         .onChange(of: isIPadPortrait) { _, portrait in
             // Portrait gives the floor full width by collapsing the sidebar;
