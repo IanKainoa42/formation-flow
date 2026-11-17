@@ -3,13 +3,34 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'fastlane/metadata/**'
+      - '**/screenshots/**'
+      - '.github/ISSUE_TEMPLATE/**'
+      - 'Gemfile'
+      - 'Gemfile.lock'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'fastlane/metadata/**'
+      - '**/screenshots/**'
+      - '.github/ISSUE_TEMPLATE/**'
+      - 'Gemfile'
+      - 'Gemfile.lock'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     name: Build & Test
     runs-on: macos-15
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
