@@ -4,7 +4,7 @@ import UIKit
 extension FloorGridView {
     // MARK: - Unified Gesture Handler
 
-    private func dragGesture(
+    func dragGesture(
         cellSize: CGFloat,
         offset: CGPoint,
         viewportSize: CGSize,
@@ -508,15 +508,15 @@ extension FloorGridView {
 
     // MARK: - Drag Helpers
 
-    private func transitionGroup(containing athleteID: UUID) -> TransitionStuntGroup? {
+    func transitionGroup(containing athleteID: UUID) -> TransitionStuntGroup? {
         activeTransitionGroups.first { $0.athleteIDs.contains(athleteID) }
     }
 
-    private func selectionForAthlete(_ athleteID: UUID) -> Set<UUID> {
+    func selectionForAthlete(_ athleteID: UUID) -> Set<UUID> {
         transitionGroup(containing: athleteID)?.athleteIDSet ?? [athleteID]
     }
 
-    private func transitionGroupHit(
+    func transitionGroupHit(
         at point: CGPoint,
         within athletes: [RenderedAthlete],
         cellSize: CGFloat
@@ -550,14 +550,14 @@ extension FloorGridView {
         return nil
     }
 
-    private func editableAthletesForDrag(endpoint: PreviewEditableEndpoint?) -> [RenderedAthlete] {
+    func editableAthletesForDrag(endpoint: PreviewEditableEndpoint?) -> [RenderedAthlete] {
         if let endpoint, let athletes = athletes(for: endpoint) {
             return athletes
         }
         return renderedAthletes
     }
 
-    private func interactionHitRadiusSquared(for cellSize: CGFloat) -> CGFloat {
+    func interactionHitRadiusSquared(for cellSize: CGFloat) -> CGFloat {
         // Selection hit-testing deliberately stays tighter than the 44pt
         // accessibility overlay so nearby athletes/handles/waypoints don't
         // steal taps from the item closest to the finger. Collision detection
@@ -570,18 +570,18 @@ extension FloorGridView {
     }
 
 
-    private func canPanCanvas(viewportSize: CGSize, canvasSize: CGSize) -> Bool {
+    func canPanCanvas(viewportSize: CGSize, canvasSize: CGSize) -> Bool {
         let overflowWidth = canvasSize.width - viewportSize.width
         let overflowHeight = canvasSize.height - viewportSize.height
         return overflowWidth > 1 || overflowHeight > 1
     }
 
-    private func clearActiveGuides() {
+    func clearActiveGuides() {
         activeAlignmentGuides = []
         activeMirrorGuides = []
     }
 
-    private func beginAthleteDragFeedback() {
+    func beginAthleteDragFeedback() {
         guard !isDraggingAthletes else { return }
         isDraggingAthletes = true
         lastAppliedFormationDragPositions = dragStartPositions
@@ -590,7 +590,7 @@ extension FloorGridView {
         generator.impactOccurred(intensity: 0.7)
     }
 
-    private func appendUndoSnapshot(positions: [UUID: CGPoint]) {
+    func appendUndoSnapshot(positions: [UUID: CGPoint]) {
         guard !positions.isEmpty else { return }
         undoStack.append(
             FormationMoveUndoSnapshot(
@@ -600,7 +600,7 @@ extension FloorGridView {
         )
     }
 
-    private func clampedCanvasPanOffset(
+    func clampedCanvasPanOffset(
         _ proposedOffset: CGSize,
         viewportSize: CGSize,
         canvasSize: CGSize
@@ -614,7 +614,7 @@ extension FloorGridView {
         )
     }
 
-    private func handleCanvasPanContinued(
+    func handleCanvasPanContinued(
         _ value: DragGesture.Value,
         viewportSize: CGSize,
         canvasSize: CGSize
@@ -630,7 +630,7 @@ extension FloorGridView {
         )
     }
 
-    private func selectedPathHandleHit(
+    func selectedPathHandleHit(
         at point: CGPoint,
         maxSquaredDistance: CGFloat
     ) -> PathHandleHit? {
@@ -680,7 +680,7 @@ extension FloorGridView {
         return bestHit
     }
 
-    private func beginPathHandleDrag(hit: PathHandleHit, scaledPoint: CGPoint) {
+    func beginPathHandleDrag(hit: PathHandleHit, scaledPoint: CGPoint) {
         guard let startFormationID, let endFormationID, let player else { return }
 
         let affectedAthleteIDs: Set<UUID>
@@ -731,7 +731,7 @@ extension FloorGridView {
         handlePathDragContinued(scaledPoint: scaledPoint)
     }
 
-    private func transitionHandleIsHit(at point: CGPoint, hitRadiusSquared: CGFloat) -> Bool {
+    func transitionHandleIsHit(at point: CGPoint, hitRadiusSquared: CGFloat) -> Bool {
         guard hasTransition, let selectedAthleteID, let player else { return false }
 
         let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
@@ -764,12 +764,12 @@ extension FloorGridView {
         return PathCalculations.squaredDistance(from: point, to: midpoint) < hitRadiusSquared
     }
 
-    private func nearestPathHandle(at point: CGPoint, cellSize: CGFloat) -> CGPoint? {
+    func nearestPathHandle(at point: CGPoint, cellSize: CGFloat) -> CGPoint? {
         let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize) * 1.5
         return selectedPathHandleHit(at: point, maxSquaredDistance: hitRadiusSquared)?.position
     }
 
-    private func handlePathDragContinued(scaledPoint: CGPoint) {
+    func handlePathDragContinued(scaledPoint: CGPoint) {
         let anchorAthleteID = pathDragAthleteID ?? selectedAthleteID
         guard
             let anchorAthleteID,
@@ -796,14 +796,14 @@ extension FloorGridView {
         )
     }
 
-    private func clampedPathPoint(_ point: CGPoint) -> CGPoint {
+    func clampedPathPoint(_ point: CGPoint) -> CGPoint {
         CGPoint(
             x: max(0, min(CourtConstants.width, point.x)),
             y: max(0, min(CourtConstants.height, point.y))
         )
     }
 
-    private func handleEndpointDragContinued(
+    func handleEndpointDragContinued(
         _ value: DragGesture.Value,
         cellSize: CGFloat,
         offset: CGPoint
@@ -850,7 +850,7 @@ extension FloorGridView {
         refreshTransitionFromStore(collisionRefreshMode: .interactivePreview)
     }
 
-    private func handleFormationDragContinued(_ value: DragGesture.Value, cellSize: CGFloat) {
+    func handleFormationDragContinued(_ value: DragGesture.Value, cellSize: CGFloat) {
         let rawTranslation = CGPoint(
             x: value.translation.width / cellSize,
             y: value.translation.height / cellSize
@@ -894,14 +894,14 @@ extension FloorGridView {
     // MARK: - Rotation
 
     /// Rotation snaps in 45° steps so groups never land at an off-grid angle.
-    private var rotationSnapIncrement: CGFloat { .pi / 4 }
+    var rotationSnapIncrement: CGFloat { .pi / 4 }
 
     /// Nearest 45° detent index for a raw gesture angle (…, -1, 0, 1, 2, …).
-    private func rotationDetent(for radians: CGFloat) -> Int {
+    func rotationDetent(for radians: CGFloat) -> Int {
         Int((radians / rotationSnapIncrement).rounded())
     }
 
-    private func applyRotation(angle: CGFloat) {
+    func applyRotation(angle: CGFloat) {
         guard !rotationStartPositions.isEmpty else { return }
         let editableID = displayedEditableFormationID
 
@@ -941,9 +941,9 @@ extension FloorGridView {
 
     /// A small dead zone lets an intentional two-finger twist reach the existing
     /// rotation gesture without a tiny amount of finger spread stealing it.
-    private var spacingMagnificationActivationDelta: CGFloat { 0.04 }
+    var spacingMagnificationActivationDelta: CGFloat { 0.04 }
 
-    private func handleSpacingMagnification(_ magnification: CGFloat) {
+    func handleSpacingMagnification(_ magnification: CGFloat) {
         guard selectedAthleteIDs.count >= 2, !isSwapMode else { return }
 
         if spacingStartPositions.isEmpty {
@@ -972,7 +972,7 @@ extension FloorGridView {
         spacingDidChange = applySpacingMagnification(magnification)
     }
 
-    private func finishSpacingMagnification(_ magnification: CGFloat) {
+    func finishSpacingMagnification(_ magnification: CGFloat) {
         guard !spacingStartPositions.isEmpty else { return }
 
         let hadLiveMutation = lastAppliedSpacingPositions != spacingStartPositions
@@ -991,7 +991,7 @@ extension FloorGridView {
     }
 
     @discardableResult
-    private func applySpacingMagnification(_ magnification: CGFloat) -> Bool {
+    func applySpacingMagnification(_ magnification: CGFloat) -> Bool {
         guard spacingStartPositions.count >= 2 else { return false }
 
         let positions = SelectionSpacing.scaledPositions(
@@ -1014,19 +1014,19 @@ extension FloorGridView {
         return didChange
     }
 
-    private var selectionLassoForDisplay: FloorSelectionLasso? {
+    var selectionLassoForDisplay: FloorSelectionLasso? {
         guard isDrawingSelectionLasso, let selectionLasso, !selectionLasso.isTapCandidate else { return nil }
         return selectionLasso
     }
 
-    private func handleSelectionLassoContinued(_ value: DragGesture.Value) {
+    func handleSelectionLassoContinued(_ value: DragGesture.Value) {
         clearActiveGuides()
         selectionLasso?.append(value.location)
     }
 
     // MARK: - Double-Tap Gesture for Waypoints
 
-    private func waypointDoubleTapGesture(cellSize: CGFloat, offset: CGPoint) -> some Gesture {
+    func waypointDoubleTapGesture(cellSize: CGFloat, offset: CGPoint) -> some Gesture {
         SpatialTapGesture(count: 2)
             .onEnded { value in
                 guard showTransitionPaths, hasTransition else { return }
@@ -1074,7 +1074,7 @@ extension FloorGridView {
     /// completes on the selected athlete's endpoint, the sketch arms; the
     /// follow-up drag traces the path. The main DragGesture early-outs when
     /// `isLongPressSketching` is true so it doesn't try to drag the athlete.
-    private func longPressSketchGesture(cellSize: CGFloat, offset: CGPoint) -> some Gesture {
+    func longPressSketchGesture(cellSize: CGFloat, offset: CGPoint) -> some Gesture {
         LongPressGesture(minimumDuration: pathSketchLongPressDuration, maximumDistance: pathSketchHoldTolerance)
             .sequenced(before: DragGesture(minimumDistance: 0))
             .onChanged { value in
@@ -1101,7 +1101,7 @@ extension FloorGridView {
     /// Hit-tests the touch point against every athlete's start/end endpoint and
     /// returns the closest one. The athlete does not need to be pre-selected;
     /// the long-press arming + sketch arm will auto-select on success.
-    private func athleteEndpointHit(
+    func athleteEndpointHit(
         at scaledPoint: CGPoint,
         cellSize: CGFloat
     ) -> (athleteID: UUID, anchor: CGPoint, side: PathSketchAnchorSide)? {
@@ -1140,7 +1140,7 @@ extension FloorGridView {
     /// athletes so a draw bootstraps a new formation + forward path to it. Fires
     /// regardless of whether the incoming transition is being previewed — being the
     /// last formation already guarantees there is no forward transition to edit.
-    private func bootstrapAthleteHit(
+    func bootstrapAthleteHit(
         at scaledPoint: CGPoint,
         cellSize: CGFloat
     ) -> (athleteID: UUID, anchor: CGPoint)? {
@@ -1163,7 +1163,7 @@ extension FloorGridView {
         return best
     }
 
-    private func armLongPressCountdown(at anchor: CGPoint) {
+    func armLongPressCountdown(at anchor: CGPoint) {
         let token = UUID()
         longPressArmingToken = token
 
@@ -1200,7 +1200,7 @@ extension FloorGridView {
         }
     }
 
-    private func cancelLongPressCountdown() {
+    func cancelLongPressCountdown() {
         longPressArmingToken = nil
         isLongPressCountdownVisible = false
         longPressArmingPosition = nil
@@ -1210,7 +1210,7 @@ extension FloorGridView {
     /// Arms a path sketch when the long-press lands on the selected athlete's
     /// start or end position. The sketch is anchored at that endpoint so the
     /// finger naturally traces the route to the opposite endpoint.
-    private func beginLongPressSketch(at location: CGPoint, cellSize: CGFloat, offset: CGPoint) {
+    func beginLongPressSketch(at location: CGPoint, cellSize: CGFloat, offset: CGPoint) {
         guard entitlementManager.isPro else {
             showingUpgradeSheet = true
             cancelLongPressCountdown()
@@ -1271,7 +1271,7 @@ extension FloorGridView {
         }
     }
 
-    private func continueLongPressSketch(at location: CGPoint, cellSize: CGFloat, offset: CGPoint) {
+    func continueLongPressSketch(at location: CGPoint, cellSize: CGFloat, offset: CGPoint) {
         guard isLongPressSketching else { return }
         let scaledPoint = CGPoint(
             x: (location.x - offset.x) / cellSize,
@@ -1280,7 +1280,7 @@ extension FloorGridView {
         pathSketchPoints.append(clampedPathPoint(scaledPoint))
     }
 
-    private func endLongPressSketch() {
+    func endLongPressSketch() {
         guard isLongPressSketching else { return }
         if let athleteID = bootstrapAthleteID {
             _ = commitBootstrapSketch(athleteID: athleteID)

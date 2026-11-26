@@ -1,6 +1,8 @@
+import SwiftUI
+
 extension FloorGridView {
     @ViewBuilder
-    private var phoneToolbarMenuContent: some View {
+    var phoneToolbarMenuContent: some View {
         if hasTransition {
             Picker("Path Preview", selection: Binding(
                 get: { transitionPreviewMode },
@@ -98,7 +100,7 @@ extension FloorGridView {
         }
     }
 
-    private var phoneToolbarMenu: some View {
+    var phoneToolbarMenu: some View {
         Menu {
             phoneToolbarMenuContent
         } label: {
@@ -116,7 +118,7 @@ extension FloorGridView {
         .accessibilityValue(formation?.notes.isEmpty == false ? "Has notes" : "")
     }
 
-    private var phoneLandscapeToolsButton: some View {
+    var phoneLandscapeToolsButton: some View {
         Menu {
             phoneToolbarMenuContent
         } label: {
@@ -138,7 +140,7 @@ extension FloorGridView {
         .accessibilityValue(formation?.notes.isEmpty == false ? "Has notes" : "")
     }
 
-    private var phonePortraitTopChrome: some View {
+    var phonePortraitTopChrome: some View {
         VStack(alignment: .leading, spacing: 8) {
             if !phonePortraitHasSelection {
                 phoneTopOverlay
@@ -151,7 +153,7 @@ extension FloorGridView {
         .padding(.bottom, 8)
     }
 
-    private var phonePortraitBottomChrome: some View {
+    var phonePortraitBottomChrome: some View {
         VStack(spacing: 8) {
             if selectedRosterAthlete != nil || selectedAthleteIDs.count > 1 {
                 phoneSelectionOverlay
@@ -206,7 +208,7 @@ extension FloorGridView {
     }
 
     @ViewBuilder
-    private var phoneLandscapeStatusInset: some View {
+    var phoneLandscapeStatusInset: some View {
         if isSwapMode, let athlete = swapSourceRosterAthlete {
             swapBanner(athleteLabel: athlete.label)
                 .padding(.horizontal, 12)
@@ -219,7 +221,7 @@ extension FloorGridView {
     }
 
     @ViewBuilder
-    private var phoneStatusBanners: some View {
+    var phoneStatusBanners: some View {
         if isSwapMode, let athlete = swapSourceRosterAthlete {
             swapBanner(athleteLabel: athlete.label)
         } else if let compactBannerConfiguration {
@@ -232,11 +234,11 @@ extension FloorGridView {
 
     /// Side rail for phone landscape. Safe-area insets keep it off the notch
     /// and the home indicator in either rotation, so it does not need to swap sides.
-    private var phoneLandscapeHasSelection: Bool {
+    var phoneLandscapeHasSelection: Bool {
         selectedRosterAthlete != nil || selectedAthleteIDs.count > 1
     }
 
-    private var phoneLandscapeRail: some View {
+    var phoneLandscapeRail: some View {
         Group {
             if let player, let startFormationName, let endFormationName {
                 VStack(alignment: .leading, spacing: 0) {
@@ -294,7 +296,7 @@ extension FloorGridView {
         .frame(maxHeight: .infinity, alignment: .top)
     }
 
-    private func phoneLandscapePlaybackRail(
+    func phoneLandscapePlaybackRail(
         player: TransitionPlayer,
         startFormationName: String,
         endFormationName: String,
@@ -339,7 +341,7 @@ extension FloorGridView {
     }
 
     @ViewBuilder
-    private var phoneLandscapeSelectionRailSection: some View {
+    var phoneLandscapeSelectionRailSection: some View {
         let chipColumns = [
             GridItem(.flexible(minimum: 72), spacing: 6),
             GridItem(.flexible(minimum: 72), spacing: 6),
@@ -394,7 +396,7 @@ extension FloorGridView {
     }
 
     @ViewBuilder
-    private func landscapeRailChipButton(
+    func landscapeRailChipButton(
         title: String,
         prominent: Bool = false,
         disabled: Bool = false,
@@ -418,7 +420,7 @@ extension FloorGridView {
         }
     }
 
-    private var phoneLandscapeIdleRail: some View {
+    var phoneLandscapeIdleRail: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 4) {
                 if let onBack {
@@ -457,7 +459,7 @@ extension FloorGridView {
         .formationGlassPanel(cornerRadius: 22, shadowRadius: 12)
     }
 
-    private var phoneTopOverlay: some View {
+    var phoneTopOverlay: some View {
         HStack {
             Button(action: addAthlete) {
                 Label("Add", systemImage: "plus.circle.fill")
@@ -467,7 +469,7 @@ extension FloorGridView {
         .controlSize(.small)
     }
 
-    private var phoneOverflowMenu: some View {
+    var phoneOverflowMenu: some View {
         Menu {
             if canShareTransition {
                 Button(action: shareTransitionPreview) {
@@ -538,7 +540,7 @@ extension FloorGridView {
     }
 
     @ViewBuilder
-    private var phoneSelectionOverlay: some View {
+    var phoneSelectionOverlay: some View {
         if let selectedRosterAthlete, let selectedPlacement {
             VStack(alignment: .leading, spacing: 8) {
                 VStack(alignment: .leading, spacing: 3) {

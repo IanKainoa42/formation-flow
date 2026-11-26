@@ -6,7 +6,7 @@ import UIKit
 // MARK: - Floor Grid View
 
 struct FloorGridView: View {
-    @Environment(\.editorLayoutContext) private var editorLayout
+    @Environment(\.editorLayoutContext) var editorLayout
     @ObservedObject var store: RoutineStore
     @Binding var selectedAthleteIDs: Set<UUID>
     @Binding var isSwapMode: Bool
@@ -32,56 +32,56 @@ struct FloorGridView: View {
     var onToggleTransitionDirection: (() -> Void)?
     var onBootstrapFromAthlete: ((UUID, CGPoint, [PathWaypoint]) -> Void)?
 
-    @EnvironmentObject private var entitlementManager: EntitlementManager
-    @State private var showingUpgradeSheet = false
-    @State private var showingRosterSheet = false
-    @State private var showingNotesSheet = false
-    @State private var showingInspectorSheet = false
-    @State private var showingTransportSheet = false
-    @State private var showingPathSettingsSheet = false
-    @State private var showingAthleteRenamePrompt = false
-    @State private var athleteLabelDraft = ""
-    @State private var showingAthleteDeleteConfirmation = false
-    @AppStorage("pathDisplayScope") private var pathDisplayScopeRaw = PathDisplayScope.selectedOnly.rawValue
-    private var pathDisplayScope: PathDisplayScope {
+    @EnvironmentObject var entitlementManager: EntitlementManager
+    @State var showingUpgradeSheet = false
+    @State var showingRosterSheet = false
+    @State var showingNotesSheet = false
+    @State var showingInspectorSheet = false
+    @State var showingTransportSheet = false
+    @State var showingPathSettingsSheet = false
+    @State var showingAthleteRenamePrompt = false
+    @State var athleteLabelDraft = ""
+    @State var showingAthleteDeleteConfirmation = false
+    @AppStorage("pathDisplayScope") var pathDisplayScopeRaw = PathDisplayScope.selectedOnly.rawValue
+    var pathDisplayScope: PathDisplayScope {
         PathDisplayScope(rawValue: pathDisplayScopeRaw) ?? .selectedOnly
     }
-    @AppStorage("transitionPreviewMode") private var transitionPreviewModeRaw = TransitionPreviewMode.flow.rawValue
-    private var transitionPreviewMode: TransitionPreviewMode {
+    @AppStorage("transitionPreviewMode") var transitionPreviewModeRaw = TransitionPreviewMode.flow.rawValue
+    var transitionPreviewMode: TransitionPreviewMode {
         TransitionPreviewMode(rawValue: transitionPreviewModeRaw) ?? .flow
     }
     // Kept as a computed convenience so the many gesture sites that gate on
     // "are paths visible at all" don't need to learn about scope.
-    private var showTransitionPaths: Bool { pathDisplayScope != .off }
-    @State private var isDraggingAthletes = false
-    @State private var isPanningCanvas = false
-    @State private var isDrawingSelectionLasso = false
-    @State private var selectionLasso: FloorSelectionLasso? = nil
-    @State private var dragStartPositions: [UUID: CGPoint] = [:]
-    @State private var lastAppliedFormationDragPositions: [UUID: CGPoint] = [:]
-    @State private var lastAppliedEndpointDragPosition: CGPoint?
-    @State private var draggingAthleteIDs: Set<UUID> = []
-    @State private var undoStack: [FormationMoveUndoSnapshot] = []
-    @State private var rotationStartPositions: [UUID: CGPoint] = [:]
-    @State private var lastRotationDetent: Int = 0
-    @State private var rotationDidApplyChange = false
-    @State private var spacingStartPositions: [UUID: CGPoint] = [:]
-    @State private var lastAppliedSpacingPositions: [UUID: CGPoint] = [:]
-    @State private var spacingDidChange = false
-    @State private var zoomScale: CGFloat = 1.0
-    @State private var lastZoomScale: CGFloat = 1.0
-    @State private var canvasPanOffset: CGSize = .zero
-    @State private var lastCanvasPanOffset: CGSize = .zero
-    @State private var swapSourceAthleteID: UUID?
-    @State private var swapFormationTarget: SwapFormationTarget = .start
-    @State private var hasMadeFirstSelection = false
-    @State private var activeAlignmentGuides: [AlignmentGuideRenderItem] = []
-    @State private var activeMirrorGuides: [FormationMirrorGuideRenderItem] = []
-    @State private var rosterDeleteIDs: [UUID] = []
-    @State private var collisionCycleIndex: Int = 0
-    @State private var pathCollisionCycleIndex: Int = 0
+    var showTransitionPaths: Bool { pathDisplayScope != .off }
+    @State var isDraggingAthletes = false
+    @State var isPanningCanvas = false
+    @State var isDrawingSelectionLasso = false
+    @State var selectionLasso: FloorSelectionLasso? = nil
+    @State var dragStartPositions: [UUID: CGPoint] = [:]
+    @State var lastAppliedFormationDragPositions: [UUID: CGPoint] = [:]
+    @State var lastAppliedEndpointDragPosition: CGPoint?
+    @State var draggingAthleteIDs: Set<UUID> = []
+    @State var undoStack: [FormationMoveUndoSnapshot] = []
+    @State var rotationStartPositions: [UUID: CGPoint] = [:]
+    @State var lastRotationDetent: Int = 0
+    @State var rotationDidApplyChange = false
+    @State var spacingStartPositions: [UUID: CGPoint] = [:]
+    @State var lastAppliedSpacingPositions: [UUID: CGPoint] = [:]
+    @State var spacingDidChange = false
+    @State var zoomScale: CGFloat = 1.0
+    @State var lastZoomScale: CGFloat = 1.0
+    @State var canvasPanOffset: CGSize = .zero
+    @State var lastCanvasPanOffset: CGSize = .zero
+    @State var swapSourceAthleteID: UUID?
+    @State var swapFormationTarget: SwapFormationTarget = .start
+    @State var hasMadeFirstSelection = false
+    @State var activeAlignmentGuides: [AlignmentGuideRenderItem] = []
+    @State var activeMirrorGuides: [FormationMirrorGuideRenderItem] = []
+    @State var rosterDeleteIDs: [UUID] = []
+    @State var collisionCycleIndex: Int = 0
+    @State var pathCollisionCycleIndex: Int = 0
 
-    private var isCanvasInteractionActive: Bool {
+    var isCanvasInteractionActive: Bool {
         isDraggingAthletes
             || isDraggingEndpoint
             || isDraggingPathHandle
@@ -93,73 +93,73 @@ struct FloorGridView: View {
     }
 
     // Transition editing state
-    @State private var focusedEndpoint: PreviewEditableEndpoint?
-    @State private var isDraggingEndpoint = false
-    @State private var isDraggingPathHandle = false
-    @State private var isExplicitPathDrawMode = false
-    @State private var pathDragAthleteID: UUID?
-    @State private var isSketchingPath = false
-    @State private var isLongPressSketching = false
+    @State var focusedEndpoint: PreviewEditableEndpoint?
+    @State var isDraggingEndpoint = false
+    @State var isDraggingPathHandle = false
+    @State var isExplicitPathDrawMode = false
+    @State var pathDragAthleteID: UUID?
+    @State var isSketchingPath = false
+    @State var isLongPressSketching = false
     /// True from the moment a long-press sketch arms until the main drag gesture's
     /// onEnded observes it. The long-press gesture and the main drag gesture receive
     /// the SAME touch and both fire onEnded in an undefined order; this flag lets the
     /// main gesture recognize "this touch was a long-press sketch — endLongPressSketch
     /// owns the commit" regardless of which onEnded runs first, so we never
     /// double-commit, wipe the pending sketch points, or fall through to a tap.
-    @State private var didConsumeLongPressTouch = false
-    @State private var draggingWaypointID: UUID?
-    @State private var pathHandleDragDraft: PathHandleDragDraft?
-    @State private var pendingWaypointDeletionID: UUID?
-    @State private var pathSketchPoints: [CGPoint] = []
-    @State private var pathSketchAnchorSide: PathSketchAnchorSide?
+    @State var didConsumeLongPressTouch = false
+    @State var draggingWaypointID: UUID?
+    @State var pathHandleDragDraft: PathHandleDragDraft?
+    @State var pendingWaypointDeletionID: UUID?
+    @State var pathSketchPoints: [CGPoint] = []
+    @State var pathSketchAnchorSide: PathSketchAnchorSide?
     /// The athlete whose endpoint the active long-press sketch is anchored to.
     /// Distinct from `selectedAthleteID` because group sketches preserve the
     /// full multi-selection while still tracking which athlete owns the anchor.
-    @State private var longPressSketchAnchorAthleteID: UUID?
-    @State private var bootstrapAthleteID: UUID?
-    @State private var longPressArmingPosition: CGPoint?
-    @State private var longPressProgress: Double = 0
-    @State private var longPressArmingToken: UUID?
-    @State private var isLongPressCountdownVisible = false
-    @State private var endpointDragStartPosition: CGPoint?
-    @State private var showingResetAllPathsConfirmation = false
-    @State private var showingResetSinglePathConfirmation = false
-    @State private var hoveredHandlePosition: CGPoint?
-    @State private var hoveredAthleteID: UUID?
-    @State private var hoveredPathAthleteID: UUID?
-    @State private var focusedPathHandle: CGPoint?
-    @State private var playerTick: UInt = 0
-    @State private var sharePayload: TransitionSharePayload?
-    @State private var documentSharePayload: DocumentSharePayload?
-    @State private var showingPDFExportSheet = false
-    @State private var showingMoreAppsSheet = false
-    @State private var shareResultMessage = ""
-    @State private var showingShareResult = false
-    @State private var recentPathEditSnapshot: PathEditUndoSnapshot?
+    @State var longPressSketchAnchorAthleteID: UUID?
+    @State var bootstrapAthleteID: UUID?
+    @State var longPressArmingPosition: CGPoint?
+    @State var longPressProgress: Double = 0
+    @State var longPressArmingToken: UUID?
+    @State var isLongPressCountdownVisible = false
+    @State var endpointDragStartPosition: CGPoint?
+    @State var showingResetAllPathsConfirmation = false
+    @State var showingResetSinglePathConfirmation = false
+    @State var hoveredHandlePosition: CGPoint?
+    @State var hoveredAthleteID: UUID?
+    @State var hoveredPathAthleteID: UUID?
+    @State var focusedPathHandle: CGPoint?
+    @State var playerTick: UInt = 0
+    @State var sharePayload: TransitionSharePayload?
+    @State var documentSharePayload: DocumentSharePayload?
+    @State var showingPDFExportSheet = false
+    @State var showingMoreAppsSheet = false
+    @State var shareResultMessage = ""
+    @State var showingShareResult = false
+    @State var recentPathEditSnapshot: PathEditUndoSnapshot?
 
-    private var pathCollisionIDs: Set<UUID> {
+    var pathCollisionIDs: Set<UUID> {
         _ = playerTick
         return player?.cachedPathCollisionIDs ?? []
     }
 
-    private var activeTransitionGroups: [TransitionStuntGroup] {
+    var activeTransitionGroups: [TransitionStuntGroup] {
         player?.transitionSpec.stuntGroups ?? []
     }
 
-    private var activeTransitionGroupIDSets: [Set<UUID>] {
+    var activeTransitionGroupIDSets: [Set<UUID>] {
         activeTransitionGroups.map(\.athleteIDSet)
     }
 
-    private var selectedTransitionGroup: TransitionStuntGroup? {
+    var selectedTransitionGroup: TransitionStuntGroup? {
         guard selectedAthleteIDs.count >= 2 else { return nil }
         return activeTransitionGroups.first { $0.athleteIDSet == selectedAthleteIDs }
     }
 
-    private var selectionIsTransitionGroup: Bool {
+    var selectionIsTransitionGroup: Bool {
         selectedTransitionGroup != nil
     }
 
-    private var selectedAthletesAreInDisplayedFormation: Bool {
+    var selectedAthletesAreInDisplayedFormation: Bool {
         guard
             selectedAthleteIDs.count >= 2,
             let endpoint = displayedFormationEndpoint,
@@ -171,33 +171,33 @@ struct FloorGridView: View {
         return selectedAthleteIDs.isSubset(of: placementIDs)
     }
 
-    private var canCreateSelectedTransitionGroup: Bool {
+    var canCreateSelectedTransitionGroup: Bool {
         hasTransition
             && !isTransportEngaged
             && displayedFormationEndpoint != nil
             && selectedAthletesAreInDisplayedFormation
     }
 
-    private var formationIndex: Int? {
+    var formationIndex: Int? {
         store.formationIndex(id: formationID)
     }
 
-    private var formation: Formation? {
+    var formation: Formation? {
         guard let formationIndex else { return nil }
         return store.routine.formations[formationIndex]
     }
 
-    private var isCompactLayout: Bool { editorLayout.usesCompactWorkspace }
-    private var isPhoneLayout: Bool { editorLayout.isPhone }
-    private var isPhoneLandscape: Bool { editorLayout.isPhoneLandscape }
-    private var isHeightConstrained: Bool { editorLayout.isHeightConstrained }
+    var isCompactLayout: Bool { editorLayout.usesCompactWorkspace }
+    var isPhoneLayout: Bool { editorLayout.isPhone }
+    var isPhoneLandscape: Bool { editorLayout.isPhoneLandscape }
+    var isHeightConstrained: Bool { editorLayout.isHeightConstrained }
 
-    private var phonePortraitHasSelection: Bool {
+    var phonePortraitHasSelection: Bool {
         isPhoneLayout && !isPhoneLandscape
             && (selectedRosterAthlete != nil || selectedAthleteIDs.count > 1)
     }
 
-    private var canAddFormation: Bool {
+    var canAddFormation: Bool {
         entitlementManager.isPro || store.routine.formations.count < FreeTierLimits.maxFormations
     }
 
@@ -209,12 +209,12 @@ struct FloorGridView: View {
     /// freezes athletes in place. When at rest we lock to the formation's
     /// endpoint so the editor shows a crisp static formation (and progress
     /// stays 0, so the idle-reset never fires under the editor).
-    private var isTransportEngaged: Bool {
+    var isTransportEngaged: Bool {
         guard let player else { return false }
         return player.isPlaying || player.progress > 0.001
     }
 
-    private var renderedAthletes: [RenderedAthlete] {
+    var renderedAthletes: [RenderedAthlete] {
         _ = playerTick // force redraw on player updates
         if let player {
             // Idle display follows the formation being edited, falling back to
@@ -232,7 +232,7 @@ struct FloorGridView: View {
         return store.renderedAthletes(for: formationID)
     }
 
-    private var collisionSummary: (count: Int, ids: Set<UUID>) {
+    var collisionSummary: (count: Int, ids: Set<UUID>) {
         // ⚡ Bolt: Avoid O(N^2) spatial math per frame during playback.
         // Lower bound is a small epsilon (not 0) so the idle-rewind rest state
         // (progress floored at 0.0001) still computes collisions for the
@@ -243,39 +243,39 @@ struct FloorGridView: View {
         return PathCalculations.collisionSummary(in: renderedAthletes)
     }
 
-    private var collidingAthletes: [RenderedAthlete] {
+    var collidingAthletes: [RenderedAthlete] {
         renderedAthletes.filter { collisionSummary.ids.contains($0.id) }
     }
 
-    private var selectedAthleteID: UUID? {
+    var selectedAthleteID: UUID? {
         selectedAthleteIDs.count == 1 ? selectedAthleteIDs.first : nil
     }
 
-    private var selectedRosterAthlete: RosterAthlete? {
+    var selectedRosterAthlete: RosterAthlete? {
         guard let selectedAthleteID else { return nil }
         return store.routine.roster.first(where: { $0.id == selectedAthleteID })
     }
 
-    private var selectedPlacement: FormationPlacement? {
+    var selectedPlacement: FormationPlacement? {
         guard let selectedAthleteID, let formation else { return nil }
         return formation.placements.first(where: { $0.athleteID == selectedAthleteID })
     }
 
     // MARK: - Formation Display
 
-    private var formationContextLabel: String {
+    var formationContextLabel: String {
         let index = (formationIndex ?? 0) + 1
         let total = store.routine.formations.count
         let name = formation?.name ?? "Formation"
         return "\(index)/\(total): \(name)"
     }
 
-    private var previousFormationName: String? {
+    var previousFormationName: String? {
         guard let formationIndex, formationIndex > 0 else { return nil }
         return store.routine.formations[formationIndex - 1].name
     }
 
-    private var currentFormationColor: Color {
+    var currentFormationColor: Color {
         let index = formationIndex ?? 0
         return TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: index)
     }
@@ -284,35 +284,35 @@ struct FloorGridView: View {
     // correctly show the transition BEFORE the current start and AFTER the current end,
     // regardless of whether the selected formation is the start or end of the transition.
 
-    private var previousFormationAthletes: [RenderedAthlete] {
+    var previousFormationAthletes: [RenderedAthlete] {
         guard let startFormationID,
               let startIndex = store.formationIndex(id: startFormationID),
               startIndex > 0 else { return [] }
         return store.renderedAthletes(for: store.routine.formations[startIndex - 1])
     }
 
-    private var nextFormationAthletes: [RenderedAthlete] {
+    var nextFormationAthletes: [RenderedAthlete] {
         guard let endFormationID,
               let endIndex = store.formationIndex(id: endFormationID),
               endIndex + 1 < store.routine.formations.count else { return [] }
         return store.renderedAthletes(for: store.routine.formations[endIndex + 1])
     }
 
-    private var previousFormationColor: Color {
+    var previousFormationColor: Color {
         guard let startFormationID,
               let startIndex = store.formationIndex(id: startFormationID),
               startIndex > 0 else { return .white }
         return TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: startIndex - 1)
     }
 
-    private var nextFormationColor: Color {
+    var nextFormationColor: Color {
         guard let endFormationID,
               let endIndex = store.formationIndex(id: endFormationID),
               endIndex + 1 < store.routine.formations.count else { return .white }
         return TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: endIndex + 1)
     }
 
-    private var previousGhostPaths: [TransitionPathRenderItem] {
+    var previousGhostPaths: [TransitionPathRenderItem] {
         guard let startFormationID,
               let startIndex = store.formationIndex(id: startFormationID),
               startIndex > 0 else { return [] }
@@ -338,7 +338,7 @@ struct FloorGridView: View {
         }
     }
 
-    private var nextGhostPaths: [TransitionPathRenderItem] {
+    var nextGhostPaths: [TransitionPathRenderItem] {
         guard let endFormationID,
               let endIndex = store.formationIndex(id: endFormationID),
               endIndex + 1 < store.routine.formations.count else { return [] }
@@ -366,11 +366,11 @@ struct FloorGridView: View {
 
     // MARK: - Transition Computed Properties
 
-    private var hasTransition: Bool {
+    var hasTransition: Bool {
         player != nil && startFormationID != nil && endFormationID != nil
     }
 
-    private var displayProgress: CGFloat {
+    var displayProgress: CGFloat {
         guard let player else { return 0 }
         // Same nil-window guard as renderedAthletes — keep the formation color
         // blend in sync with the edited formation on the first frame.
@@ -380,17 +380,17 @@ struct FloorGridView: View {
         return player.progress
     }
 
-    private var transitionStartColor: Color {
+    var transitionStartColor: Color {
         let index = startFormationID.flatMap { store.formationIndex(id: $0) } ?? 0
         return TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: index)
     }
 
-    private var transitionEndColor: Color {
+    var transitionEndColor: Color {
         let index = endFormationID.flatMap { store.formationIndex(id: $0) } ?? 0
         return TransitionEndpointMarkerRenderItem.rainbowColor(forIndex: index)
     }
 
-    private var transitionPaths: [TransitionPathRenderItem] {
+    var transitionPaths: [TransitionPathRenderItem] {
         guard let player else { return [] }
         return player.cachedTransitionPaths
     }
@@ -398,7 +398,7 @@ struct FloorGridView: View {
     // MARK: - Path display scope
 
     /// Current-transition paths filtered by the user's display-scope preference.
-    private var displayedTransitionPaths: [TransitionPathRenderItem] {
+    var displayedTransitionPaths: [TransitionPathRenderItem] {
         switch pathDisplayScope {
         case .off:
             return []
@@ -411,21 +411,21 @@ struct FloorGridView: View {
     }
 
     /// Prev/next ghosts only render in All Formations mode.
-    private var displayedPrevGhostPaths: [TransitionPathRenderItem] {
+    var displayedPrevGhostPaths: [TransitionPathRenderItem] {
         pathDisplayScope == .allFormations ? previousGhostPaths : []
     }
 
-    private var displayedNextGhostPaths: [TransitionPathRenderItem] {
+    var displayedNextGhostPaths: [TransitionPathRenderItem] {
         pathDisplayScope == .allFormations ? nextGhostPaths : []
     }
 
     /// Fade the non-selected athletes when focusing a single athlete's path so
     /// the only thing that reads as editable is the selected athlete's route.
-    private var dimUnselectedAthletes: Bool {
+    var dimUnselectedAthletes: Bool {
         pathDisplayScope == .selectedOnly && hasTransition && !selectedAthleteIDs.isEmpty
     }
 
-    private var canBeginExplicitPathDraw: Bool {
+    var canBeginExplicitPathDraw: Bool {
         hasTransition
             && !isTransportEngaged
             && !selectedAthleteIDs.isEmpty
@@ -433,21 +433,21 @@ struct FloorGridView: View {
             && player != nil
     }
 
-    private var drawPathButtonTitle: String {
+    var drawPathButtonTitle: String {
         selectedAthleteIDs.count > 1 ? "Draw Paths" : "Draw Path"
     }
 
-    private var explicitPathDrawButtonTitle: String {
+    var explicitPathDrawButtonTitle: String {
         if isExplicitPathDrawMode { return "Cancel Draw" }
         return entitlementManager.isPro ? drawPathButtonTitle : "\(drawPathButtonTitle) (Pro)"
     }
 
-    private var explicitPathDrawButtonSystemImage: String {
+    var explicitPathDrawButtonSystemImage: String {
         if isExplicitPathDrawMode { return "xmark.circle" }
         return entitlementManager.isPro ? "scribble" : "lock.fill"
     }
 
-    private var pathSketchStatusText: String? {
+    var pathSketchStatusText: String? {
         if isSketchingPath {
             let count = pathSketchPreviewPaths.count
             if count > 1 { return "Drawing for \(count) athletes" }
@@ -461,7 +461,7 @@ struct FloorGridView: View {
         return nil
     }
 
-    private var pathSketchPreviewPaths: [PathSketchPreviewRenderItem] {
+    var pathSketchPreviewPaths: [PathSketchPreviewRenderItem] {
         guard
             isSketchingPath,
             // A bootstrap sketch (drawing forward off the last formation) has no
@@ -531,7 +531,7 @@ struct FloorGridView: View {
         ]
     }
 
-    private var endpointMarkers: [TransitionEndpointMarkerRenderItem] {
+    var endpointMarkers: [TransitionEndpointMarkerRenderItem] {
         guard let player else { return [] }
 
         let startStyle: TransitionEndpointMarkerRenderItem.Style =
@@ -570,18 +570,18 @@ struct FloorGridView: View {
         return startMarkers + endMarkers
     }
 
-    private var currentFormationEndpoint: PreviewEditableEndpoint? {
+    var currentFormationEndpoint: PreviewEditableEndpoint? {
         guard startFormationID != nil && endFormationID != nil else { return nil }
         if formationID == startFormationID { return .start }
         if formationID == endFormationID { return .end }
         return nil
     }
 
-    private var displayedFormationEndpoint: PreviewEditableEndpoint? {
+    var displayedFormationEndpoint: PreviewEditableEndpoint? {
         focusedEndpoint ?? currentFormationEndpoint
     }
 
-    private func formationID(for endpoint: PreviewEditableEndpoint?) -> UUID? {
+    func formationID(for endpoint: PreviewEditableEndpoint?) -> UUID? {
         guard let endpoint else { return nil }
         switch endpoint {
         case .start:
@@ -591,48 +591,48 @@ struct FloorGridView: View {
         }
     }
 
-    private func endpoint(for formationID: UUID) -> PreviewEditableEndpoint? {
+    func endpoint(for formationID: UUID) -> PreviewEditableEndpoint? {
         if formationID == startFormationID { return .start }
         if formationID == endFormationID { return .end }
         return nil
     }
 
-    private var displayedEditableFormationID: UUID {
+    var displayedEditableFormationID: UUID {
         formationID(for: displayedFormationEndpoint) ?? formationID
     }
 
-    private var editableFormationID: UUID? {
+    var editableFormationID: UUID? {
         guard hasTransition, let focusedEndpoint else { return nil }
         return focusedEndpoint == .start ? startFormationID : endFormationID
     }
 
-    private var editableAthletes: [RenderedAthlete] {
+    var editableAthletes: [RenderedAthlete] {
         guard let player, let focusedEndpoint else { return [] }
         return focusedEndpoint == .start ? player.startAthletes : player.endAthletes
     }
 
-    private func athletes(for endpoint: PreviewEditableEndpoint?) -> [RenderedAthlete]? {
+    func athletes(for endpoint: PreviewEditableEndpoint?) -> [RenderedAthlete]? {
         guard let player, let endpoint else { return nil }
         return endpoint == .start ? player.startAthletes : player.endAthletes
     }
 
-    private var selectedTransition: AthleteTransition? {
+    var selectedTransition: AthleteTransition? {
         guard let selectedAthleteID, let player else { return nil }
         return player.transitionSpec.athleteTransition(for: selectedAthleteID)
     }
 
 
-    private var startFormationName: String? {
+    var startFormationName: String? {
         guard let startFormationID else { return nil }
         return store.formation(id: startFormationID)?.name
     }
 
-    private var endFormationName: String? {
+    var endFormationName: String? {
         guard let endFormationID else { return nil }
         return store.formation(id: endFormationID)?.name
     }
 
-    private var compactInspectorTitle: String {
+    var compactInspectorTitle: String {
         if selectedAthleteIDs.count > 1 {
             return "\(selectedAthleteIDs.count) Selected"
         }
@@ -642,7 +642,7 @@ struct FloorGridView: View {
         return "Inspector"
     }
 
-    private var compactInspectButtonTitle: String {
+    var compactInspectButtonTitle: String {
         if selectedAthleteIDs.count > 1 {
             return "Selection"
         }
@@ -652,20 +652,20 @@ struct FloorGridView: View {
         return "Inspect"
     }
 
-    private var pathCollidingAthletes: [RenderedAthlete] {
+    var pathCollidingAthletes: [RenderedAthlete] {
         renderedAthletes.filter { pathCollisionIDs.contains($0.id) }
     }
 
-    private var canShareTransition: Bool {
+    var canShareTransition: Bool {
         hasTransition && startFormationName != nil && endFormationName != nil
     }
 
-    private var swapSourceRosterAthlete: RosterAthlete? {
+    var swapSourceRosterAthlete: RosterAthlete? {
         guard let swapSourceAthleteID else { return nil }
         return store.routine.roster.first(where: { $0.id == swapSourceAthleteID })
     }
 
-    private var compactBannerConfiguration: (text: String, color: Color)? {
+    var compactBannerConfiguration: (text: String, color: Color)? {
         if isSwapMode, swapSourceRosterAthlete != nil {
             // Handled by swapBanner view instead
             return nil
@@ -679,7 +679,7 @@ struct FloorGridView: View {
     }
 
     @ViewBuilder
-    private var resetViewFloatingButton: some View {
+    var resetViewFloatingButton: some View {
         if isViewTransformed {
             Button(action: resetView) {
                 HStack(spacing: 8) {
@@ -698,19 +698,19 @@ struct FloorGridView: View {
         }
     }
 
-    private var dragActivationDistance: CGFloat {
+    var dragActivationDistance: CGFloat {
         isCompactLayout ? 10 : 6
     }
 
-    private var pathSketchLongPressDuration: Double { 1.25 }
-    private var pathSketchCountdownDelay: Double { 0.45 }
+    var pathSketchLongPressDuration: Double { 1.25 }
+    var pathSketchCountdownDelay: Double { 0.45 }
     /// Movement allowed during the sketch long-press hold. Must be generous: a real
     /// finger tremors several points over the deliberate hold, so tying this to
     /// the tiny `dragActivationDistance` (6–10pt) made the long-press impossible
     /// to satisfy on-device (it only "worked" against a perfectly-still touch).
-    private var pathSketchHoldTolerance: CGFloat { 30 }
-    private var pathSketchEndpointSnapDistance: CGFloat { 1.35 }
-    private var pathSketchCountdownDuration: Double {
+    var pathSketchHoldTolerance: CGFloat { 30 }
+    var pathSketchEndpointSnapDistance: CGFloat { 1.35 }
+    var pathSketchCountdownDuration: Double {
         max(0.1, pathSketchLongPressDuration - pathSketchCountdownDelay)
     }
 
@@ -905,7 +905,7 @@ struct FloorGridView: View {
         }
     }
 
-    private var editorBody: some View {
+    var editorBody: some View {
         Group {
             if renderedAthletes.isEmpty {
                 emptyState
@@ -940,7 +940,7 @@ struct FloorGridView: View {
         }
     }
 
-    private var editorToolbar: some View {
+    var editorToolbar: some View {
         HStack(spacing: 8) {
             Button(action: addAthlete) {
                 EditorToolbarButtonLabel(
@@ -999,7 +999,7 @@ struct FloorGridView: View {
         }
     }
 
-    private var editorMoreIndicatorColor: Color? {
+    var editorMoreIndicatorColor: Color? {
         if !collidingAthletes.isEmpty {
             return .red
         }
@@ -1013,7 +1013,7 @@ struct FloorGridView: View {
     }
 
     @ViewBuilder
-    private var editorMoreMenuContent: some View {
+    var editorMoreMenuContent: some View {
         if !collidingAthletes.isEmpty {
             Button {
                 collisionCycleIndex = (collisionCycleIndex + 1) % collidingAthletes.count
@@ -1084,7 +1084,7 @@ struct FloorGridView: View {
     }
 
     @ViewBuilder
-    private var secondaryEditorMenuContent: some View {
+    var secondaryEditorMenuContent: some View {
         if canShareTransition {
             Button(action: shareTransitionPreview) {
                 Label("Share Preview", systemImage: "square.and.arrow.up")
@@ -1166,7 +1166,7 @@ struct FloorGridView: View {
         }
     }
 
-    private var controlStrip: some View {
+    var controlStrip: some View {
         Group {
             HStack(spacing: isCompactLayout ? 8 : 12) {
                 if !collidingAthletes.isEmpty {
@@ -1354,7 +1354,7 @@ struct FloorGridView: View {
         .background(.bar)
     }
 
-    private var compactOverflowMenu: some View {
+    var compactOverflowMenu: some View {
         Menu {
             Button(action: { showingRosterSheet = true }) {
                 Label("Roster", systemImage: "list.bullet.rectangle")
@@ -1411,7 +1411,7 @@ struct FloorGridView: View {
         .accessibilityValue(formation?.notes.isEmpty == false ? "Has notes" : "")
     }
 
-    private var compactOverflowMenuLabel: some View {
+    var compactOverflowMenuLabel: some View {
         HStack(spacing: 6) {
             Image(systemName: "ellipsis.circle")
             Text("More")
@@ -1426,7 +1426,7 @@ struct FloorGridView: View {
         }
     }
 
-    private var emptyState: some View {
+    var emptyState: some View {
         VStack {
             Spacer()
             VStack(spacing: isHeightConstrained ? 10 : 18) {
@@ -1519,7 +1519,7 @@ struct FloorGridView: View {
         .background(Color(uiColor: .secondarySystemBackground))
     }
 
-    private var canvasArea: some View {
+    var canvasArea: some View {
         GeometryReader { geometry in
             let baseCellSize = min(
                 geometry.size.width / CourtConstants.width,
@@ -1777,7 +1777,7 @@ struct FloorGridView: View {
 
     // MARK: - Formation Context Badge
 
-    private var formationContextBadge: some View {
+    var formationContextBadge: some View {
         let currentIndex = formationIndex ?? 0
         let total = max(1, store.routine.formations.count)
         // Into = selected formation is the transition's destination (end);
@@ -1801,7 +1801,7 @@ struct FloorGridView: View {
         .accessibilityLabel(formationContextLabel)
     }
 
-    private func setTransitionCounts(_ newCounts: Int) {
+    func setTransitionCounts(_ newCounts: Int) {
         guard let startFormationID, let endFormationID else { return }
         store.mutateTransitionSpec(from: startFormationID, to: endFormationID) { spec in
             spec.duration = Double(min(32, max(1, newCounts)))
@@ -1809,7 +1809,7 @@ struct FloorGridView: View {
         refreshTransitionFromStore()
     }
 
-    private var compactInspectorSheet: some View {
+    var compactInspectorSheet: some View {
         NavigationStack {
             ScrollView {
                 SidebarInspectorView(
@@ -1850,7 +1850,7 @@ struct FloorGridView: View {
         .presentationBackgroundInteraction(.enabled(upThrough: .medium))
     }
 
-    private var pathSettingsSheet: some View {
+    var pathSettingsSheet: some View {
         NavigationStack {
             Form {
                 Section("Visible Paths") {
@@ -1890,7 +1890,7 @@ struct FloorGridView: View {
         .presentationDragIndicator(.visible)
     }
 
-    private var compactTransportSheet: some View {
+    var compactTransportSheet: some View {
         NavigationStack {
             if let player, let startFormationName, let endFormationName {
                 TransitionTransportSidebarView(
@@ -1933,10 +1933,10 @@ struct FloorGridView: View {
     }
 
 
-    private var pathSaveRecoveryBottomPadding: CGFloat { 18 }
+    var pathSaveRecoveryBottomPadding: CGFloat { 18 }
 
     @ViewBuilder
-    private var pathSaveRecoveryBar: some View {
+    var pathSaveRecoveryBar: some View {
         if let snapshot = recentPathEditSnapshot {
             HStack(spacing: 10) {
                 Label(snapshot.message, systemImage: "checkmark.circle.fill")
@@ -1966,7 +1966,7 @@ struct FloorGridView: View {
         }
     }
 
-    private var rosterSheet: some View {
+    var rosterSheet: some View {
         RosterManagementView(
             store: store,
             onAddAthlete: {
@@ -1978,7 +1978,7 @@ struct FloorGridView: View {
         .environmentObject(entitlementManager)
     }
 
-    private var notesSheet: some View {
+    var notesSheet: some View {
         NavigationStack {
             ZStack(alignment: .topLeading) {
                 TextEditor(
@@ -2014,7 +2014,7 @@ struct FloorGridView: View {
         .presentationDragIndicator(.visible)
     }
 
-    private func banner(text: String, color: Color) -> some View {
+    func banner(text: String, color: Color) -> some View {
         HStack(spacing: 6) {
             Image(systemName: "info.circle.fill")
                 .font(.caption2)
@@ -2032,7 +2032,7 @@ struct FloorGridView: View {
     }
 
     @ViewBuilder
-    private func swapBanner(athleteLabel: String) -> some View {
+    func swapBanner(athleteLabel: String) -> some View {
         VStack(spacing: 6) {
             banner(text: "Tap another athlete to swap with \(athleteLabel).", color: .coral)
 
@@ -2053,7 +2053,7 @@ struct FloorGridView: View {
         }
     }
 
-    private func athleteHitRadiusSquared(for athlete: RenderedAthlete, cellSize: CGFloat) -> CGFloat {
+    func athleteHitRadiusSquared(for athlete: RenderedAthlete, cellSize: CGFloat) -> CGFloat {
         let baseRadius = sqrt(interactionHitRadiusSquared(for: cellSize))
         // Use the visible marker radius, not the expanded selected radius. This
         // keeps selection precise when athletes overlap while leaving the drawn
@@ -2063,7 +2063,7 @@ struct FloorGridView: View {
         return radius * radius
     }
 
-    private func athleteHit(
+    func athleteHit(
         at point: CGPoint,
         within athletes: [RenderedAthlete],
         cellSize: CGFloat,
@@ -2077,7 +2077,7 @@ struct FloorGridView: View {
         ).first
     }
 
-    private func athleteHits(
+    func athleteHits(
         at point: CGPoint,
         within athletes: [RenderedAthlete],
         cellSize: CGFloat,
@@ -2103,7 +2103,7 @@ struct FloorGridView: View {
             .map(\.athlete)
     }
 
-    private func preferredAthleteHit(
+    func preferredAthleteHit(
         at point: CGPoint,
         within athletes: [RenderedAthlete],
         cellSize: CGFloat,
@@ -2128,7 +2128,7 @@ struct FloorGridView: View {
         return candidates.first
     }
 
-    private func nearestOrTiedCycledAthleteHit(
+    func nearestOrTiedCycledAthleteHit(
         at point: CGPoint,
         within athletes: [RenderedAthlete],
         cellSize: CGFloat,
@@ -2169,7 +2169,7 @@ struct FloorGridView: View {
         return tiedNearest[(selectedIndex + 1) % tiedNearest.count].athlete
     }
 
-    private func nearestPointOnTransitionPath(
+    func nearestPointOnTransitionPath(
         at point: CGPoint,
         transition: AthleteTransition,
         startAthlete: RenderedAthlete,
@@ -2251,7 +2251,7 @@ struct FloorGridView: View {
         return best
     }
 
-    private func segmentUsesSmoothWaypoint(segmentIndex: Int, waypoints: [PathWaypoint]) -> Bool {
+    func segmentUsesSmoothWaypoint(segmentIndex: Int, waypoints: [PathWaypoint]) -> Bool {
         let startsAtWaypoint = segmentIndex > 0
         let endsAtWaypoint = segmentIndex < waypoints.count
 
@@ -2261,7 +2261,7 @@ struct FloorGridView: View {
         return startsAtWaypoint || endsAtWaypoint
     }
 
-    private func projectedPoint(onSegmentFrom start: CGPoint, to end: CGPoint, nearestTo point: CGPoint) -> CGPoint {
+    func projectedPoint(onSegmentFrom start: CGPoint, to end: CGPoint, nearestTo point: CGPoint) -> CGPoint {
         let dx = end.x - start.x
         let dy = end.y - start.y
         let lenSq = dx * dx + dy * dy
@@ -2274,7 +2274,7 @@ struct FloorGridView: View {
         return CGPoint(x: start.x + dx * t, y: start.y + dy * t)
     }
 
-    private func selectedTransitionPathHit(
+    func selectedTransitionPathHit(
         at point: CGPoint,
         maxSquaredDistance: CGFloat
     ) -> (
@@ -2327,15 +2327,15 @@ struct FloorGridView: View {
         return bestHit
     }
 
-    private func pathHitRadiusSquared(for cellSize: CGFloat) -> CGFloat {
+    func pathHitRadiusSquared(for cellSize: CGFloat) -> CGFloat {
         interactionHitRadiusSquared(for: cellSize) * 6
     }
 
-    private func pathNearMissRadiusSquared(for cellSize: CGFloat) -> CGFloat {
+    func pathNearMissRadiusSquared(for cellSize: CGFloat) -> CGFloat {
         interactionHitRadiusSquared(for: cellSize) * 16
     }
 
-    private func shouldSuppressMarqueeForSelectedPathNearMiss(at point: CGPoint, cellSize: CGFloat) -> Bool {
+    func shouldSuppressMarqueeForSelectedPathNearMiss(at point: CGPoint, cellSize: CGFloat) -> Bool {
         guard !selectedAthleteIDs.isEmpty else { return false }
         return selectedTransitionPathHit(
             at: point,
@@ -2343,7 +2343,7 @@ struct FloorGridView: View {
         ) != nil
     }
 
-    private func endpointMarkerHit(
+    func endpointMarkerHit(
         at point: CGPoint,
         within markers: [TransitionEndpointMarkerRenderItem],
         hitRadiusSquared: CGFloat
@@ -2353,7 +2353,7 @@ struct FloorGridView: View {
         }
     }
 
-    private func toggleExplicitPathDrawMode() {
+    func toggleExplicitPathDrawMode() {
         if isExplicitPathDrawMode || isSketchingPath {
             cancelExplicitPathDrawMode()
         } else {
@@ -2361,7 +2361,7 @@ struct FloorGridView: View {
         }
     }
 
-    private func beginExplicitPathDrawMode() {
+    func beginExplicitPathDrawMode() {
         guard canBeginExplicitPathDraw else { return }
         guard entitlementManager.isPro else {
             showingUpgradeSheet = true
@@ -2380,7 +2380,7 @@ struct FloorGridView: View {
         UISelectionFeedbackGenerator().selectionChanged()
     }
 
-    private func cancelExplicitPathDrawMode() {
+    func cancelExplicitPathDrawMode() {
         isExplicitPathDrawMode = false
         isSketchingPath = false
         isLongPressSketching = false
@@ -2391,7 +2391,7 @@ struct FloorGridView: View {
         cancelLongPressCountdown()
     }
 
-    private func beginExplicitPathSketch() {
+    func beginExplicitPathSketch() {
         guard
             entitlementManager.isPro,
             let player,
@@ -2437,7 +2437,7 @@ struct FloorGridView: View {
         UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: 0.65)
     }
 
-    private func beginPathSketch(startingAt point: CGPoint) {
+    func beginPathSketch(startingAt point: CGPoint) {
         guard entitlementManager.isPro else {
             showingUpgradeSheet = true
             return
@@ -2449,7 +2449,7 @@ struct FloorGridView: View {
         pathSketchPoints = [clampedPathPoint(point)]
     }
 
-    private func handlePathSketchContinued(_ point: CGPoint) {
+    func handlePathSketchContinued(_ point: CGPoint) {
         let clampedPoint = clampedPathPoint(point)
         guard let lastPoint = pathSketchPoints.last else {
             pathSketchPoints = [clampedPoint]
@@ -2466,7 +2466,7 @@ struct FloorGridView: View {
     /// Returns true if the bootstrap committed (creating a new formation).
     /// Returns false if the sketch was too short — caller should fall through
     /// to normal tap-to-select so a slow-start tap doesn't get eaten.
-    private func commitBootstrapSketch(athleteID: UUID) -> Bool {
+    func commitBootstrapSketch(athleteID: UUID) -> Bool {
         guard pathSketchPoints.count >= 2 else { return false }
         let startPoint = clampedPathPoint(pathSketchPoints[0])
         let liftPoint = clampedPathPoint(pathSketchPoints[pathSketchPoints.count - 1])
@@ -2482,7 +2482,7 @@ struct FloorGridView: View {
         return true
     }
 
-    private func resolvedSketchEndpoints(
+    func resolvedSketchEndpoints(
         anchorStart: CGPoint,
         anchorEnd: CGPoint,
         emitSnapFeedback: Bool = false
@@ -2512,7 +2512,7 @@ struct FloorGridView: View {
         return (resolvedStart, resolvedEnd)
     }
 
-    private func snappedSketchLiftPoint(
+    func snappedSketchLiftPoint(
         _ point: CGPoint,
         anchorSide: PathSketchAnchorSide,
         start: CGPoint,
@@ -2531,7 +2531,7 @@ struct FloorGridView: View {
     }
 
     @discardableResult
-    private func finishPathSketch() -> Bool {
+    func finishPathSketch() -> Bool {
         guard
             pathSketchPoints.count >= 2,
             let startFormationID,
@@ -2638,7 +2638,7 @@ struct FloorGridView: View {
         return true
     }
 
-    private func makePathEditUndoSnapshot(
+    func makePathEditUndoSnapshot(
         affectedAthleteIDs: Set<UUID>,
         message: String
     ) -> PathEditUndoSnapshot? {
@@ -2670,7 +2670,7 @@ struct FloorGridView: View {
         )
     }
 
-    private func smoothedWaypoints(
+    func smoothedWaypoints(
         fromSketch sketchPoints: [CGPoint],
         start: CGPoint,
         end: CGPoint
@@ -2704,7 +2704,7 @@ struct FloorGridView: View {
             .map { PathWaypoint(position: clampedPathPoint($0), isSmooth: true) }
     }
 
-    private func simplifiedSketchPath(_ points: [CGPoint], tolerance: CGFloat) -> [CGPoint] {
+    func simplifiedSketchPath(_ points: [CGPoint], tolerance: CGFloat) -> [CGPoint] {
         guard points.count > 2 else { return points }
 
         let start = points[0]
@@ -2730,7 +2730,7 @@ struct FloorGridView: View {
         return Array(left.dropLast()) + right
     }
 
-    private func farthestSketchPoint(from points: [CGPoint], start: CGPoint, end: CGPoint) -> CGPoint? {
+    func farthestSketchPoint(from points: [CGPoint], start: CGPoint, end: CGPoint) -> CGPoint? {
         points.dropFirst().dropLast().max { lhs, rhs in
             let lhsProjection = projectedPoint(onSegmentFrom: start, to: end, nearestTo: lhs)
             let rhsProjection = projectedPoint(onSegmentFrom: start, to: end, nearestTo: rhs)
@@ -2739,7 +2739,7 @@ struct FloorGridView: View {
         }
     }
 
-    private func downsampledWaypointPositions(_ positions: [CGPoint], maxCount: Int) -> [CGPoint] {
+    func downsampledWaypointPositions(_ positions: [CGPoint], maxCount: Int) -> [CGPoint] {
         guard positions.count > maxCount, maxCount > 1 else { return positions }
 
         let stride = CGFloat(positions.count - 1) / CGFloat(maxCount - 1)

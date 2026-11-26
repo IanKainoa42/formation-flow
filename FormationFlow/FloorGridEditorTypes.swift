@@ -81,7 +81,6 @@ enum FootstepPlanner {
         return player.startAthletes.filter { $0.id != athleteID }.flatMap { start in
             guard let end = player.endAthletes.first(where: { $0.id == start.id }) else { return [SuggestedGait]() }
             let transition = player.transitionSpec.athleteTransition(for: start.id)
-                ?? AthleteTransition(athleteID: start.id)
             return [true, false].map { leadsLeft in
                 SuggestedGait(start: start.position, steps: makeSteps(
                     start: start.position, end: end.position, transition: transition,

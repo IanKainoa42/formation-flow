@@ -198,7 +198,7 @@ final class PathCalculationsTests: XCTestCase {
         XCTAssertEqual(longMoveProgress, 0.75, accuracy: 0.001)
     }
 
-    func testFindPathCollisionDetailsAddsPenaltyResponses() {
+    func testFindPathCollisionDetailsAddsPenaltyResponses() throws {
         let athlete1 = UUID()
         let athlete2 = UUID()
 
@@ -318,5 +318,27 @@ final class PathCalculationsTests: XCTestCase {
         XCTAssertEqual(redirected.y, 10, accuracy: 0.001)
         XCTAssertEqual(recovered, position)
         XCTAssertEqual(final, position)
+    }
+    func testFootstepPlanChecksFeetPlantedOnEarlierCounts() {
+        let athlete = SuggestedGait(start: CGPoint(x: 0, y: 0), steps: [
+            SuggestedFootstep(count: 1, foot: .left, position: CGPoint(x: 2, y: 0))
+        ])
+        let teammate = SuggestedGait(start: CGPoint(x: 10, y: 0), steps: [
+            SuggestedFootstep(count: 1, foot: .left, position: CGPoint(x: 6, y: 0)),
+            SuggestedFootstep(count: 2, foot: .right, position: CGPoint(x: 2, y: 0))
+        ])
+
+        XCTAssertEqual(FootstepPlanner.conflictingCounts(athlete, with: [teammate], counts: 3), Set([2, 3]))
+    }
+
+    func testFootstepPlanFinishesWithBothFeetOnFinalCount() {
+        let transition = AthleteTransition(athleteID: UUID())
+        let steps = FootstepPlanner.makeSteps(
+            start: CGPoint(x: 0, y: 0), end: CGPoint(x: 8, y: 0),
+            transition: transition, counts: 8
+        )
+
+        XCTAssertEqual(steps.count, 9)
+        XCTAssertEqual(Set(steps.filter { $0.count == 8 }.map(\.foot.rawValue)), Set(["L", "R"]))
     }
 }

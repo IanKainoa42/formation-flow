@@ -3,7 +3,7 @@ import SwiftUI
 extension FloorGridView {
     // MARK: - Transition Actions
 
-    private func clearPath() {
+    func clearPath() {
         guard let selectedAthleteID, let startFormationID, let endFormationID else { return }
         recentPathEditSnapshot = nil
         store.mutateAthleteTransition(from: startFormationID, to: endFormationID, athleteID: selectedAthleteID) { t in
@@ -13,7 +13,7 @@ extension FloorGridView {
         refreshTransitionFromStore()
     }
 
-    private func ensureCurve() {
+    func ensureCurve() {
         guard let selectedAthleteID, let startFormationID, let endFormationID, let player else { return }
         recentPathEditSnapshot = nil
         let startAthlete = player.startAthletes.first(where: { $0.id == selectedAthleteID })
@@ -31,7 +31,7 @@ extension FloorGridView {
         refreshTransitionFromStore()
     }
 
-    private func addWaypoint(anchorAthleteID: UUID? = nil) {
+    func addWaypoint(anchorAthleteID: UUID? = nil) {
         guard entitlementManager.isPro else {
             showingUpgradeSheet = true
             return
@@ -59,7 +59,7 @@ extension FloorGridView {
         )
     }
 
-    private func insertWaypoint(anchorAthleteID: UUID? = nil, at point: CGPoint, segmentIndex: Int) -> UUID? {
+    func insertWaypoint(anchorAthleteID: UUID? = nil, at point: CGPoint, segmentIndex: Int) -> UUID? {
         guard entitlementManager.isPro else {
             showingUpgradeSheet = true
             return nil
@@ -80,7 +80,7 @@ extension FloorGridView {
         return waypointID
     }
 
-    private func cycleWaypointByDoubleTap(at point: CGPoint, cellSize: CGFloat) -> Bool {
+    func cycleWaypointByDoubleTap(at point: CGPoint, cellSize: CGFloat) -> Bool {
         guard hasTransition, let selectedAthleteID, let player else { return false }
         let transition = player.transitionSpec.athleteTransition(for: selectedAthleteID)
         let hitRadiusSquared = interactionHitRadiusSquared(for: cellSize) * 1.5
@@ -130,14 +130,14 @@ extension FloorGridView {
         return true
     }
 
-    private func focusWaypoint(_ waypoint: PathWaypoint) {
+    func focusWaypoint(_ waypoint: PathWaypoint) {
         guard let selectedAthleteID else { return }
         focusedEndpoint = currentFormationEndpoint
         focusedPathHandle = waypoint.position
         hoveredPathAthleteID = selectedAthleteID
     }
 
-    private func setWaypointSmooth(id waypointID: UUID, isSmooth: Bool) {
+    func setWaypointSmooth(id waypointID: UUID, isSmooth: Bool) {
         guard let selectedAthleteID, let startFormationID, let endFormationID else { return }
 
         store.mutateAthleteTransition(from: startFormationID, to: endFormationID, athleteID: selectedAthleteID) { t in
@@ -147,14 +147,14 @@ extension FloorGridView {
         refreshTransitionFromStore()
     }
 
-    private func focusedWaypointIndex(in transition: AthleteTransition) -> Int? {
+    func focusedWaypointIndex(in transition: AthleteTransition) -> Int? {
         guard let focusedPathHandle else { return nil }
         return transition.pathWaypoints.firstIndex {
             PathCalculations.squaredDistance(from: focusedPathHandle, to: $0.position) < 1.0
         }
     }
 
-    private func deleteWaypoint(id waypointID: UUID) {
+    func deleteWaypoint(id waypointID: UUID) {
         guard let selectedAthleteID, let startFormationID, let endFormationID else { return }
         pendingWaypointDeletionID = nil
         focusedPathHandle = nil
@@ -165,7 +165,7 @@ extension FloorGridView {
         refreshTransitionFromStore()
     }
 
-    private func deletePendingWaypoint() {
+    func deletePendingWaypoint() {
         guard
             let waypointID = pendingWaypointDeletionID
         else {
@@ -176,7 +176,7 @@ extension FloorGridView {
         deleteWaypoint(id: waypointID)
     }
 
-    private func resetSelectedPaths() {
+    func resetSelectedPaths() {
         recentPathEditSnapshot = nil
         if selectedAthleteIDs.count == 1, let athleteID = selectedAthleteIDs.first {
             resetPath(for: athleteID)
@@ -187,12 +187,12 @@ extension FloorGridView {
         }
     }
 
-    private func resetPathForSelectedAthlete() {
+    func resetPathForSelectedAthlete() {
         guard let selectedAthleteID else { return }
         resetPath(for: selectedAthleteID)
     }
 
-    private func resetPath(for athleteID: UUID) {
+    func resetPath(for athleteID: UUID) {
         guard let startFormationID, let endFormationID else { return }
         clearTransitionDragState()
         store.mutateAthleteTransition(from: startFormationID, to: endFormationID, athleteID: athleteID) { t in
@@ -202,7 +202,7 @@ extension FloorGridView {
         refreshTransitionFromStore()
     }
 
-    private func resetPaths(for athleteIDs: Set<UUID>) {
+    func resetPaths(for athleteIDs: Set<UUID>) {
         guard let startFormationID, let endFormationID, !athleteIDs.isEmpty else { return }
         clearTransitionDragState()
         store.mutateTransitionSpec(from: startFormationID, to: endFormationID) { spec in
@@ -214,7 +214,7 @@ extension FloorGridView {
         refreshTransitionFromStore()
     }
 
-    private func resetAllPaths() {
+    func resetAllPaths() {
         guard let startFormationID, let endFormationID else { return }
         clearTransitionDragState()
 
@@ -227,7 +227,7 @@ extension FloorGridView {
         refreshTransitionFromStore()
     }
 
-    private func clearTransitionDragState() {
+    func clearTransitionDragState() {
         isDraggingPathHandle = false
         isDraggingEndpoint = false
         draggingWaypointID = nil
@@ -237,7 +237,7 @@ extension FloorGridView {
         lastAppliedEndpointDragPosition = nil
     }
 
-    private func commitPathHandleDrag() {
+    func commitPathHandleDrag() {
         guard
             let draft = pathHandleDragDraft,
             draft.startFormationID == startFormationID,
@@ -259,7 +259,7 @@ extension FloorGridView {
         refreshTransitionFromStore()
     }
 
-    private func refreshTransitionPreview(
+    func refreshTransitionPreview(
         transitionSpec: TransitionSpec,
         collisionRefreshMode: PathCollisionRefreshMode
     ) {
@@ -272,7 +272,7 @@ extension FloorGridView {
         )
     }
 
-    private func refreshTransitionFromStore(collisionRefreshMode: PathCollisionRefreshMode = .full) {
+    func refreshTransitionFromStore(collisionRefreshMode: PathCollisionRefreshMode = .full) {
         guard let player, let startFormationID, let endFormationID else { return }
         player.refresh(
             startAthletes: store.renderedAthletes(for: startFormationID),
@@ -282,7 +282,7 @@ extension FloorGridView {
         )
     }
 
-    private func createSelectedTransitionGroup() {
+    func createSelectedTransitionGroup() {
         guard hasTransition,
               canCreateSelectedTransitionGroup,
               let startFormationID,
@@ -305,7 +305,7 @@ extension FloorGridView {
         }
     }
 
-    private func ungroupSelectedTransitionGroup() {
+    func ungroupSelectedTransitionGroup() {
         guard hasTransition,
               let startFormationID,
               let endFormationID,

@@ -4,7 +4,7 @@ import UIKit
 extension FloorGridView {
     // MARK: - Formation Actions
 
-    private func snappingResult(for translation: CGPoint) -> SnapResult {
+    func snappingResult(for translation: CGPoint) -> SnapResult {
         guard !dragStartPositions.isEmpty else {
             return SnapResult(translation: translation, alignmentGuides: [], mirrorGuides: [])
         }
@@ -19,7 +19,7 @@ extension FloorGridView {
         )
     }
 
-    private func snappingResult(
+    func snappingResult(
         translation: CGPoint,
         startingPositions: [CGPoint],
         otherAthletePositions: [CGPoint],
@@ -48,12 +48,12 @@ extension FloorGridView {
         )
     }
 
-    private func clampedCoordinate(_ value: CGFloat, upperBound: CGFloat) -> CGFloat {
+    func clampedCoordinate(_ value: CGFloat, upperBound: CGFloat) -> CGFloat {
         let snapped = round(value / 0.75) * 0.75
         return max(0, min(upperBound, snapped))
     }
 
-    private func addAthlete() {
+    func addAthlete() {
         let newID = store.addAthlete()
         selectedAthleteIDs = [newID]
 
@@ -65,7 +65,7 @@ extension FloorGridView {
         }
     }
 
-    private func beginAthleteRename() {
+    func beginAthleteRename() {
         guard entitlementManager.isPro else {
             showingUpgradeSheet = true
             return
@@ -75,7 +75,7 @@ extension FloorGridView {
         showingAthleteRenamePrompt = true
     }
 
-    private func commitAthleteRename() {
+    func commitAthleteRename() {
         guard let selectedAthleteID else { return }
         let trimmedLabel = athleteLabelDraft
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -87,12 +87,12 @@ extension FloorGridView {
         }
     }
 
-    private func applyTemplate() {
+    func applyTemplate() {
         store.applyBowlingPinTemplate(to: formationID)
         selectedAthleteIDs = []
     }
 
-    private func requestRosterAthleteDeletion(_ ids: [UUID]) {
+    func requestRosterAthleteDeletion(_ ids: [UUID]) {
         let validRosterIDs = Set(store.routine.roster.map(\.id))
         rosterDeleteIDs = ids.reduce(into: [UUID]()) { result, id in
             guard validRosterIDs.contains(id), !result.contains(id) else { return }
@@ -101,7 +101,7 @@ extension FloorGridView {
         if !rosterDeleteIDs.isEmpty { deleteRosterAthletes() }
     }
 
-    private func toggleSwapMode() {
+    func toggleSwapMode() {
         guard let selectedAthleteID else {
             endSwapMode()
             return
@@ -123,12 +123,12 @@ extension FloorGridView {
         }
     }
 
-    private func endSwapMode() {
+    func endSwapMode() {
         isSwapMode = false
         swapSourceAthleteID = nil
     }
 
-    private func deleteRosterAthletes() {
+    func deleteRosterAthletes() {
         let toDelete = rosterDeleteIDs
         rosterDeleteIDs = []
         selectedAthleteIDs.subtract(toDelete)
@@ -138,7 +138,7 @@ extension FloorGridView {
         store.deleteAthletes(ids: toDelete)
     }
 
-    private func deleteSelectedAthlete() {
+    func deleteSelectedAthlete() {
         guard !selectedAthleteIDs.isEmpty else { return }
         let idsToDelete = selectedAthleteIDs
         selectedAthleteIDs = []
@@ -148,7 +148,7 @@ extension FloorGridView {
         store.deleteAthletes(ids: Array(idsToDelete))
     }
 
-    private func pruneRosterDependentState(validAthleteIDs: Set<UUID>) {
+    func pruneRosterDependentState(validAthleteIDs: Set<UUID>) {
         selectedAthleteIDs.formIntersection(validAthleteIDs)
         rosterDeleteIDs.removeAll { !validAthleteIDs.contains($0) }
         if let swapSourceAthleteID, !validAthleteIDs.contains(swapSourceAthleteID) {
@@ -156,7 +156,7 @@ extension FloorGridView {
         }
     }
 
-    private func mirrorFormation() {
+    func mirrorFormation() {
         guard let formation = formation else { return }
         undoStack.append(
             FormationMoveUndoSnapshot(
@@ -176,7 +176,7 @@ extension FloorGridView {
         refreshTransitionFromStore()
     }
 
-    private func undoLastMove() {
+    func undoLastMove() {
         guard let snapshot = undoStack.popLast() else { return }
         store.mutateFormation(id: snapshot.formationID) { formation in
             for (athleteID, position) in snapshot.positions {
@@ -192,7 +192,7 @@ extension FloorGridView {
         refreshTransitionFromStore()
     }
 
-    private func undoRecentPathEdit() {
+    func undoRecentPathEdit() {
         guard let snapshot = recentPathEditSnapshot else { return }
         clearTransitionDragState()
 
@@ -231,7 +231,7 @@ extension FloorGridView {
         store.saveNow()
     }
 
-    private func straightenRecentPathEdit() {
+    func straightenRecentPathEdit() {
         guard let snapshot = recentPathEditSnapshot else { return }
         clearTransitionDragState()
         store.mutateTransitionSpec(from: snapshot.startFormationID, to: snapshot.endFormationID) { spec in
@@ -246,19 +246,19 @@ extension FloorGridView {
         store.saveNow()
     }
 
-    private func selectCollision(at index: Int) {
+    func selectCollision(at index: Int) {
         guard !collidingAthletes.isEmpty else { return }
         let safeIndex = index % collidingAthletes.count
         selectedAthleteIDs = selectionForAthlete(collidingAthletes[safeIndex].id)
     }
 
-    private func selectPathCollision(at index: Int) {
+    func selectPathCollision(at index: Int) {
         guard !pathCollidingAthletes.isEmpty else { return }
         let safeIndex = index % pathCollidingAthletes.count
         selectedAthleteIDs = selectionForAthlete(pathCollidingAthletes[safeIndex].id)
     }
 
-    private func shareTransitionPreview() {
+    func shareTransitionPreview() {
         guard let payload = makeSharePayload() else {
             shareResultMessage = "Couldn’t prepare the transition preview."
             showingShareResult = true
@@ -269,7 +269,7 @@ extension FloorGridView {
         sharePayload = payload
     }
 
-    private func makeSharePayload() -> TransitionSharePayload? {
+    func makeSharePayload() -> TransitionSharePayload? {
         guard
             let startFormationName,
             let endFormationName
@@ -317,7 +317,7 @@ extension FloorGridView {
         )
     }
 
-    private func shareMetricMetadata(activityType: String? = nil) -> [String: String] {
+    func shareMetricMetadata(activityType: String? = nil) -> [String: String] {
         var metadata: [String: String] = [
             "routine": store.routine.name,
             "formation": formation?.name ?? "unknown",
@@ -333,11 +333,11 @@ extension FloorGridView {
         return metadata
     }
 
-    private var isViewTransformed: Bool {
+    var isViewTransformed: Bool {
         zoomScale != 1.0 || canvasPanOffset != .zero
     }
 
-    private func resetView() {
+    func resetView() {
         withAnimation(.spring()) {
             zoomScale = 1.0
             lastZoomScale = 1.0
@@ -391,7 +391,7 @@ enum SelectionSpacing {
         }
     }
 
-    private static func roundedCourtCoordinate(_ value: CGFloat, upperBound: CGFloat) -> CGFloat {
+    static func roundedCourtCoordinate(_ value: CGFloat, upperBound: CGFloat) -> CGFloat {
         max(0, min(upperBound, value.rounded()))
     }
 }
@@ -436,7 +436,7 @@ enum PathWaypointPlacement {
         )
     }
 
-    private static func midpoint(from start: CGPoint, to end: CGPoint) -> CGPoint {
+    static func midpoint(from start: CGPoint, to end: CGPoint) -> CGPoint {
         CGPoint(
             x: (start.x + end.x) / 2,
             y: (start.y + end.y) / 2
@@ -608,7 +608,7 @@ enum TransitionPathSelectionEditing {
         return true
     }
 
-    private static func clampedPathPoint(_ point: CGPoint) -> CGPoint {
+    static func clampedPathPoint(_ point: CGPoint) -> CGPoint {
         CGPoint(
             x: max(0, min(CourtConstants.width, point.x)),
             y: max(0, min(CourtConstants.height, point.y))
