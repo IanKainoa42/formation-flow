@@ -2246,7 +2246,7 @@ struct PathCalculations {
         guard steps > 1 else { return [from, to] }
 
         var path: [CGPoint] = [from]
-        for index in 1..<steps {
+        for index in 1..<(steps - 1) {
             let t = CGFloat(index) / CGFloat(steps - 1)
             if let control {
                 path.append(quadraticBezierPoint(from: from, control: control, to: to, t: t))

@@ -54,6 +54,7 @@ final class PathCalculationsTests: XCTestCase {
         XCTAssertEqual(path[0], start)
         XCTAssertEqual(path[1], CGPoint(x: 5, y: 0))
         XCTAssertEqual(path[2], end)
+        XCTAssertEqual(PathCalculations.athletePath(from: start, to: end, steps: 2), [start, end])
     }
 
     func testAthletePathWithControlPoint() {
@@ -230,7 +231,8 @@ final class PathCalculationsTests: XCTestCase {
         let collisionStart1 = try XCTUnwrap(details.startProgresses[athlete1])
         let collisionStart2 = try XCTUnwrap(details.startProgresses[athlete2])
         let markerProgress = try XCTUnwrap(details.markerProgresses.first)
-        XCTAssertEqual(markerProgress, 0.422, accuracy: 0.02)
+        // Contact starts near 0.425; the collision cue leads it by 0.025.
+        XCTAssertEqual(markerProgress, 0.4, accuracy: 0.01)
         XCTAssertEqual(collisionStart1, 0.45, accuracy: 0.02)
         XCTAssertEqual(collisionStart2, 0.45, accuracy: 0.02)
         XCTAssertLessThan(markerProgress, response1.progress)
