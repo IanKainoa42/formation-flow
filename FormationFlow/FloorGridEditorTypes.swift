@@ -59,6 +59,135 @@ enum TransitionPreviewMode: String, CaseIterable, Identifiable {
     }
 }
 
+// A suggested rehearsal gait derived from the existing athlete path. These
+// footprints are a preview, so changing a route immediately makes a new plan.
+struct SuggestedFootstep: Identifiable {
+    enum Foot: String { case left = "L", right = "R" }
+    let count: Int
+    let foot: Foot
+    let position: CGPoint
+    var id: String { "\(count)-\(foot.rawValue)" }
+}
+
+struct SuggestedGait {
+    let start: CGPoint
+    let steps: [SuggestedFootstep]
+}
+
+enum FootstepPlanner {
+    @MainActor
+    static func teammateGaits(player: TransitionPlayer, excluding athleteID: UUID) -> [SuggestedGait] {
+        let counts = max(1, Int(player.counts.rounded()))
+        return player.startAthletes.filter { $0.id != athleteID }.flatMap { start in
+            guard let end = player.endAthletes.first(where: { $0.id == start.id }) else { return [SuggestedGait]() }
+            let transition = player.transitionSpec.athleteTransition(for: start.id)
+                ?? AthleteTransition(athleteID: start.id)
+            return [true, false].map { leadsLeft in
+                SuggestedGait(start: start.position, steps: makeSteps(
+                    start: start.position, end: end.position, transition: transition,
+                    counts: counts, startsLeft: leadsLeft
+                ))
+            }
+        }
+    }
+
+    static func conflictingCounts(_ gait: SuggestedGait, with others: [SuggestedGait], counts: Int, minimumSeparation: CGFloat = 1.5) -> Set<Int> {
+        let thresholdSquared = minimumSeparation * minimumSeparation
+        var conflicts = Set<Int>()
+        guard counts > 0 else { return conflicts }
+        for count in 1...counts {
+            let occupied = plantedFeet(gait, through: count)
+            for other in others {
+                let otherOccupied = plantedFeet(other, through: count)
+                if occupied.contains(where: { foot in
+                    otherOccupied.contains(where: { otherFoot in
+                        let dx = foot.x - otherFoot.x
+                        let dy = foot.y - otherFoot.y
+                        return dx * dx + dy * dy < thresholdSquared
+                    })
+                }) {
+                    conflicts.insert(count)
+                    break
+                }
+            }
+        }
+        return conflicts
+    }
+
+    private static func plantedFeet(_ gait: SuggestedGait, through count: Int) -> [CGPoint] {
+        var left = gait.start
+        var right = gait.start
+        for step in gait.steps where step.count <= count {
+            if step.foot == .left { left = step.position } else { right = step.position }
+        }
+        return [left, right]
+    }
+
+    static func suggestedSteps(start: CGPoint, end: CGPoint, transition: AthleteTransition, counts: Int, others: [SuggestedGait], strideWidth: CGFloat = 0.9) -> [SuggestedFootstep] {
+        let left = makeSteps(start: start, end: end, transition: transition, counts: counts, strideWidth: strideWidth, startsLeft: true)
+        let right = makeSteps(start: start, end: end, transition: transition, counts: counts, strideWidth: strideWidth, startsLeft: false)
+        return conflictingCounts(SuggestedGait(start: start, steps: right), with: others, counts: counts).count
+            < conflictingCounts(SuggestedGait(start: start, steps: left), with: others, counts: counts).count ? right : left
+    }
+
+    static func makeSteps(
+        start: CGPoint,
+        end: CGPoint,
+        transition: AthleteTransition,
+        counts: Int,
+        strideWidth: CGFloat = 0.9,
+        startsLeft: Bool = true
+    ) -> [SuggestedFootstep] {
+        guard counts > 0 else { return [] }
+        let activeCounts = max(1, counts - Int(transition.moveDelay.rounded(.up)))
+        let firstCount = counts - activeCounts + 1
+        var steps: [SuggestedFootstep] = []
+        for count in firstCount...counts {
+            let progress = CGFloat(count - firstCount + 1) / CGFloat(activeCounts)
+            let center = point(start: start, end: end, transition: transition, progress: progress)
+            let before = point(start: start, end: end, transition: transition, progress: max(0, progress - 0.01))
+            let after = point(start: start, end: end, transition: transition, progress: min(1, progress + 0.01))
+            let dx = after.x - before.x
+            let dy = after.y - before.y
+            let length = max(0.001, hypot(dx, dy))
+            let normal = CGPoint(x: -dy / length, y: dx / length)
+            let isLeft = (count - firstCount).isMultiple(of: 2) == startsLeft
+            let foot: SuggestedFootstep.Foot = isLeft ? .left : .right
+            let sign: CGFloat = isLeft ? 1 : -1
+            let offset = strideWidth / 2
+            steps.append(SuggestedFootstep(
+                count: count,
+                foot: foot,
+                position: CGPoint(x: center.x + normal.x * offset * sign,
+                                  y: center.y + normal.y * offset * sign)
+            ))
+            if count == counts {
+                let other: SuggestedFootstep.Foot = isLeft ? .right : .left
+                steps.append(SuggestedFootstep(
+                    count: count,
+                    foot: other,
+                    position: CGPoint(x: center.x - normal.x * offset * sign,
+                                      y: center.y - normal.y * offset * sign)
+                ))
+            }
+        }
+        return steps
+    }
+
+    private static func point(start: CGPoint, end: CGPoint, transition: AthleteTransition, progress: CGFloat) -> CGPoint {
+        if !transition.pathWaypoints.isEmpty {
+            return PathCalculations.interpolateWaypointPath(
+                from: start, to: end, waypoints: transition.pathWaypoints, progress: progress
+            )
+        }
+        if let control = transition.pathControlPoint {
+            return PathCalculations.quadraticBezierPoint(from: start, control: control, to: end, t: progress)
+        }
+        return CGPoint(x: start.x + (end.x - start.x) * progress,
+                       y: start.y + (end.y - start.y) * progress)
+    }
+}
+
 struct FormationMoveUndoSnapshot: Equatable {
     let formationID: UUID
     let positions: [UUID: CGPoint]

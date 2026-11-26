@@ -120,6 +120,124 @@ struct AthleteInspectorView: View {
     }
 }
 
+// MARK: - Footstep rehearsal plan
+
+private struct FootstepPlanView: View {
+    @Environment(\.dismiss) private var dismiss
+    let athleteName: String
+    let start: CGPoint
+    let end: CGPoint
+    let transition: AthleteTransition
+    let counts: Int
+    let teammateGaits: [SuggestedGait]
+
+    @State private var strideWidth: Double = 0.9
+    @State private var reverseLead = false
+
+    private var steps: [SuggestedFootstep] {
+        let preferred = FootstepPlanner.suggestedSteps(
+            start: start, end: end, transition: transition, counts: counts,
+            others: teammateGaits, strideWidth: CGFloat(strideWidth)
+        )
+        guard reverseLead else { return preferred }
+        return FootstepPlanner.makeSteps(
+            start: start, end: end, transition: transition, counts: counts,
+            strideWidth: CGFloat(strideWidth), startsLeft: preferred.first?.foot == .right
+        )
+    }
+
+    private var conflicts: Set<Int> {
+        FootstepPlanner.conflictingCounts(SuggestedGait(start: start, steps: steps), with: teammateGaits, counts: counts)
+    }
+
+    private var shareText: String {
+        let lines = (1...counts).map { count in
+            let feet = steps.filter { $0.count == count }.map { step in
+                let side = step.foot == .left ? "left" : "right"
+                return "\(side) (\(Int(step.position.x.rounded())), \(Int(step.position.y.rounded())) ft)"
+            }
+            return "Count \(count): \(feet.isEmpty ? "hold" : feet.joined(separator: " + "))"
+        }
+        let warning = conflicts.isEmpty ? [] : ["Check possible foot overlap on count \(conflicts.sorted().map(String.init).joined(separator: ", "))."]
+        return (["\(athleteName)'s suggested footstep plan", "Finish with feet together on count \(counts)."] + lines + warning).joined(separator: "\n")
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text("\(athleteName)'s steps")
+                        .font(.title2.bold())
+                    Text("A suggested left/right gait for this transition. Both feet land together on count \(counts).")
+                        .foregroundStyle(.secondary)
+
+                    Canvas { context, size in
+                        let scale = min(size.width / CourtConstants.width, size.height / CourtConstants.height)
+                        let origin = CGPoint(x: (size.width - CourtConstants.width * scale) / 2,
+                                             y: (size.height - CourtConstants.height * scale) / 2)
+                        func screen(_ point: CGPoint) -> CGPoint {
+                            CGPoint(x: origin.x + point.x * scale, y: origin.y + point.y * scale)
+                        }
+                        var grid = Path()
+                        for x in stride(from: CGFloat(0), through: CourtConstants.width, by: 8) {
+                            grid.move(to: screen(CGPoint(x: x, y: 0)))
+                            grid.addLine(to: screen(CGPoint(x: x, y: CourtConstants.height)))
+                        }
+                        for y in stride(from: CGFloat(0), through: CourtConstants.height, by: 8) {
+                            grid.move(to: screen(CGPoint(x: 0, y: y)))
+                            grid.addLine(to: screen(CGPoint(x: CourtConstants.width, y: y)))
+                        }
+                        context.stroke(grid, with: .color(.white.opacity(0.12)), lineWidth: 1)
+                        for step in steps {
+                            let point = screen(step.position)
+                            let color: Color = conflicts.contains(step.count) ? .orange : .coral
+                            let rect = CGRect(x: point.x - 12, y: point.y - 16, width: 24, height: 32)
+                            context.fill(Path(ellipseIn: rect), with: .color(color))
+                            context.draw(context.resolve(Text(step.foot.rawValue).font(.caption.bold()).foregroundColor(.black)), at: point)
+                        }
+                    }
+                    .frame(height: 340)
+                    .background(Color.black.opacity(0.9), in: RoundedRectangle(cornerRadius: 16))
+                    .accessibilityLabel("Court showing \(steps.count) suggested foot placements")
+
+                    if conflicts.isEmpty {
+                        Label("No planted-foot overlaps detected", systemImage: "checkmark.circle")
+                            .foregroundStyle(.green)
+                    } else {
+                        Label("Possible overlap on count \(conflicts.sorted().map(String.init).joined(separator: ", "))", systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.orange)
+                    }
+
+                    Toggle("Swap starting foot", isOn: $reverseLead)
+                    VStack(alignment: .leading) {
+                        Text("Step width")
+                        Slider(value: $strideWidth, in: 0.5...2, step: 0.1)
+                    }
+                    ForEach(1...counts, id: \.self) { count in
+                        HStack {
+                            Text("Count \(count)")
+                            Spacer()
+                            Text(steps.filter { $0.count == count }.map(\.foot.rawValue).joined(separator: " + ").isEmpty
+                                 ? "Hold" : steps.filter { $0.count == count }.map(\.foot.rawValue).joined(separator: " + "))
+                                .foregroundStyle(conflicts.contains(count) ? Color.orange : Color.secondary)
+                        }
+                        .font(.subheadline)
+                    }
+                    ShareLink(item: shareText) {
+                        Label("Send athlete's count plan", systemImage: "square.and.arrow.up")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding()
+            }
+            .navigationTitle("Footstep Plan")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+        }
+    }
+}
+
 struct MultiSelectionInspectorView: View {
     let count: Int
     var compactLayout: Bool = false
@@ -1072,6 +1190,7 @@ struct SidebarInspectorView: View {
     var onDrawPath: (() -> Void)?
 
     @State private var showingClearPathConfirmation = false
+    @State private var showingFootstepPlan = false
 
     private var selectedAthleteID: UUID? {
         selectedAthleteIDs.count == 1 ? selectedAthleteIDs.first : nil
@@ -1166,6 +1285,15 @@ struct SidebarInspectorView: View {
                             startFormationName: startFormationName,
                             endFormationName: endFormationName
                         )
+                        Button {
+                            showingFootstepPlan = true
+                        } label: {
+                            Label("Plan Footsteps", systemImage: "figure.walk")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .padding(.horizontal)
+                        .padding(.bottom, 12)
                     }
                 } else if selectedAthleteIDs.count > 1 {
                     MultiSelectionInspectorView(
@@ -1191,6 +1319,22 @@ struct SidebarInspectorView: View {
                 }
             }
         .background(.thinMaterial)
+        .sheet(isPresented: $showingFootstepPlan) {
+            if let athlete = selectedRosterAthlete,
+               let transition = selectedTransition,
+               let player,
+               let start = player.startAthletes.first(where: { $0.id == athlete.id }),
+               let end = player.endAthletes.first(where: { $0.id == athlete.id }) {
+                FootstepPlanView(
+                    athleteName: athlete.label,
+                    start: start.position,
+                    end: end.position,
+                    transition: transition,
+                    counts: max(1, Int(player.counts.rounded())),
+                    teammateGaits: FootstepPlanner.teammateGaits(player: player, excluding: athlete.id)
+                )
+            }
+        }
     }
 
     private func performClearPath(startFormationID: UUID, endFormationID: UUID) {
