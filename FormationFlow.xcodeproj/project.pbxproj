@@ -7,21 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		AABB000201AABB000201AABB /* EditorLayoutMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB000101AABB000101AABB /* EditorLayoutMode.swift */; };
-		AABB000401AABB000401AABB /* EditorLayoutEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB000301AABB000301AABB /* EditorLayoutEnvironment.swift */; };
-		AABB000601AABB000601AABB /* FloorGridEditorTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB000501AABB000501AABB /* FloorGridEditorTypes.swift */; };
-		AABB000801AABB000801AABB /* FloorGridView+PhoneChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB000701AABB000701AABB /* FloorGridView+PhoneChrome.swift */; };
-		AABBA00801AABBA00801AABB /* FloorGridView+Gestures.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBA00701AABBA00701AABB /* FloorGridView+Gestures.swift */; };
-		AABBA00A01AABBA00A01AABB /* FloorGridView+TransitionActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBA00901AABBA00901AABB /* FloorGridView+TransitionActions.swift */; };
-		AABBA00C01AABBA00C01AABB /* FloorGridView+FormationActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBA00B01AABBA00B01AABB /* FloorGridView+FormationActions.swift */; };
-		AABBA00E01AABBA00E01AABB /* FloorGridView+Previews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBA00D01AABBA00D01AABB /* FloorGridView+Previews.swift */; };
-		TTST00101TTST00101TTST00 /* EditorLayoutModeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TFIL00101TFIL00101TFIL00 /* EditorLayoutModeTests.swift */; };
-		TTST00201TTST00201TTST00 /* ModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TFIL00201TFIL00201TFIL00 /* ModelTests.swift */; };
-		TTST00301TTST00301TTST00 /* PathCalculationsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TFIL00301TFIL00301TFIL00 /* PathCalculationsTests.swift */; };
-		TTST00401TTST00401TTST00 /* RoutineStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TFIL00401TFIL00401TFIL00 /* RoutineStoreTests.swift */; };
-		TTST00501TTST00501TTST00 /* EntitlementManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TFIL00501TFIL00501TFIL00 /* EntitlementManagerTests.swift */; };
-		TTST00601TTST00601TTST00 /* EntitlementRevocationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TFIL00601TFIL00601TFIL00 /* EntitlementRevocationTests.swift */; };
-		TTST00701TTST00701TTST00 /* FreeTierLimitsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TFIL00701TFIL00701TFIL00 /* FreeTierLimitsTests.swift */; };
 		1FBACD3F3072969D00838DC8 /* RosterImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FBACD3E3072969D00838DC8 /* RosterImport.swift */; };
 		1FBACD413072971000838DC8 /* RosterManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FBACD403072971000838DC8 /* RosterManagementView.swift */; };
 		334C42A5B839654CCBC14ACF /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F4F48ABA5AD5A9438964E6B /* Models.swift */; };
@@ -30,6 +15,14 @@
 		93064509B038206204B9459D /* FloorGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFC34761911C80E5631C8341 /* FloorGridView.swift */; };
 		A1B2C3D4E5F6A7B8C9D0E1F2 /* FormationHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F6A7B8C9D0E1F2A3 /* FormationHomeView.swift */; };
 		AA000001AA000001AA000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1F08C9AC2F57AAC400425930 /* Assets.xcassets */; };
+		AABB000201AABB000201AABB /* EditorLayoutMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB000101AABB000101AABB /* EditorLayoutMode.swift */; };
+		AABB000401AABB000401AABB /* EditorLayoutEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB000301AABB000301AABB /* EditorLayoutEnvironment.swift */; };
+		AABB000601AABB000601AABB /* FloorGridEditorTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB000501AABB000501AABB /* FloorGridEditorTypes.swift */; };
+		AABB000801AABB000801AABB /* FloorGridView+PhoneChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB000701AABB000701AABB /* FloorGridView+PhoneChrome.swift */; };
+		AABBA00801AABBA00801AABB /* FloorGridView+Gestures.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBA00701AABBA00701AABB /* FloorGridView+Gestures.swift */; };
+		AABBA00A01AABBA00A01AABB /* FloorGridView+TransitionActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBA00901AABBA00901AABB /* FloorGridView+TransitionActions.swift */; };
+		AABBA00C01AABBA00C01AABB /* FloorGridView+FormationActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBA00B01AABBA00B01AABB /* FloorGridView+FormationActions.swift */; };
+		AABBA00E01AABBA00E01AABB /* FloorGridView+Previews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBA00D01AABBA00D01AABB /* FloorGridView+Previews.swift */; };
 		CC220001CC220001CC220001 /* EntitlementManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB110001BB110001BB110001 /* EntitlementManager.swift */; };
 		CC220002CC220002CC220002 /* FreeTierLimits.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB110002BB110002BB110002 /* FreeTierLimits.swift */; };
 		CC220003CC220003CC220003 /* ProUpgradeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB110003BB110003BB110003 /* ProUpgradeSheet.swift */; };
@@ -42,25 +35,26 @@
 		EE110003EE110003EE110003 /* PortraitActionBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF220003FF220003FF220003 /* PortraitActionBar.swift */; };
 		F2404D8798687C821CBF4F7C /* TransitionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22EB4E82B510B78E55C92084 /* TransitionViews.swift */; };
 		F4094C4FBEC63EB6C48960EB /* AthleteDetailPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FD34039AE5F73A96066C39B /* AthleteDetailPanel.swift */; };
+		TTST00101TTST00101TTST00 /* EditorLayoutModeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TFIL00101TFIL00101TFIL00 /* EditorLayoutModeTests.swift */; };
+		TTST00201TTST00201TTST00 /* ModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TFIL00201TFIL00201TFIL00 /* ModelTests.swift */; };
+		TTST00301TTST00301TTST00 /* PathCalculationsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TFIL00301TFIL00301TFIL00 /* PathCalculationsTests.swift */; };
+		TTST00401TTST00401TTST00 /* RoutineStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TFIL00401TFIL00401TFIL00 /* RoutineStoreTests.swift */; };
+		TTST00501TTST00501TTST00 /* EntitlementManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TFIL00501TFIL00501TFIL00 /* EntitlementManagerTests.swift */; };
+		TTST00601TTST00601TTST00 /* EntitlementRevocationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TFIL00601TFIL00601TFIL00 /* EntitlementRevocationTests.swift */; };
+		TTST00701TTST00701TTST00 /* FreeTierLimitsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TFIL00701TFIL00701TFIL00 /* FreeTierLimitsTests.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		TDEP0001TDEP0001TDEP0001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0F1A1A8A1A1A1A1A1A1A1A8A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0F1A1A3A1A1A1A1A1A1A1A3A;
+			remoteInfo = FormationFlow;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
-		AABB000101AABB000101AABB /* EditorLayoutMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EditorLayoutMode.swift; path = FormationFlow/EditorLayoutMode.swift; sourceTree = SOURCE_ROOT; };
-		AABB000301AABB000301AABB /* EditorLayoutEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EditorLayoutEnvironment.swift; path = FormationFlow/EditorLayoutEnvironment.swift; sourceTree = SOURCE_ROOT; };
-		AABB000501AABB000501AABB /* FloorGridEditorTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FloorGridEditorTypes.swift; path = FormationFlow/FloorGridEditorTypes.swift; sourceTree = SOURCE_ROOT; };
-		AABB000701AABB000701AABB /* FloorGridView+PhoneChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FloorGridView+PhoneChrome.swift"; path = "FormationFlow/FloorGridView+PhoneChrome.swift"; sourceTree = SOURCE_ROOT; };
-		AABBA00701AABBA00701AABB /* FloorGridView+Gestures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FloorGridView+Gestures.swift"; path = "FormationFlow/FloorGridView+Gestures.swift"; sourceTree = SOURCE_ROOT; };
-		AABBA00901AABBA00901AABB /* FloorGridView+TransitionActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FloorGridView+TransitionActions.swift"; path = "FormationFlow/FloorGridView+TransitionActions.swift"; sourceTree = SOURCE_ROOT; };
-		AABBA00B01AABBA00B01AABB /* FloorGridView+FormationActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FloorGridView+FormationActions.swift"; path = "FormationFlow/FloorGridView+FormationActions.swift"; sourceTree = SOURCE_ROOT; };
-		AABBA00D01AABBA00D01AABB /* FloorGridView+Previews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FloorGridView+Previews.swift"; path = "FormationFlow/FloorGridView+Previews.swift"; sourceTree = SOURCE_ROOT; };
-		TFIL00101TFIL00101TFIL00 /* EditorLayoutModeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorLayoutModeTests.swift; sourceTree = "<group>"; };
-		TFIL00201TFIL00201TFIL00 /* ModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelTests.swift; sourceTree = "<group>"; };
-		TFIL00301TFIL00301TFIL00 /* PathCalculationsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PathCalculationsTests.swift; sourceTree = "<group>"; };
-		TFIL00401TFIL00401TFIL00 /* RoutineStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineStoreTests.swift; sourceTree = "<group>"; };
-		TFIL00501TFIL00501TFIL00 /* EntitlementManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntitlementManagerTests.swift; sourceTree = "<group>"; };
-		TFIL00601TFIL00601TFIL00 /* EntitlementRevocationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntitlementRevocationTests.swift; sourceTree = "<group>"; };
-		TFIL00701TFIL00701TFIL00 /* FreeTierLimitsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FreeTierLimitsTests.swift; sourceTree = "<group>"; };
-		TPROD001TPROD001TPROD01 /* FormationFlowTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FormationFlowTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1F08C9AC2F57AAC400425930 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = FormationFlow/Assets.xcassets; sourceTree = SOURCE_ROOT; };
 		1F08C9AD2F57AAED00425930 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = FormationFlow/Info.plist; sourceTree = SOURCE_ROOT; };
 		1FBACD3E3072969D00838DC8 /* RosterImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RosterImport.swift; sourceTree = "<group>"; };
@@ -72,6 +66,14 @@
 		4F4F48ABA5AD5A9438964E6B /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Models.swift; path = FormationFlow/Models.swift; sourceTree = SOURCE_ROOT; };
 		4FD34039AE5F73A96066C39B /* AthleteDetailPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AthleteDetailPanel.swift; path = FormationFlow/AthleteDetailPanel.swift; sourceTree = SOURCE_ROOT; };
 		9E0F49798D236EBFBB832F29 /* RoutinePDFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RoutinePDFExporter.swift; path = FormationFlow/RoutinePDFExporter.swift; sourceTree = SOURCE_ROOT; };
+		AABB000101AABB000101AABB /* EditorLayoutMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EditorLayoutMode.swift; path = FormationFlow/EditorLayoutMode.swift; sourceTree = SOURCE_ROOT; };
+		AABB000301AABB000301AABB /* EditorLayoutEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EditorLayoutEnvironment.swift; path = FormationFlow/EditorLayoutEnvironment.swift; sourceTree = SOURCE_ROOT; };
+		AABB000501AABB000501AABB /* FloorGridEditorTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FloorGridEditorTypes.swift; path = FormationFlow/FloorGridEditorTypes.swift; sourceTree = SOURCE_ROOT; };
+		AABB000701AABB000701AABB /* FloorGridView+PhoneChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FloorGridView+PhoneChrome.swift"; path = "FormationFlow/FloorGridView+PhoneChrome.swift"; sourceTree = SOURCE_ROOT; };
+		AABBA00701AABBA00701AABB /* FloorGridView+Gestures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FloorGridView+Gestures.swift"; path = "FormationFlow/FloorGridView+Gestures.swift"; sourceTree = SOURCE_ROOT; };
+		AABBA00901AABBA00901AABB /* FloorGridView+TransitionActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FloorGridView+TransitionActions.swift"; path = "FormationFlow/FloorGridView+TransitionActions.swift"; sourceTree = SOURCE_ROOT; };
+		AABBA00B01AABBA00B01AABB /* FloorGridView+FormationActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FloorGridView+FormationActions.swift"; path = "FormationFlow/FloorGridView+FormationActions.swift"; sourceTree = SOURCE_ROOT; };
+		AABBA00D01AABBA00D01AABB /* FloorGridView+Previews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FloorGridView+Previews.swift"; path = "FormationFlow/FloorGridView+Previews.swift"; sourceTree = SOURCE_ROOT; };
 		B2C3D4E5F6A7B8C9D0E1F2A3 /* FormationHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FormationHomeView.swift; path = FormationFlow/FormationHomeView.swift; sourceTree = SOURCE_ROOT; };
 		BB110001BB110001BB110001 /* EntitlementManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EntitlementManager.swift; path = FormationFlow/EntitlementManager.swift; sourceTree = SOURCE_ROOT; };
 		BB110002BB110002BB110002 /* FreeTierLimits.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FreeTierLimits.swift; path = FormationFlow/FreeTierLimits.swift; sourceTree = SOURCE_ROOT; };
@@ -84,7 +86,25 @@
 		FF220001FF220001FF220001 /* FormationThumbnailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FormationThumbnailView.swift; path = FormationFlow/FormationThumbnailView.swift; sourceTree = SOURCE_ROOT; };
 		FF220002FF220002FF220002 /* FormationThumbnailStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FormationThumbnailStrip.swift; path = FormationFlow/FormationThumbnailStrip.swift; sourceTree = SOURCE_ROOT; };
 		FF220003FF220003FF220003 /* PortraitActionBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PortraitActionBar.swift; path = FormationFlow/PortraitActionBar.swift; sourceTree = SOURCE_ROOT; };
+		TFIL00101TFIL00101TFIL00 /* EditorLayoutModeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorLayoutModeTests.swift; sourceTree = "<group>"; };
+		TFIL00201TFIL00201TFIL00 /* ModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelTests.swift; sourceTree = "<group>"; };
+		TFIL00301TFIL00301TFIL00 /* PathCalculationsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PathCalculationsTests.swift; sourceTree = "<group>"; };
+		TFIL00401TFIL00401TFIL00 /* RoutineStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineStoreTests.swift; sourceTree = "<group>"; };
+		TFIL00501TFIL00501TFIL00 /* EntitlementManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntitlementManagerTests.swift; sourceTree = "<group>"; };
+		TFIL00601TFIL00601TFIL00 /* EntitlementRevocationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntitlementRevocationTests.swift; sourceTree = "<group>"; };
+		TFIL00701TFIL00701TFIL00 /* FreeTierLimitsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FreeTierLimitsTests.swift; sourceTree = "<group>"; };
+		TPROD001TPROD001TPROD01 /* FormationFlowTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FormationFlowTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		TFRM0001TFRM0001TFRM0001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		1FEE788B2F3E5E9900012373 = {
@@ -104,28 +124,6 @@
 				TPROD001TPROD001TPROD01 /* FormationFlowTests.xctest */,
 			);
 			name = Products;
-			sourceTree = "<group>";
-		};
-		TGRP0001TGRP0001TGRP0001 /* Tests */ = {
-			isa = PBXGroup;
-			children = (
-				TGRP0002TGRP0002TGRP0002 /* FormationFlowTests */,
-			);
-			path = Tests;
-			sourceTree = "<group>";
-		};
-		TGRP0002TGRP0002TGRP0002 /* FormationFlowTests */ = {
-			isa = PBXGroup;
-			children = (
-				TFIL00101TFIL00101TFIL00 /* EditorLayoutModeTests.swift */,
-				TFIL00201TFIL00201TFIL00 /* ModelTests.swift */,
-				TFIL00301TFIL00301TFIL00 /* PathCalculationsTests.swift */,
-				TFIL00401TFIL00401TFIL00 /* RoutineStoreTests.swift */,
-				TFIL00501TFIL00501TFIL00 /* EntitlementManagerTests.swift */,
-				TFIL00601TFIL00601TFIL00 /* EntitlementRevocationTests.swift */,
-				TFIL00701TFIL00701TFIL00 /* FreeTierLimitsTests.swift */,
-			);
-			path = FormationFlowTests;
 			sourceTree = "<group>";
 		};
 		1FEE78952F3E5EB100012373 /* FormationFlow */ = {
@@ -164,17 +162,29 @@
 			path = FormationFlow;
 			sourceTree = "<group>";
 		};
-/* End PBXGroup section */
-
-/* Begin PBXContainerItemProxy section */
-		TDEP0001TDEP0001TDEP0001 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 0F1A1A8A1A1A1A1A1A1A1A8A /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 0F1A1A3A1A1A1A1A1A1A1A3A;
-			remoteInfo = FormationFlow;
+		TGRP0001TGRP0001TGRP0001 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				TGRP0002TGRP0002TGRP0002 /* FormationFlowTests */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
 		};
-/* End PBXContainerItemProxy section */
+		TGRP0002TGRP0002TGRP0002 /* FormationFlowTests */ = {
+			isa = PBXGroup;
+			children = (
+				TFIL00101TFIL00101TFIL00 /* EditorLayoutModeTests.swift */,
+				TFIL00201TFIL00201TFIL00 /* ModelTests.swift */,
+				TFIL00301TFIL00301TFIL00 /* PathCalculationsTests.swift */,
+				TFIL00401TFIL00401TFIL00 /* RoutineStoreTests.swift */,
+				TFIL00501TFIL00501TFIL00 /* EntitlementManagerTests.swift */,
+				TFIL00601TFIL00601TFIL00 /* EntitlementRevocationTests.swift */,
+				TFIL00701TFIL00701TFIL00 /* FreeTierLimitsTests.swift */,
+			);
+			path = FormationFlowTests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
 		0F1A1A3A1A1A1A1A1A1A1A3A /* FormationFlow */ = {
@@ -212,14 +222,6 @@
 		};
 /* End PBXNativeTarget section */
 
-/* Begin PBXTargetDependency section */
-		TDEP0002TDEP0002TDEP0002 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 0F1A1A3A1A1A1A1A1A1A1A3A /* FormationFlow */;
-			targetProxy = TDEP0001TDEP0001TDEP0001 /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
-
 /* Begin PBXProject section */
 		0F1A1A8A1A1A1A1A1A1A1A8A /* Project object */ = {
 			isa = PBXProject;
@@ -256,16 +258,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
-
-/* Begin PBXFrameworksBuildPhase section */
-		TFRM0001TFRM0001TFRM0001 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		0F1A1A5A1A1A1A1A1A1A1A5A /* Sources */ = {
@@ -318,6 +310,14 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		TDEP0002TDEP0002TDEP0002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0F1A1A3A1A1A1A1A1A1A1A3A /* FormationFlow */;
+			targetProxy = TDEP0001TDEP0001TDEP0001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
 		0F1A1A7A1A1A1A1A1A1A1A7A /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -326,12 +326,12 @@
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 305;
+				CURRENT_PROJECT_VERSION = 306;
 				INFOPLIST_FILE = FormationFlow/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = FormationFlow;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.sports";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ianrichardson.formationflow;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -436,12 +436,12 @@
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 305;
+				CURRENT_PROJECT_VERSION = 306;
 				INFOPLIST_FILE = FormationFlow/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = FormationFlow;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.sports";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ianrichardson.formationflow;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -457,7 +457,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 305;
+				CURRENT_PROJECT_VERSION = 306;
 				DEVELOPMENT_TEAM = WC46K49VFA;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -466,7 +466,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ianrichardson.formationflow.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -482,7 +482,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 305;
+				CURRENT_PROJECT_VERSION = 306;
 				DEVELOPMENT_TEAM = WC46K49VFA;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -491,7 +491,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ianrichardson.formationflow.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
