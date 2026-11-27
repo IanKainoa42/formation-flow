@@ -3,7 +3,20 @@ import Foundation
 import OSLog
 import SwiftUI
 
-// MARK: - Constants
+enum EditorLayoutMode {
+    case phonePortrait
+    case phoneLandscape
+    case ipadPortrait
+    case ipadLandscape
+
+    static func current(horizontalSizeClass: UIScreenDevice.SizeClass, verticalSizeClass: UIScreenDevice.SizeClass, isPhone: Bool) -> EditorLayoutMode {
+        if isPhone {
+            return verticalSizeClass == .compact ? .phonePortrait : .phoneLandscape
+        } else {
+            return verticalSizeClass == .compact ? .ipadPortrait : .ipadLandscape
+        }
+    }
+}
 
 enum CourtConstants {
     static let width: CGFloat = 54
