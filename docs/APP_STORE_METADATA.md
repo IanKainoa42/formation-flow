@@ -58,7 +58,7 @@ WORKS OFFLINE
 No account required. No internet needed. Your data stays on your device — always private, always available.
 
 DESIGNED FOR COACHES
-FormationFlow was built by a coach at CheerForce San Diego, a 5x World Champion program, who needed a faster way to plan transitions between practice sessions. Every feature exists because it solved a real coaching problem on a real mat.
+FormationFlow was built by a cheer coach who needed a faster way to plan transitions between practice sessions. Every feature exists because it solved a real coaching problem on a real mat.
 
 Perfect for:
 - Cheerleading teams planning competition routines

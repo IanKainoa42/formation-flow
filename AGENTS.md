@@ -4,7 +4,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## Project Overview
 
-FormationFlow is a native iOS/iPadOS app for digital choreography planning. Coaches place athletes on a virtual court grid, save formations, and animate transitions between them. Built for Cheer Force San Diego (CFSD).
+FormationFlow is a native iOS/iPadOS app for digital choreography planning. Coaches place athletes on a virtual court grid, save formations, and animate transitions between them. Built for real practices.
 
 ## Tech Stack
 

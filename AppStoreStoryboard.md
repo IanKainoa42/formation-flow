@@ -102,7 +102,6 @@
 
 **Supporting details:**
 - "Built for USASF & UCA competitions"
-- "Used by coaches at Cheer Force San Diego"
 - App Store rating stars (if you have reviews)
 
 **Visual Direction:**
