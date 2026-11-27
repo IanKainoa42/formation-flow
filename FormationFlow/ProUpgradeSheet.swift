@@ -277,24 +277,29 @@ struct CoachingApp: Identifiable {
     let id: String          // App Store numeric ID
     let name: String
     let tagline: String
-    let systemImage: String
+    /// Asset catalog image of the live App Store icon.
+    let iconAsset: String
     let price: String
 
+    /// Product page on the App Store. No country code, so the device storefront is used.
     var storeURL: URL { URL(string: "https://apps.apple.com/app/id\(id)")! }
 
     static let others: [CoachingApp] = [
+        CoachingApp(id: "6823235453", name: "StuntScope",
+                    tagline: "Record a stunt or tumbling pass. The replay opens the moment you stop.",
+                    iconAsset: "CoachingAppStuntScope", price: "Free"),
         CoachingApp(id: "6777192892", name: "HitRate: Skill Tracker",
                     tagline: "Count every hit, bobble and fall. Hit % per skill, per group, over the season. Apple Watch included.",
-                    systemImage: "chart.line.uptrend.xyaxis", price: "$2.99"),
+                    iconAsset: "CoachingAppHitRate", price: "$2.99"),
         CoachingApp(id: "6760259826", name: "CoachCard",
                     tagline: "Silent coaching whiteboard for iPad. Flash scores and cues across a loud gym.",
-                    systemImage: "rectangle.on.rectangle.angled", price: "$0.99"),
+                    iconAsset: "CoachingAppCoachCard", price: "$4.99"),
         CoachingApp(id: "6766343275", name: "PracticeMix",
                     tagline: "Turn your competition mix into timed practice blocks with reps and rest.",
-                    systemImage: "music.note.list", price: "$4.99"),
+                    iconAsset: "CoachingAppPracticeMix", price: "$7.99"),
         CoachingApp(id: "6763985604", name: "Vid-e-Note",
                     tagline: "Draw on any video with Apple Pencil. Mark up stunts and tumbling frame by frame.",
-                    systemImage: "pencil.and.scribble", price: "$0.99")
+                    iconAsset: "CoachingAppVidENote", price: "$4.99")
     ]
 }
 
@@ -312,11 +317,11 @@ struct MoreCoachingAppsView: View {
                             openURL(app.storeURL)
                         } label: {
                             HStack(alignment: .top, spacing: 14) {
-                                Image(systemName: app.systemImage)
-                                    .font(.title2)
-                                    .foregroundStyle(Color.coral)
-                                    .frame(width: 36, height: 36)
-                                    .background(Color.coral.opacity(0.12), in: RoundedRectangle(cornerRadius: 9))
+                                Image(app.iconAsset)
+                                    .resizable()
+                                    .interpolation(.high)
+                                    .frame(width: 48, height: 48)
+                                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
                                 VStack(alignment: .leading, spacing: 3) {
                                     HStack {
                                         Text(app.name).font(.headline)
@@ -335,7 +340,7 @@ struct MoreCoachingAppsView: View {
                 } header: {
                     Text("From the same coach")
                 } footer: {
-                    Text("Built at CheerForce San Diego for real practices. Every app works offline with no account.")
+                    Text("Built for real practices. Every app works offline with no account.")
                 }
             }
             .navigationTitle("More Coaching Tools")
